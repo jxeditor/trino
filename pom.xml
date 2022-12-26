@@ -721,7 +721,7 @@
             <dependency>
                 <groupId>io.trino.benchto</groupId>
                 <artifactId>benchto-driver</artifactId>
-                <version>0.20</version>
+                <version>0.22</version>
             </dependency>
 
             <dependency>
@@ -1647,6 +1647,23 @@
                 <groupId>org.apache.iceberg</groupId>
                 <artifactId>iceberg-core</artifactId>
                 <version>${dep.iceberg.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.apache.avro</groupId>
+                        <artifactId>avro</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.slf4j</groupId>
+                        <artifactId>slf4j-api</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.iceberg</groupId>
+                <artifactId>iceberg-core</artifactId>
+                <version>${dep.iceberg.version}</version>
+                <classifier>tests</classifier>
                 <exclusions>
                     <exclusion>
                         <groupId>org.apache.avro</groupId>
