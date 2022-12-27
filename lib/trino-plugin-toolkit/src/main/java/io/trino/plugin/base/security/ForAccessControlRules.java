@@ -13,19 +13,17 @@
  */
 package io.trino.plugin.base.security;
 
-import com.google.common.collect.ImmutableMap;
-import io.trino.spi.security.SystemAccessControl;
+import com.google.inject.BindingAnnotation;
 
-import java.io.File;
-import java.util.Map;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
 
-public class TestFileBasedSystemAccessControl
-        extends BaseFileBasedSystemAccessControlTest
-{
-    @Override
-    protected SystemAccessControl newFileBasedSystemAccessControl(File configFile, Map<String, String> properties)
-    {
-        return newFileBasedSystemAccessControl(ImmutableMap.<String, String>builder().putAll(properties).put("security.config-file",
-                configFile.getAbsolutePath()).buildOrThrow());
-    }
-}
+import static java.lang.annotation.ElementType.FIELD;
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.PARAMETER;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+@Retention(RUNTIME)
+@Target({FIELD, PARAMETER, METHOD})
+@BindingAnnotation
+public @interface ForAccessControlRules {}
