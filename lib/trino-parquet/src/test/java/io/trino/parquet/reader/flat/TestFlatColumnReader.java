@@ -16,6 +16,7 @@ package io.trino.parquet.reader.flat;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import io.trino.memory.context.AggregatedMemoryContext;
 import io.trino.parquet.DataPage;
 import io.trino.parquet.DataPageV1;
 import io.trino.parquet.DataPageV2;
@@ -29,7 +30,6 @@ import io.trino.parquet.reader.PageReader;
 import io.trino.parquet.reader.TestingColumnReader;
 import io.trino.parquet.reader.TestingColumnReader.ColumnReaderFormat;
 import io.trino.parquet.reader.TestingColumnReader.DataPageVersion;
-import io.trino.parquet.reader.decoders.ValueDecoders;
 import io.trino.spi.block.Block;
 import org.apache.parquet.bytes.HeapByteBufferAllocator;
 import org.apache.parquet.column.ColumnDescriptor;
@@ -39,18 +39,19 @@ import org.apache.parquet.column.values.rle.RunLengthBitPackingHybridValuesWrite
 import org.apache.parquet.schema.PrimitiveType;
 import org.apache.parquet.schema.Types;
 import org.apache.parquet.schema.Types.PrimitiveBuilder;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 import javax.annotation.Nullable;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
 
 import static io.airlift.slice.Slices.EMPTY_SLICE;
+import static io.trino.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static io.trino.parquet.ParquetEncoding.BIT_PACKED;
 import static io.trino.parquet.ParquetEncoding.PLAIN;
 import static io.trino.parquet.ParquetEncoding.RLE;
@@ -58,7 +59,6 @@ import static io.trino.parquet.ParquetEncoding.RLE_DICTIONARY;
 import static io.trino.parquet.reader.TestingColumnReader.DataPageVersion.V1;
 import static io.trino.parquet.reader.TestingColumnReader.PLAIN_WRITER;
 import static io.trino.parquet.reader.TestingColumnReader.getDictionaryPage;
-import static io.trino.parquet.reader.flat.IntColumnAdapter.INT_ADAPTER;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static org.apache.parquet.hadoop.metadata.CompressionCodecName.UNCOMPRESSED;
 import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT32;
@@ -75,14 +75,14 @@ import static org.joda.time.DateTimeZone.UTC;
 public class TestFlatColumnReader
 {
     private static final PrimitiveType TYPE = new PrimitiveType(REQUIRED, INT32, "");
-    private static final PrimitiveField NULLABLE_FIELD = new PrimitiveField(INTEGER, false, new ColumnDescriptor(new String[] {}, TYPE, 0, 0), 0);
-    private static final PrimitiveField FIELD = new PrimitiveField(INTEGER, true, new ColumnDescriptor(new String[] {}, TYPE, 0, 0), 0);
+    private static final PrimitiveField NULLABLE_FIELD = new PrimitiveField(INTEGER, false, new ColumnDescriptor(new String[] {"test"}, TYPE, 0, 0), 0);
+    private static final PrimitiveField FIELD = new PrimitiveField(INTEGER, true, new ColumnDescriptor(new String[] {"test"}, TYPE, 0, 0), 0);
 
     @Test
     public void testReadPageV1BitPacked()
             throws IOException
     {
-        FlatColumnReader<int[]> reader = new FlatColumnReader<>(NULLABLE_FIELD, ValueDecoders::getIntDecoder, INT_ADAPTER);
+        FlatColumnReader<?> reader = (FlatColumnReader<?>) createColumnReader(NULLABLE_FIELD);
         reader.setPageReader(getSimplePageReaderMock(BIT_PACKED), Optional.empty());
         reader.prepareNextRead(1);
 
@@ -95,7 +95,7 @@ public class TestFlatColumnReader
     public void testReadPageV1BitPackedNoNulls()
             throws IOException
     {
-        FlatColumnReader<int[]> reader = new FlatColumnReader<>(FIELD, ValueDecoders::getIntDecoder, INT_ADAPTER);
+        FlatColumnReader<?> reader = (FlatColumnReader<?>) createColumnReader(FIELD);
         reader.setPageReader(getSimplePageReaderMock(BIT_PACKED), Optional.empty());
         reader.prepareNextRead(1);
 
@@ -106,7 +106,7 @@ public class TestFlatColumnReader
     public void testReadPageV1RleNoNulls()
             throws IOException
     {
-        FlatColumnReader<int[]> reader = new FlatColumnReader<>(FIELD, ValueDecoders::getIntDecoder, INT_ADAPTER);
+        FlatColumnReader<?> reader = (FlatColumnReader<?>) createColumnReader(FIELD);
         assertThat(FIELD.isRequired()).isTrue();
         assertThat(FIELD.getDescriptor().getMaxDefinitionLevel()).isEqualTo(0);
         reader.setPageReader(getSimplePageReaderMock(RLE), Optional.empty());
@@ -121,7 +121,7 @@ public class TestFlatColumnReader
     public void testReadPageV1RleOnlyNulls()
             throws IOException
     {
-        FlatColumnReader<int[]> reader = new FlatColumnReader<>(NULLABLE_FIELD, ValueDecoders::getIntDecoder, INT_ADAPTER);
+        FlatColumnReader<?> reader = (FlatColumnReader<?>) createColumnReader(NULLABLE_FIELD);
         assertThat(NULLABLE_FIELD.isRequired()).isFalse();
         assertThat(NULLABLE_FIELD.getDescriptor().getMaxDefinitionLevel()).isEqualTo(0);
         reader.setPageReader(getNullOnlyPageReaderMock(), Optional.empty());
@@ -145,7 +145,7 @@ public class TestFlatColumnReader
         DataPage page = createDataPage(version, RLE_DICTIONARY, dictionaryWriter, 2);
         DictionaryPage dictionaryPage = getDictionaryPage(dictionaryWriter);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page)), dictionaryPage), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page), dictionaryPage), Optional.empty());
         reader.prepareNextRead(2);
         Block actual = reader.readPrimitive().getBlock();
         format.assertBlock(values, actual);
@@ -164,7 +164,7 @@ public class TestFlatColumnReader
         DataPage page = createNullableDataPage(version, RLE_DICTIONARY, dictionaryWriter, false, true);
         DictionaryPage dictionaryPage = getDictionaryPage(dictionaryWriter);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page)), dictionaryPage), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page), dictionaryPage), Optional.empty());
         reader.prepareNextRead(2);
         Block actual = reader.readPrimitive().getBlock();
         format.assertBlock(values, actual);
@@ -183,7 +183,7 @@ public class TestFlatColumnReader
         DataPage page = createNullableDataPage(version, RLE_DICTIONARY, dictionaryWriter, false, false);
         DictionaryPage dictionaryPage = getDictionaryPage(dictionaryWriter);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page)), dictionaryPage), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page), dictionaryPage), Optional.empty());
         reader.prepareNextRead(2);
         Block actual = reader.readPrimitive().getBlock();
         format.assertBlock(values, actual);
@@ -202,7 +202,7 @@ public class TestFlatColumnReader
         DataPage page = createNullableDataPage(version, RLE_DICTIONARY, dictionaryWriter, false, false);
         DictionaryPage dictionaryPage = getDictionaryPage(dictionaryWriter);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page)), dictionaryPage, false), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page), dictionaryPage, false), Optional.empty());
         reader.prepareNextRead(2);
         Block actual = reader.readPrimitive().getBlock();
         format.assertBlock(values, actual);
@@ -223,7 +223,7 @@ public class TestFlatColumnReader
         DataPage page = createNullableDataPage(version, RLE_DICTIONARY, dictionaryWriter, true, true);
         DictionaryPage dictionaryPage = getDictionaryPage(dictionaryWriter);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page)), dictionaryPage), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page), dictionaryPage), Optional.empty());
         reader.prepareNextRead(2);
         Block actual = reader.readPrimitive().getBlock();
         format.assertBlock(values, actual);
@@ -245,7 +245,7 @@ public class TestFlatColumnReader
         T[] values3 = format.resetAndWrite(writer, new Integer[] {4});
         DataPage page3 = createDataPage(version, PLAIN, writer, 1);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page1, page2, page3)), null), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page1, page2, page3), null), Optional.empty());
         Block actual1 = readBlock(reader, 1); // Parquet/Trino page size the same
         Block actual2 = readBlock(reader, 1); // Parquet page bigger than Trino
         Block actual3 = readBlock(reader, 2); // Parquet page smaller than Trino
@@ -272,7 +272,7 @@ public class TestFlatColumnReader
         DataPage page2 = createDataPage(version, PLAIN, writer, 1);
         DictionaryPage dictionaryPage = getDictionaryPage(dictionaryWriter);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page1, page2)), dictionaryPage), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page1, page2), dictionaryPage), Optional.empty());
         reader.prepareNextRead(3);
         Block actual = reader.readPrimitive().getBlock();
         format.assertBlock(values1, actual, 0, 0, 2);
@@ -293,7 +293,7 @@ public class TestFlatColumnReader
         T[] values2 = format.write(writer, new Integer[] {null, null});
         DataPage page2 = createNullableDataPage(version, PLAIN, writer, true, true);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page1, page2)), null), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page1, page2), null), Optional.empty());
         // Deliberate mismatch between Trino/Parquet page sizes
         Block actual1 = readBlock(reader, 2);
         Block actual2 = readBlock(reader, 1);
@@ -319,7 +319,7 @@ public class TestFlatColumnReader
         T[] values3 = format.resetAndWrite(writer, new Integer[] {3, null, 4});
         DataPage page3 = createNullableDataPage(version, PLAIN, writer, false, true, false);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page1, page2, page3)), null), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page1, page2, page3), null), Optional.empty());
         // Deliberate mismatch between Trino/Parquet page sizes
         Block actual1 = readBlock(reader, 2);
         Block actual2 = readBlock(reader, 2);
@@ -343,7 +343,7 @@ public class TestFlatColumnReader
         T[] values1 = format.write(writer, new Integer[] {1, 2});
         DataPage page1 = createNullableDataPage(version, PLAIN, writer, false, false);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page1)), null), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page1), null), Optional.empty());
         // Deliberate mismatch between Trino/Parquet page sizes
         Block actual1 = readBlock(reader, 2);
 
@@ -362,7 +362,7 @@ public class TestFlatColumnReader
         T[] values1 = format.write(writer, new Integer[] {1, 2});
         DataPage page1 = createNullableDataPage(version, PLAIN, writer, false, false);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page1)), null, true), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page1), null, true), Optional.empty());
         // Deliberate mismatch between Trino/Parquet page sizes
         Block actual1 = readBlock(reader, 2);
         assertThat(actual1.mayHaveNull()).isFalse();
@@ -385,7 +385,7 @@ public class TestFlatColumnReader
         DataPage page2 = createDataPage(version, PLAIN, writer, 3);
         DictionaryPage dictionaryPage = getDictionaryPage(dictionaryWriter);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page1, page2)), dictionaryPage), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page1, page2), dictionaryPage), Optional.empty());
         // Deliberate mismatch between Trino/Parquet page sizes
         Block actual1 = readBlock(reader, 2); // Only dictionary
         Block actual2 = readBlock(reader, 2); // Mixed
@@ -413,7 +413,7 @@ public class TestFlatColumnReader
         T[] values3 = format.resetAndWrite(writer, new Integer[] {2});
         DataPage page3 = createNullableDataPage(version, PLAIN, writer, false);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page1, page2, page3)), null), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page1, page2, page3), null), Optional.empty());
         // Deliberate mismatch between Trino/Parquet page sizes
         Block actual = readBlock(reader, 3);
 
@@ -438,7 +438,7 @@ public class TestFlatColumnReader
         DataPage page2 = createDataPage(version, RLE_DICTIONARY, dictionaryWriter, 3);
         DictionaryPage dictionaryPage = getDictionaryPage(dictionaryWriter);
         // Read and assert
-        reader.setPageReader(getPageReaderMock(new LinkedList<>(List.of(page1, page2)), dictionaryPage), Optional.empty());
+        reader.setPageReader(getPageReaderMock(List.of(page1, page2), dictionaryPage), Optional.empty());
         reader.prepareNextRead(1); // skip
         Block actual = readBlock(reader, 2);
         reader.prepareNextRead(1); // skip
@@ -446,6 +446,37 @@ public class TestFlatColumnReader
 
         format.assertBlock(values1, actual, 1, 0, 2);
         format.assertBlock(values2, actual2, 1, 0, 2);
+    }
+
+    @Test(dataProvider = "dictionaryReadersWithPageVersions", dataProviderClass = TestingColumnReader.class)
+    public <T> void testMemoryUsage(DataPageVersion version, ColumnReaderFormat<T> format)
+            throws IOException
+    {
+        // Create reader
+        PrimitiveField field = createField(format, true);
+        AggregatedMemoryContext memoryContext = newSimpleAggregatedMemoryContext();
+        ColumnReader reader = ColumnReaderFactory.create(field, UTC, memoryContext, true);
+        if (!(reader instanceof FlatColumnReader<?>)) {
+            throw new SkipException("Memory usage is tracked only in batched column readers");
+        }
+        // Write data
+        DictionaryValuesWriter dictionaryWriter = format.getDictionaryWriter();
+        format.write(dictionaryWriter, new Integer[] {1, 2, 3});
+        DataPage page1 = createDataPage(version, RLE_DICTIONARY, dictionaryWriter, 3);
+        format.resetAndWrite(dictionaryWriter, new Integer[] {2, 4, 5, 3, 7});
+        DataPage page2 = createDataPage(version, RLE_DICTIONARY, dictionaryWriter, 5);
+        DictionaryPage dictionaryPage = getDictionaryPage(dictionaryWriter);
+        // Read and assert
+        assertThat(memoryContext.getBytes()).isEqualTo(0);
+        reader.setPageReader(getPageReaderMock(List.of(page1, page2), dictionaryPage), Optional.empty());
+        assertThat(memoryContext.getBytes()).isEqualTo(0);
+        readBlock(reader, 3);
+        long memoryUsage = memoryContext.getBytes();
+        assertThat(memoryUsage).isGreaterThan(0);
+        readBlock(reader, 4);
+        // For uncompressed pages, only the dictionary needs to be accounted for
+        // That's why memory usage does not change on reading the 2nd page
+        assertThat(memoryContext.getBytes()).isEqualTo(memoryUsage);
     }
 
     private Block readBlock(ColumnReader reader, int valueCount)
@@ -539,11 +570,10 @@ public class TestFlatColumnReader
     private static PageReader getSimplePageReaderMock(ParquetEncoding encoding)
             throws IOException
     {
-        LinkedList<DataPage> pages = new LinkedList<>();
         ValuesWriter writer = PLAIN_WRITER.apply(1);
         writer.writeInteger(42);
         byte[] valueBytes = writer.getBytes().toByteArray();
-        pages.add(new DataPageV1(
+        List<DataPage> pages = ImmutableList.of(new DataPageV1(
                 Slices.wrappedBuffer(valueBytes),
                 1,
                 valueBytes.length,
@@ -557,11 +587,10 @@ public class TestFlatColumnReader
     private static PageReader getNullOnlyPageReaderMock()
             throws IOException
     {
-        LinkedList<DataPage> pages = new LinkedList<>();
         RunLengthBitPackingHybridValuesWriter nullsWriter = new RunLengthBitPackingHybridValuesWriter(1, 1, 1, HeapByteBufferAllocator.getInstance());
         nullsWriter.writeInteger(0);
         byte[] nullBytes = nullsWriter.getBytes().toByteArray();
-        pages.add(new DataPageV1(
+        List<DataPage> pages = ImmutableList.of(new DataPageV1(
                 Slices.wrappedBuffer(nullBytes),
                 1,
                 nullBytes.length,
@@ -572,12 +601,12 @@ public class TestFlatColumnReader
         return new PageReader(UNCOMPRESSED, pages.iterator(), false, false);
     }
 
-    private static PageReader getPageReaderMock(LinkedList<DataPage> dataPages, @Nullable DictionaryPage dictionaryPage)
+    private static PageReader getPageReaderMock(List<DataPage> dataPages, @Nullable DictionaryPage dictionaryPage)
     {
         return getPageReaderMock(dataPages, dictionaryPage, false);
     }
 
-    private static PageReader getPageReaderMock(LinkedList<DataPage> dataPages, @Nullable DictionaryPage dictionaryPage, boolean hasNoNulls)
+    private static PageReader getPageReaderMock(List<DataPage> dataPages, @Nullable DictionaryPage dictionaryPage, boolean hasNoNulls)
     {
         if (dictionaryPage != null) {
             return new PageReader(
@@ -595,6 +624,6 @@ public class TestFlatColumnReader
 
     private static ColumnReader createColumnReader(PrimitiveField field)
     {
-        return ColumnReaderFactory.create(field, UTC, true);
+        return ColumnReaderFactory.create(field, UTC, newSimpleAggregatedMemoryContext(), true);
     }
 }
