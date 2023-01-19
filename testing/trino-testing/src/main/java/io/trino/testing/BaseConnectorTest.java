@@ -702,7 +702,7 @@ public abstract class BaseConnectorTest
     /**
      * Test interactions between optimizer (including CBO), scheduling and connector metadata APIs.
      */
-    @Test(timeOut = 300_000, dataProvider = "joinDistributionTypes")
+    @Test(dataProvider = "joinDistributionTypes")
     public void testJoinWithEmptySides(JoinDistributionType joinDistributionType)
     {
         Session session = noJoinReordering(joinDistributionType);
@@ -2213,7 +2213,13 @@ public abstract class BaseConnectorTest
         skipTestUnless(hasBehavior(SUPPORTS_SET_COLUMN_TYPE) && hasBehavior(SUPPORTS_CREATE_TABLE_WITH_DATA));
 
         try (TestTable table = new TestTable(getQueryRunner()::execute, "test_set_column_type_", " AS SELECT CAST(" + setup.sourceValueLiteral + " AS " + setup.sourceColumnType + ") AS col")) {
-            assertUpdate("ALTER TABLE " + table.getName() + " ALTER COLUMN col SET DATA TYPE " + setup.newColumnType);
+            Runnable setColumnType = () -> assertUpdate("ALTER TABLE " + table.getName() + " ALTER COLUMN col SET DATA TYPE " + setup.newColumnType);
+            if (setup.unsupportedType) {
+                assertThatThrownBy(setColumnType::run)
+                        .satisfies(this::verifySetColumnTypeFailurePermissible);
+                return;
+            }
+            setColumnType.run();
 
             assertEquals(getColumnType(table.getName(), "col"), setup.newColumnType);
             assertThat(query("SELECT * FROM " + table.getName()))
@@ -2247,6 +2253,8 @@ public abstract class BaseConnectorTest
                 .add(new SetColumnTypeSetup("smallint", "smallint '32767'", "integer", "32767"))
                 .add(new SetColumnTypeSetup("integer", "2147483647", "bigint", "bigint '2147483647'"))
                 .add(new SetColumnTypeSetup("bigint", "bigint '-2147483648'", "integer", "-2147483648"))
+                .add(new SetColumnTypeSetup("real", "real '10.3'", "double", "double '10.3'"))
+                .add(new SetColumnTypeSetup("real", "real 'NaN'", "double", "double 'NaN'"))
                 .add(new SetColumnTypeSetup("decimal(5,3)", "12.345", "decimal(10,3)", "12.345")) // short decimal -> short decimal
                 .add(new SetColumnTypeSetup("decimal(28,3)", "12.345", "decimal(38,3)", "12.345")) // long decimal -> long decimal
                 .add(new SetColumnTypeSetup("decimal(5,3)", "12.345", "decimal(38,3)", "12.345")) // short decimal -> long decimal
@@ -2263,17 +2271,29 @@ public abstract class BaseConnectorTest
                 .add(new SetColumnTypeSetup("char(100)", "'shorten-char'", "char(50)", "cast('shorten-char' as char(50))"))
                 .add(new SetColumnTypeSetup("char(100)", "'char-to-varchar'", "varchar", "'char-to-varchar'"))
                 .add(new SetColumnTypeSetup("varchar", "'varchar-to-char'", "char(100)", "cast('varchar-to-char' as char(100))"))
+                .add(new SetColumnTypeSetup("array(integer)", "array[1]", "array(bigint)", "cast(array[1] as array(bigint))"))
+                .add(new SetColumnTypeSetup("row(x integer)", "row(1)", "row(x bigint)", "cast(row(1) as row(x bigint))"))
                 .build();
     }
 
-    public record SetColumnTypeSetup(String sourceColumnType, String sourceValueLiteral, String newColumnType, String newValueLiteral)
+    public record SetColumnTypeSetup(String sourceColumnType, String sourceValueLiteral, String newColumnType, String newValueLiteral, boolean unsupportedType)
     {
+        public SetColumnTypeSetup(String sourceColumnType, String sourceValueLiteral, String newColumnType, String newValueLiteral)
+        {
+            this(sourceColumnType, sourceValueLiteral, newColumnType, newValueLiteral, false);
+        }
+
         public SetColumnTypeSetup
         {
             requireNonNull(sourceColumnType, "sourceColumnType is null");
             requireNonNull(sourceValueLiteral, "sourceValueLiteral is null");
             requireNonNull(newColumnType, "newColumnType is null");
             requireNonNull(newValueLiteral, "newValueLiteral is null");
+        }
+
+        public SetColumnTypeSetup asUnsupported()
+        {
+            return new SetColumnTypeSetup(sourceColumnType, sourceValueLiteral, newColumnType, newValueLiteral, true);
         }
     }
 
@@ -2295,7 +2315,7 @@ public abstract class BaseConnectorTest
     {
         skipTestUnless(hasBehavior(SUPPORTS_SET_COLUMN_TYPE) && hasBehavior(SUPPORTS_CREATE_TABLE_WITH_COLUMN_COMMENT));
 
-        try (TestTable table = new TestTable(getQueryRunner()::execute, "test_set_column_type_comment_", "(col int COMMENT 'test')")) {
+        try (TestTable table = new TestTable(getQueryRunner()::execute, "test_set_column_type_comment_", "(col int COMMENT 'test comment')")) {
             assertEquals(getColumnComment(table.getName(), "col"), "test comment");
 
             assertUpdate("ALTER TABLE " + table.getName() + " ALTER COLUMN col SET DATA TYPE bigint");

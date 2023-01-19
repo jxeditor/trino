@@ -63,6 +63,7 @@ import static io.trino.operator.HashArraySizeSupplier.defaultHashArraySizeSuppli
 import static io.trino.operator.SyntheticAddress.decodePosition;
 import static io.trino.operator.SyntheticAddress.decodeSliceIndex;
 import static io.trino.operator.SyntheticAddress.encodeSyntheticAddress;
+import static io.trino.operator.join.JoinUtils.getSingleBigintJoinChannel;
 import static io.trino.spi.StandardErrorCode.GENERIC_INSUFFICIENT_RESOURCES;
 import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
@@ -211,6 +212,9 @@ public class PagesIndex
         positionCount = 0;
         nextBlockToCompact = 0;
         pagesMemorySize = 0;
+        positionCounts.clear();
+        positionCounts.trim();
+        pageCount = 0;
 
         estimatedSize = calculateEstimatedSize();
     }
@@ -615,5 +619,24 @@ public class PagesIndex
                 return page;
             }
         };
+    }
+
+    public long getEstimatedMemoryRequiredToCreateLookupSource(
+            HashArraySizeSupplier hashArraySizeSupplier,
+            Optional<Integer> sortChannel,
+            List<Integer> joinChannels)
+    {
+        // channels and valueAddresses are shared between PagesIndex and JoinHashSupplier and are accounted as part of lookupSourceEstimatedRetainedSizeInBytes
+        long lookupSourceEstimatedRetainedSizeInBytes = JoinHashSupplier.getEstimatedRetainedSizeInBytes(
+                positionCount,
+                valueAddresses,
+                ImmutableList.copyOf(channels),
+                pagesMemorySize,
+                sortChannel,
+                getSingleBigintJoinChannel(joinChannels, types),
+                hashArraySizeSupplier);
+        // PageIndex is retained during LookupSource creation, hence any extra memory retained by the PagesIndex must be accounted here
+        long pagesIndexAdditionalRetainedSizeInBytes = INSTANCE_SIZE + sizeOf(positionCounts.elements());
+        return pagesIndexAdditionalRetainedSizeInBytes + lookupSourceEstimatedRetainedSizeInBytes;
     }
 }
