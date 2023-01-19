@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.util.Optional;
 import java.util.Properties;
 
+import static io.trino.plugin.hive.parquet.ParquetRecordWriter.replaceHadoopParquetMemoryManager;
 import static java.util.Objects.requireNonNull;
 
 /*
@@ -37,12 +38,18 @@ import static java.util.Objects.requireNonNull;
   we also want to test the cases were the backing type is INT32/INT64, which requires
   a custom Parquet schema.
 */
-public class TestMapredParquetOutputFormat
+public class TestingMapredParquetOutputFormat
         extends MapredParquetOutputFormat
 {
+    static {
+        //  The tests using this class don't use io.trino.plugin.hive.parquet.ParquetRecordWriter for writing parquet files with old writer.
+        //  Therefore, we need to replace the hadoop parquet memory manager here explicitly.
+        replaceHadoopParquetMemoryManager();
+    }
+
     private final Optional<MessageType> schema;
 
-    public TestMapredParquetOutputFormat(Optional<MessageType> schema, boolean singleLevelArray, DateTimeZone dateTimeZone)
+    public TestingMapredParquetOutputFormat(Optional<MessageType> schema, boolean singleLevelArray, DateTimeZone dateTimeZone)
     {
         super(new ParquetOutputFormat<>(new TestDataWritableWriteSupport(singleLevelArray, dateTimeZone)));
         this.schema = requireNonNull(schema, "schema is null");

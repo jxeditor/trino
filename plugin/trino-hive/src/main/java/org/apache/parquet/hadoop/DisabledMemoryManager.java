@@ -11,14 +11,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.iceberg;
+package org.apache.parquet.hadoop;
 
-public enum CatalogType
+public final class DisabledMemoryManager
+        extends MemoryManager
 {
-    TESTING_FILE_METASTORE,
-    HIVE_METASTORE,
-    GLUE,
-    REST,
-    JDBC,
-    /**/;
+    public DisabledMemoryManager()
+    {
+        super(0.95f, 1024 * 1024);
+    }
+
+    @Override
+    synchronized void addWriter(InternalParquetRecordWriter<?> writer, Long allocation)
+    {
+    }
+
+    @Override
+    synchronized void removeWriter(InternalParquetRecordWriter<?> writer)
+    {
+    }
 }
