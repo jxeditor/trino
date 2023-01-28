@@ -1018,12 +1018,12 @@ public abstract class BaseConnectorTest
                 "SELECT table_name, table_type FROM information_schema.tables " +
                         "WHERE table_schema = '" + view.getSchemaName() + "'"))
                 .skippingTypesCheck()
-                .containsAll("VALUES ('" + view.getObjectName() + "', 'BASE TABLE')"); // TODO table_type should probably be "* VIEW"
+                .containsAll("VALUES ('" + view.getObjectName() + "', 'MATERIALIZED VIEW')");
         // information_schema.tables with table_name filter
         assertQuery(
                 "SELECT table_name, table_type FROM information_schema.tables " +
                         "WHERE table_schema = '" + view.getSchemaName() + "' and table_name = '" + view.getObjectName() + "'",
-                "VALUES ('" + view.getObjectName() + "', 'BASE TABLE')");
+                "VALUES ('" + view.getObjectName() + "', 'MATERIALIZED VIEW')");
 
         // system.jdbc.tables without filter
         assertThat(query("SELECT table_schem, table_name, table_type FROM system.jdbc.tables"))
@@ -2224,7 +2224,7 @@ public abstract class BaseConnectorTest
             assertEquals(getColumnType(table.getName(), "col"), setup.newColumnType);
             assertThat(query("SELECT * FROM " + table.getName()))
                     .skippingTypesCheck()
-                    .matches("VALUES " + setup.newValueLiteral);
+                    .matches("SELECT " + setup.newValueLiteral);
         }
         catch (Exception e) {
             verifyUnsupportedTypeException(e, setup.sourceColumnType);
@@ -2249,35 +2249,47 @@ public abstract class BaseConnectorTest
     private List<SetColumnTypeSetup> setColumnTypeSetupData()
     {
         return ImmutableList.<SetColumnTypeSetup>builder()
-                .add(new SetColumnTypeSetup("tinyint", "tinyint '127'", "smallint", "smallint '127'"))
-                .add(new SetColumnTypeSetup("smallint", "smallint '32767'", "integer", "32767"))
-                .add(new SetColumnTypeSetup("integer", "2147483647", "bigint", "bigint '2147483647'"))
-                .add(new SetColumnTypeSetup("bigint", "bigint '-2147483648'", "integer", "-2147483648"))
-                .add(new SetColumnTypeSetup("real", "real '10.3'", "double", "double '10.3'"))
-                .add(new SetColumnTypeSetup("real", "real 'NaN'", "double", "double 'NaN'"))
-                .add(new SetColumnTypeSetup("decimal(5,3)", "12.345", "decimal(10,3)", "12.345")) // short decimal -> short decimal
-                .add(new SetColumnTypeSetup("decimal(28,3)", "12.345", "decimal(38,3)", "12.345")) // long decimal -> long decimal
-                .add(new SetColumnTypeSetup("decimal(5,3)", "12.345", "decimal(38,3)", "12.345")) // short decimal -> long decimal
-                .add(new SetColumnTypeSetup("decimal(5,3)", "12.340", "decimal(5,2)", "12.34"))
-                .add(new SetColumnTypeSetup("decimal(5,3)", "12.349", "decimal(5,2)", "12.35"))
-                .add(new SetColumnTypeSetup("time(3)", "time '15:03:00.123'", "time(6)", "time '15:03:00.123000'"))
-                .add(new SetColumnTypeSetup("time(6)", "time '15:03:00.123000'", "time(3)", "time '15:03:00.123'"))
-                .add(new SetColumnTypeSetup("time(6)", "time '15:03:00.123999'", "time(3)", "time '15:03:00.124'"))
-                .add(new SetColumnTypeSetup("timestamp(3)", "timestamp '2020-02-12 15:03:00.123'", "timestamp(6)", "timestamp '2020-02-12 15:03:00.123000'"))
-                .add(new SetColumnTypeSetup("timestamp(6)", "timestamp '2020-02-12 15:03:00.123000'", "timestamp(3)", "timestamp '2020-02-12 15:03:00.123'"))
-                .add(new SetColumnTypeSetup("timestamp(6)", "timestamp '2020-02-12 15:03:00.123999'", "timestamp(3)", "timestamp '2020-02-12 15:03:00.124'"))
-                .add(new SetColumnTypeSetup("timestamp(3) with time zone", "timestamp '2020-02-12 15:03:00.123 +01:00'", "timestamp(6) with time zone", "timestamp '2020-02-12 15:03:00.123000 +01:00'"))
-                .add(new SetColumnTypeSetup("varchar(100)", "'shorten-varchar'", "varchar(50)", "'shorten-varchar'"))
-                .add(new SetColumnTypeSetup("char(100)", "'shorten-char'", "char(50)", "cast('shorten-char' as char(50))"))
-                .add(new SetColumnTypeSetup("char(100)", "'char-to-varchar'", "varchar", "'char-to-varchar'"))
-                .add(new SetColumnTypeSetup("varchar", "'varchar-to-char'", "char(100)", "cast('varchar-to-char' as char(100))"))
-                .add(new SetColumnTypeSetup("array(integer)", "array[1]", "array(bigint)", "cast(array[1] as array(bigint))"))
-                .add(new SetColumnTypeSetup("row(x integer)", "row(1)", "row(x bigint)", "cast(row(1) as row(x bigint))"))
+                .add(new SetColumnTypeSetup("tinyint", "TINYINT '127'", "smallint"))
+                .add(new SetColumnTypeSetup("smallint", "SMALLINT '32767'", "integer"))
+                .add(new SetColumnTypeSetup("integer", "2147483647", "bigint"))
+                .add(new SetColumnTypeSetup("bigint", "BIGINT '-2147483648'", "integer"))
+                .add(new SetColumnTypeSetup("real", "REAL '10.3'", "double"))
+                .add(new SetColumnTypeSetup("real", "REAL 'NaN'", "double"))
+                .add(new SetColumnTypeSetup("decimal(5,3)", "12.345", "decimal(10,3)")) // short decimal -> short decimal
+                .add(new SetColumnTypeSetup("decimal(28,3)", "12.345", "decimal(38,3)")) // long decimal -> long decimal
+                .add(new SetColumnTypeSetup("decimal(5,3)", "12.345", "decimal(38,3)")) // short decimal -> long decimal
+                .add(new SetColumnTypeSetup("decimal(5,3)", "12.340", "decimal(5,2)"))
+                .add(new SetColumnTypeSetup("decimal(5,3)", "12.349", "decimal(5,2)"))
+                .add(new SetColumnTypeSetup("time(3)", "TIME '15:03:00.123'", "time(6)"))
+                .add(new SetColumnTypeSetup("time(6)", "TIME '15:03:00.123000'", "time(3)"))
+                .add(new SetColumnTypeSetup("time(6)", "TIME '15:03:00.123999'", "time(3)"))
+                .add(new SetColumnTypeSetup("timestamp(3)", "TIMESTAMP '2020-02-12 15:03:00.123'", "timestamp(6)"))
+                .add(new SetColumnTypeSetup("timestamp(6)", "TIMESTAMP '2020-02-12 15:03:00.123000'", "timestamp(3)"))
+                .add(new SetColumnTypeSetup("timestamp(6)", "TIMESTAMP '2020-02-12 15:03:00.123999'", "timestamp(3)"))
+                .add(new SetColumnTypeSetup("timestamp(3) with time zone", "TIMESTAMP '2020-02-12 15:03:00.123 +01:00'", "timestamp(6) with time zone"))
+                .add(new SetColumnTypeSetup("varchar(100)", "'shorten-varchar'", "varchar(50)"))
+                .add(new SetColumnTypeSetup("char(25)", "'shorten-char'", "char(20)"))
+                .add(new SetColumnTypeSetup("char(20)", "'char-to-varchar'", "varchar"))
+                .add(new SetColumnTypeSetup("varchar", "'varchar-to-char'", "char(20)"))
+                .add(new SetColumnTypeSetup("array(integer)", "array[1]", "array(bigint)"))
+                .add(new SetColumnTypeSetup("row(x integer)", "row(1)", "row(x bigint)"))
+                .add(new SetColumnTypeSetup("row(x integer)", "row(1)", "row(y integer)", "cast(row(NULL) as row(x integer))")) // rename a field
+                .add(new SetColumnTypeSetup("row(x integer)", "row(1)", "row(x integer, y integer)", "cast(row(1, NULL) as row(x integer, y integer))")) // add a new field
+                .add(new SetColumnTypeSetup("row(x integer, y integer)", "row(1, 2)", "row(x integer)", "cast(row(1) as row(x integer))")) // remove an existing field
+                .add(new SetColumnTypeSetup("row(x integer, y integer)", "row(1, 2)", "row(y integer, x integer)", "cast(row(2, 1) as row(y integer, x integer))")) // reorder fields
+                .add(new SetColumnTypeSetup("row(x integer, y integer)", "row(1, 2)", "row(z integer, y integer, x integer)", "cast(row(null, 2, 1) as row(z integer, y integer, x integer))")) // reorder fields with a new field
+                .add(new SetColumnTypeSetup("row(x row(nested integer))", "row(row(1))", "row(x row(nested bigint))", "cast(row(row(1)) as row(x row(nested bigint)))")) // update a nested field
+                .add(new SetColumnTypeSetup("row(x row(a integer, b integer))", "row(row(1, 2))", "row(x row(b integer, a integer))", "cast(row(row(2, 1)) as row(x row(b integer, a integer)))")) // reorder a nested field
                 .build();
     }
 
     public record SetColumnTypeSetup(String sourceColumnType, String sourceValueLiteral, String newColumnType, String newValueLiteral, boolean unsupportedType)
     {
+        public SetColumnTypeSetup(String sourceColumnType, String sourceValueLiteral, String newColumnType)
+        {
+            this(sourceColumnType, sourceValueLiteral, newColumnType, "CAST(CAST(%s AS %s) AS %s)".formatted(sourceValueLiteral, sourceColumnType, newColumnType));
+        }
+
         public SetColumnTypeSetup(String sourceColumnType, String sourceValueLiteral, String newColumnType, String newValueLiteral)
         {
             this(sourceColumnType, sourceValueLiteral, newColumnType, newValueLiteral, false);
@@ -2289,6 +2301,12 @@ public abstract class BaseConnectorTest
             requireNonNull(sourceValueLiteral, "sourceValueLiteral is null");
             requireNonNull(newColumnType, "newColumnType is null");
             requireNonNull(newValueLiteral, "newValueLiteral is null");
+        }
+
+        public SetColumnTypeSetup withNewValueLiteral(String newValueLiteral)
+        {
+            checkState(!unsupportedType);
+            return new SetColumnTypeSetup(sourceColumnType, sourceValueLiteral, newColumnType, newValueLiteral, unsupportedType);
         }
 
         public SetColumnTypeSetup asUnsupported()

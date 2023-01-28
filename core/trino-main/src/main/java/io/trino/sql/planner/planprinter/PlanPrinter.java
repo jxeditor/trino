@@ -1022,15 +1022,13 @@ public class PlanPrinter
                 }
                 ValuePointer pointer = expressionAndPointers.getValuePointers().get(i);
 
-                if (pointer instanceof ScalarValuePointer) {
-                    ScalarValuePointer scalarPointer = (ScalarValuePointer) pointer;
+                if (pointer instanceof ScalarValuePointer scalarPointer) {
                     String sourceSymbolName = expressionAndPointers.getClassifierSymbols().contains(symbol)
                             ? "classifier"
                             : anonymizer.anonymize(scalarPointer.getInputSymbol());
                     nodeOutput.appendDetails(indentString(1) + anonymizer.anonymize(symbol) + " := " + sourceSymbolName + "[" + formatLogicalIndexPointer(scalarPointer.getLogicalIndexPointer()) + "]");
                 }
-                else if (pointer instanceof AggregationValuePointer) {
-                    AggregationValuePointer aggregationPointer = (AggregationValuePointer) pointer;
+                else if (pointer instanceof AggregationValuePointer aggregationPointer) {
                     String processingMode = aggregationPointer.getSetDescriptor().isRunning() ? "RUNNING " : "FINAL ";
                     String name = aggregationPointer.getFunction().getSignature().getName();
                     String arguments = Joiner.on(", ").join(anonymizeExpressions(aggregationPointer.getArguments()));
@@ -1774,7 +1772,7 @@ public class PlanPrinter
                 Map<String, TableArgumentProperties> tableArguments = node.getTableArgumentProperties().stream()
                         .collect(toImmutableMap(TableArgumentProperties::getArgumentName, identity()));
 
-                node.getArguments().entrySet().stream()
+                node.getArguments().entrySet()
                         .forEach(entry -> nodeOutput.appendDetails(formatArgument(entry.getKey(), entry.getValue(), tableArguments)));
 
                 if (!node.getCopartitioningLists().isEmpty()) {

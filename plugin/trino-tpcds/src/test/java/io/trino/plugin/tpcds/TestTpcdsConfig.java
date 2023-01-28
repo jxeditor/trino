@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.iceberg.catalog.jdbc;
+package io.trino.plugin.tpcds;
 
 import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.Test;
@@ -22,31 +22,30 @@ import static io.airlift.configuration.testing.ConfigAssertions.assertFullMappin
 import static io.airlift.configuration.testing.ConfigAssertions.assertRecordedDefaults;
 import static io.airlift.configuration.testing.ConfigAssertions.recordDefaults;
 
-public class TestIcebergIcebergJdbcConfig
+public class TestTpcdsConfig
 {
     @Test
     public void testDefaults()
     {
-        assertRecordedDefaults(recordDefaults(IcebergJdbcConfig.class)
-                .setConnectionUrl(null)
-                .setCatalogName(null)
-                .setDefaultWarehouseDir(null));
+        assertRecordedDefaults(recordDefaults(TpcdsConfig.class)
+                .setSplitsPerNode(Runtime.getRuntime().availableProcessors())
+                .setWithNoSexism(false)
+                .setSplitCount(null));
     }
 
     @Test
     public void testExplicitPropertyMappings()
     {
         Map<String, String> properties = ImmutableMap.<String, String>builder()
-                .put("iceberg.jdbc-catalog.connection-url", "jdbc:postgresql://localhost:5432/test")
-                .put("iceberg.jdbc-catalog.catalog-name", "test")
-                .put("iceberg.jdbc-catalog.default-warehouse-dir", "s3://bucket")
+                .put("tpcds.splits-per-node", "123")
+                .put("tpcds.with-no-sexism", "true")
+                .put("tpcds.split-count", "22")
                 .buildOrThrow();
 
-        IcebergJdbcConfig expected = new IcebergJdbcConfig()
-                .setConnectionUrl("jdbc:postgresql://localhost:5432/test")
-                .setCatalogName("test")
-                .setDefaultWarehouseDir("s3://bucket");
-
+        TpcdsConfig expected = new TpcdsConfig()
+                .setSplitsPerNode(123)
+                .setWithNoSexism(true)
+                .setSplitCount(22);
         assertFullMapping(properties, expected);
     }
 }
