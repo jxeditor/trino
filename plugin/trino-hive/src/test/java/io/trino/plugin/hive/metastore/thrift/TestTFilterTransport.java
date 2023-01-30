@@ -11,17 +11,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive;
+package io.trino.plugin.hive.metastore.thrift;
 
-import io.trino.hive.thrift.metastore.Table;
-import io.trino.spi.connector.SchemaTableName;
+import org.apache.thrift.transport.TTransport;
+import org.testng.annotations.Test;
 
-import java.util.Optional;
+import static io.trino.spi.testing.InterfaceTestUtils.assertAllMethodsOverridden;
 
-/**
- * Handles table redirections during view translation.
- */
-public interface CoralTableRedirectionResolver
+public class TestTFilterTransport
 {
-    Optional<Table> redirect(SchemaTableName tableName);
+    @Test
+    public void testEverythingImplemented()
+    {
+        assertAllMethodsOverridden(TTransport.class, TFilterTransport.class);
+    }
 }
