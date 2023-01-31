@@ -11,20 +11,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.execution.scheduler;
+package io.trino.parquet.reader.decoders;
 
-import com.google.common.util.concurrent.ListenableFuture;
+import io.trino.parquet.reader.SimpleSliceInputStream;
 
-import java.io.Closeable;
-import java.util.List;
-
-public interface TaskSource
-        extends Closeable
+public interface LongBitUnpacker
 {
-    ListenableFuture<List<TaskDescriptor>> getMoreTasks();
-
-    boolean isFinished();
-
-    @Override
-    void close();
+    /**
+     * @param length must be a multiple of 32
+     */
+    void unpack(long[] output, int outputOffset, SimpleSliceInputStream input, int length);
 }
