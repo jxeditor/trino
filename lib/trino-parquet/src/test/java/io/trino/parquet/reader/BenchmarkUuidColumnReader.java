@@ -13,9 +13,11 @@
  */
 package io.trino.parquet.reader;
 
+import io.airlift.slice.Slice;
+import io.airlift.slice.Slices;
 import io.trino.parquet.ParquetEncoding;
 import io.trino.parquet.PrimitiveField;
-import io.trino.spi.type.DecimalType;
+import io.trino.spi.type.UuidType;
 import org.apache.parquet.bytes.HeapByteBufferAllocator;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.values.ValuesWriter;
@@ -27,21 +29,18 @@ import org.apache.parquet.schema.PrimitiveType;
 import org.apache.parquet.schema.Types;
 import org.openjdk.jmh.annotations.Param;
 
+import java.util.UUID;
+
+import static io.airlift.slice.SizeOf.SIZE_OF_LONG;
 import static io.trino.parquet.ParquetEncoding.DELTA_BYTE_ARRAY;
 import static io.trino.parquet.ParquetEncoding.PLAIN;
-import static io.trino.parquet.reader.TestData.longToBytes;
-import static io.trino.parquet.reader.TestData.maxPrecision;
-import static io.trino.parquet.reader.TestData.unscaledRandomShortDecimalSupplier;
 import static java.lang.String.format;
 import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.FIXED_LEN_BYTE_ARRAY;
 
-public class BenchmarkShortDecimalColumnReader
+public class BenchmarkUuidColumnReader
         extends AbstractColumnReaderBenchmark<long[]>
 {
-    @Param({
-            "1", "2", "3", "4", "5", "6", "7", "8",
-    })
-    public int byteArrayLength;
+    private static final int LENGTH = 2 * SIZE_OF_LONG;
 
     @Param({
             "PLAIN",
@@ -52,13 +51,12 @@ public class BenchmarkShortDecimalColumnReader
     @Override
     protected PrimitiveField createPrimitiveField()
     {
-        int precision = maxPrecision(byteArrayLength);
         PrimitiveType parquetType = Types.optional(FIXED_LEN_BYTE_ARRAY)
-                .length(byteArrayLength)
-                .as(LogicalTypeAnnotation.decimalType(0, precision))
+                .length(LENGTH)
+                .as(LogicalTypeAnnotation.uuidType())
                 .named("name");
         return new PrimitiveField(
-                DecimalType.createDecimalType(precision),
+                UuidType.UUID,
                 true,
                 new ColumnDescriptor(new String[] {"test"}, parquetType, 0, 0),
                 0);
@@ -68,7 +66,7 @@ public class BenchmarkShortDecimalColumnReader
     protected ValuesWriter createValuesWriter(int bufferSize)
     {
         if (encoding.equals(PLAIN)) {
-            return new FixedLenByteArrayPlainValuesWriter(byteArrayLength, bufferSize, bufferSize, HeapByteBufferAllocator.getInstance());
+            return new FixedLenByteArrayPlainValuesWriter(LENGTH, bufferSize, bufferSize, HeapByteBufferAllocator.getInstance());
         }
         else if (encoding.equals(DELTA_BYTE_ARRAY)) {
             return new DeltaByteArrayWriter(bufferSize, bufferSize, HeapByteBufferAllocator.getInstance());
@@ -77,22 +75,27 @@ public class BenchmarkShortDecimalColumnReader
     }
 
     @Override
-    protected long[] generateDataBatch(int size)
+    protected void writeValue(ValuesWriter writer, long[] batch, int index)
     {
-        int precision = ((DecimalType) field.getType()).getPrecision();
-        return unscaledRandomShortDecimalSupplier(byteArrayLength * Byte.SIZE, precision).apply(size);
+        Slice slice = Slices.wrappedLongArray(batch, index * 2, 2);
+        writer.writeBytes(Binary.fromConstantByteArray(slice.getBytes()));
     }
 
     @Override
-    protected void writeValue(ValuesWriter writer, long[] batch, int index)
+    protected long[] generateDataBatch(int size)
     {
-        Binary binary = Binary.fromConstantByteArray(longToBytes(batch[index], byteArrayLength));
-        writer.writeBytes(binary);
+        long[] batch = new long[size * 2];
+        for (int i = 0; i < size; i++) {
+            UUID uuid = UUID.randomUUID();
+            batch[i * 2] = uuid.getMostSignificantBits();
+            batch[(i * 2) + 1] = uuid.getLeastSignificantBits();
+        }
+        return batch;
     }
 
     public static void main(String[] args)
             throws Exception
     {
-        run(BenchmarkShortDecimalColumnReader.class);
+        run(BenchmarkUuidColumnReader.class);
     }
 }
