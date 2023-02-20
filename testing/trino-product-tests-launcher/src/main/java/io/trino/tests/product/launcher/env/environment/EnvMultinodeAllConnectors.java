@@ -53,7 +53,7 @@ public final class EnvMultinodeAllConnectors
                         "cassandra",
                         "clickhouse",
                         "druid",
-                        "delta-lake",
+                        "delta_lake",
                         "elasticsearch",
                         "gsheets",
                         "hive",
@@ -73,11 +73,11 @@ public final class EnvMultinodeAllConnectors
                         "pinot",
                         "postgresql",
                         "prometheus",
-                        "raptor-legacy",
+                        "raptor_legacy",
                         "redis",
                         "redshift",
                         "sqlserver",
-                        "trino-thrift",
+                        "trino_thrift",
                         "tpcds")
                 .forEach(connector -> builder.addConnector(
                         connector,
