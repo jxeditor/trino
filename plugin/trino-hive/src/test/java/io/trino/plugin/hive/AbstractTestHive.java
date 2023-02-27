@@ -37,6 +37,7 @@ import io.trino.plugin.hive.aws.athena.PartitionProjectionService;
 import io.trino.plugin.hive.fs.DirectoryLister;
 import io.trino.plugin.hive.fs.TrinoFileStatus;
 import io.trino.plugin.hive.fs.TrinoFileStatusRemoteIterator;
+import io.trino.plugin.hive.line.LinePageSource;
 import io.trino.plugin.hive.metastore.Column;
 import io.trino.plugin.hive.metastore.HiveColumnStatistics;
 import io.trino.plugin.hive.metastore.HiveMetastore;
@@ -2337,19 +2338,6 @@ public abstract class AbstractTestHive
                 }
                 assertEquals(rowNumber, 100);
             }
-        }
-    }
-
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*" + INVALID_COLUMN + ".*")
-    public void testGetRecordsInvalidColumn()
-            throws Exception
-    {
-        try (Transaction transaction = newTransaction()) {
-            ConnectorMetadata connectorMetadata = transaction.getMetadata();
-            ConnectorTableHandle table = getTableHandle(connectorMetadata, tableUnpartitioned);
-            ConnectorSession session = newSession();
-            connectorMetadata.beginQuery(session);
-            readTable(transaction, table, ImmutableList.of(invalidColumnHandle), session, TupleDomain.all(), OptionalInt.empty(), Optional.empty());
         }
     }
 
@@ -5293,6 +5281,11 @@ public abstract class AbstractTestHive
                 return OrcPageSource.class;
             case PARQUET:
                 return ParquetPageSource.class;
+            case CSV:
+            case JSON:
+            case TEXTFILE:
+            case SEQUENCEFILE:
+                return LinePageSource.class;
             default:
                 throw new AssertionError("File type does not use a PageSource: " + hiveStorageFormat);
         }
