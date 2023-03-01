@@ -11,73 +11,64 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.filesystem.memory;
+package io.trino.filesystem.hdfs;
 
-import io.airlift.slice.Slice;
 import io.trino.filesystem.SeekableInputStream;
-import io.trino.filesystem.TrinoInput;
-import io.trino.filesystem.TrinoInputFile;
+import org.apache.hadoop.fs.FSDataInputStream;
 
 import java.io.IOException;
 
 import static java.util.Objects.requireNonNull;
 
-public class MemoryInputFile
-        implements TrinoInputFile
+class HdfsSeekableInputStream
+        extends SeekableInputStream
 {
-    private final String location;
-    private final Slice data;
+    private final FSDataInputStream stream;
 
-    public MemoryInputFile(String location, Slice data)
+    HdfsSeekableInputStream(FSDataInputStream stream)
     {
-        this.location = requireNonNull(location, "location is null");
-        this.data = requireNonNull(data, "data is null");
+        this.stream = requireNonNull(stream, "stream is null");
     }
 
     @Override
-    public TrinoInput newInput()
+    public long getPosition()
             throws IOException
     {
-        return new MemoryInput(location, data);
+        return stream.getPos();
     }
 
     @Override
-    public SeekableInputStream newStream()
+    public void seek(long position)
             throws IOException
     {
-        return new MemorySeekableInputStream(data);
+        stream.seek(position);
     }
 
     @Override
-    public long length()
+    public int read()
             throws IOException
     {
-        return data.length();
+        return stream.read();
     }
 
     @Override
-    public long modificationTime()
+    public int read(byte[] b)
             throws IOException
     {
-        return 0;
+        return stream.read(b);
     }
 
     @Override
-    public boolean exists()
+    public int read(byte[] b, int off, int len)
             throws IOException
     {
-        return true;
+        return stream.read(b, off, len);
     }
 
     @Override
-    public String location()
+    public void close()
+            throws IOException
     {
-        return location;
-    }
-
-    @Override
-    public String toString()
-    {
-        return location();
+        stream.close();
     }
 }

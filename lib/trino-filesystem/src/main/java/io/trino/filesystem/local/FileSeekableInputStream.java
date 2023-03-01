@@ -11,73 +11,73 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.filesystem.memory;
+package io.trino.filesystem.local;
 
-import io.airlift.slice.Slice;
+import com.google.common.primitives.Ints;
 import io.trino.filesystem.SeekableInputStream;
-import io.trino.filesystem.TrinoInput;
-import io.trino.filesystem.TrinoInputFile;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 
-import static java.util.Objects.requireNonNull;
-
-public class MemoryInputFile
-        implements TrinoInputFile
+class FileSeekableInputStream
+        extends SeekableInputStream
 {
-    private final String location;
-    private final Slice data;
+    private final RandomAccessFile input;
 
-    public MemoryInputFile(String location, Slice data)
+    public FileSeekableInputStream(File file)
+            throws FileNotFoundException
     {
-        this.location = requireNonNull(location, "location is null");
-        this.data = requireNonNull(data, "data is null");
+        this.input = new RandomAccessFile(file, "r");
     }
 
     @Override
-    public TrinoInput newInput()
+    public long getPosition()
             throws IOException
     {
-        return new MemoryInput(location, data);
+        return input.getFilePointer();
     }
 
     @Override
-    public SeekableInputStream newStream()
+    public void seek(long position)
             throws IOException
     {
-        return new MemorySeekableInputStream(data);
+        input.seek(position);
     }
 
     @Override
-    public long length()
+    public int read()
             throws IOException
     {
-        return data.length();
+        return input.read();
     }
 
     @Override
-    public long modificationTime()
+    public int read(byte[] b)
             throws IOException
     {
-        return 0;
+        return input.read(b);
     }
 
     @Override
-    public boolean exists()
+    public int read(byte[] b, int off, int len)
             throws IOException
     {
-        return true;
+        return input.read(b, off, len);
     }
 
     @Override
-    public String location()
+    public long skip(long n)
+            throws IOException
     {
-        return location;
+        return input.skipBytes(Ints.saturatedCast(n));
     }
 
     @Override
-    public String toString()
+    public void close()
+            throws IOException
     {
-        return location();
+        input.close();
     }
 }
