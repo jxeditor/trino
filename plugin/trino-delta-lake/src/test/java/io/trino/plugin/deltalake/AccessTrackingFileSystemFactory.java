@@ -17,11 +17,11 @@ import com.google.common.collect.HashMultiset;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multiset;
 import io.trino.filesystem.FileIterator;
-import io.trino.filesystem.SeekableInputStream;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.TrinoInput;
 import io.trino.filesystem.TrinoInputFile;
+import io.trino.filesystem.TrinoInputStream;
 import io.trino.filesystem.TrinoOutputFile;
 import io.trino.spi.security.ConnectorIdentity;
 
@@ -75,39 +75,39 @@ public final class AccessTrackingFileSystemFactory
         }
 
         @Override
-        public TrinoInputFile newInputFile(String path)
+        public TrinoInputFile newInputFile(String location)
         {
-            TrinoInputFile inputFile = delegate.newInputFile(path);
+            TrinoInputFile inputFile = delegate.newInputFile(location);
             return new TrackingInputFile(inputFile, fileOpened);
         }
 
         @Override
-        public TrinoInputFile newInputFile(String path, long length)
+        public TrinoInputFile newInputFile(String location, long length)
         {
-            TrinoInputFile inputFile = delegate.newInputFile(path, length);
+            TrinoInputFile inputFile = delegate.newInputFile(location, length);
             return new TrackingInputFile(inputFile, fileOpened);
         }
 
         @Override
-        public TrinoOutputFile newOutputFile(String path)
+        public TrinoOutputFile newOutputFile(String location)
         {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void deleteFile(String path)
+        public void deleteFile(String location)
         {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void deleteFiles(Collection<String> paths)
+        public void deleteFiles(Collection<String> locations)
         {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void deleteDirectory(String path)
+        public void deleteDirectory(String location)
         {
             throw new UnsupportedOperationException();
         }
@@ -119,7 +119,7 @@ public final class AccessTrackingFileSystemFactory
         }
 
         @Override
-        public FileIterator listFiles(String path)
+        public FileIterator listFiles(String location)
         {
             throw new UnsupportedOperationException();
         }
@@ -146,7 +146,7 @@ public final class AccessTrackingFileSystemFactory
         }
 
         @Override
-        public SeekableInputStream newStream()
+        public TrinoInputStream newStream()
                 throws IOException
         {
             fileOpened.accept(location());

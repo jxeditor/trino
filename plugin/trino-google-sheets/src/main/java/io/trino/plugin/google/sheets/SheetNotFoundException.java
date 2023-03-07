@@ -11,27 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.filesystem;
+package io.trino.plugin.google.sheets;
 
-import java.io.IOException;
-import java.time.Instant;
+import io.trino.spi.connector.NotFoundException;
 
-public interface TrinoInputFile
+import static java.lang.String.format;
+
+public class SheetNotFoundException
+        extends NotFoundException
 {
-    TrinoInput newInput()
-            throws IOException;
-
-    TrinoInputStream newStream()
-            throws IOException;
-
-    long length()
-            throws IOException;
-
-    Instant lastModified()
-            throws IOException;
-
-    boolean exists()
-            throws IOException;
-
-    String location();
+    public SheetNotFoundException(String sheetExpression)
+    {
+        super(format("Sheet '%s' not found", sheetExpression));
+    }
 }
