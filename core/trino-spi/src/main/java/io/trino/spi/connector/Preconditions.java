@@ -13,8 +13,23 @@
  */
 package io.trino.spi.connector;
 
-public enum ConnectorCapabilities
+import static java.lang.String.format;
+
+final class Preconditions
 {
-    NOT_NULL_COLUMN_CONSTRAINT,
-    MATERIALIZED_VIEW_GRACE_PERIOD,
+    private Preconditions() {}
+
+    static void checkArgument(boolean test, String message, Object... args)
+    {
+        if (!test) {
+            throw new IllegalArgumentException(format(message, args));
+        }
+    }
+
+    static void checkState(boolean test, String message, Object... args)
+    {
+        if (!test) {
+            throw new IllegalStateException(format(message, args));
+        }
+    }
 }

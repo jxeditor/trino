@@ -11,10 +11,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.spi.connector;
+package io.trino.sql.analyzer;
 
-public enum ConnectorCapabilities
+import io.trino.Session;
+
+import java.time.Instant;
+
+public interface SessionTimeProvider
 {
-    NOT_NULL_COLUMN_CONSTRAINT,
-    MATERIALIZED_VIEW_GRACE_PERIOD,
+    SessionTimeProvider DEFAULT = Session::getStart;
+
+    Instant getStart(Session session);
 }
