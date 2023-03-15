@@ -246,7 +246,7 @@ public final class SystemSessionProperties
                         MAX_HASH_PARTITION_COUNT,
                         "Maximum number of partitions for distributed joins and aggregations",
                         queryManagerConfig.getMaxHashPartitionCount(),
-                        value -> validateIntegerValue(value, MIN_HASH_PARTITION_COUNT, 1, false),
+                        value -> validateIntegerValue(value, MAX_HASH_PARTITION_COUNT, 1, false),
                         false),
                 integerProperty(
                         MIN_HASH_PARTITION_COUNT,
@@ -485,7 +485,7 @@ public final class SystemSessionProperties
                 booleanProperty(
                         PUSH_PARTIAL_AGGREGATION_THROUGH_JOIN,
                         "Push partial aggregations below joins",
-                        optimizerConfig.isPushPartialAggregationThoughJoin(),
+                        optimizerConfig.isPushPartialAggregationThroughJoin(),
                         false),
                 booleanProperty(
                         PRE_AGGREGATE_CASE_AGGREGATIONS_ENABLED,

@@ -54,7 +54,7 @@
         <dep.packaging.version>${dep.airlift.version}</dep.packaging.version>
         <dep.aws-sdk.version>1.12.261</dep.aws-sdk.version>
         <dep.okhttp.version>3.14.9</dep.okhttp.version>
-        <dep.jsonwebtoken.version>0.11.2</dep.jsonwebtoken.version>
+        <dep.jsonwebtoken.version>0.11.5</dep.jsonwebtoken.version>
         <dep.oracle.version>19.3.0.0</dep.oracle.version>
         <dep.drift.version>1.14</dep.drift.version>
         <dep.tempto.version>191</dep.tempto.version>
@@ -2069,6 +2069,11 @@
                             <artifactId>pedantic-pom-enforcers</artifactId>
                             <version>2.0.0</version>
                         </dependency>
+                        <dependency>
+                            <groupId>de.skuzzle.enforcer</groupId>
+                            <artifactId>restrict-imports-enforcer-rule</artifactId>
+                            <version>2.1.0</version>
+                        </dependency>
                     </dependencies>
                 </plugin>
 
@@ -2310,6 +2315,7 @@
                                     -Xep:InjectOnConstructorOfAbstractClass:ERROR \
                                     -Xep:MissingCasesInEnumSwitch:ERROR \
                                     -Xep:MissingOverride:ERROR \
+                                    -Xep:MissingSummary:OFF <!-- Sometimes our javadoc contains just a @see directive --> \
                                     -Xep:MutablePublicArray:ERROR \
                                     -Xep:NullOptional:ERROR \
                                     -Xep:ObjectToString:ERROR \
