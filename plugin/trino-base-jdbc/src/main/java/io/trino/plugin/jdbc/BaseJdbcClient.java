@@ -253,7 +253,8 @@ public abstract class BaseJdbcClient
                 throw new UnsupportedOperationException("Query not supported: ResultSetMetaData not available for query: " + preparedQuery.getQuery());
             }
             for (int column = 1; column <= metadata.getColumnCount(); column++) {
-                String name = metadata.getColumnName(column);
+                // Use getColumnLabel method because query pass-through table function may contain column aliases
+                String name = metadata.getColumnLabel(column);
                 JdbcTypeHandle jdbcTypeHandle = new JdbcTypeHandle(
                         metadata.getColumnType(column),
                         Optional.ofNullable(metadata.getColumnTypeName(column)),
@@ -414,7 +415,7 @@ public abstract class BaseJdbcClient
     @Override
     public ConnectorSplitSource getSplits(ConnectorSession session, JdbcTableHandle tableHandle)
     {
-        return new FixedSplitSource(ImmutableList.of(new JdbcSplit(Optional.empty())));
+        return new FixedSplitSource(new JdbcSplit(Optional.empty()));
     }
 
     @Override
