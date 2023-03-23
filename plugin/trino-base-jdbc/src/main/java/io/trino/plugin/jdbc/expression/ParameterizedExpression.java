@@ -11,18 +11,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.operator.aggregation;
+package io.trino.plugin.jdbc.expression;
 
-import io.trino.spi.function.AccumulatorState;
+import com.google.common.collect.ImmutableList;
+import io.trino.plugin.jdbc.QueryParameter;
 
-public interface LongDoubleState
-        extends AccumulatorState
+import java.util.List;
+
+import static java.util.Objects.requireNonNull;
+
+public record ParameterizedExpression(String expression, List<QueryParameter> parameters)
 {
-    long getFirst();
-
-    void setFirst(long first);
-
-    double getSecond();
-
-    void setSecond(double second);
+    public ParameterizedExpression
+    {
+        requireNonNull(expression, "expression is null");
+        parameters = ImmutableList.copyOf(requireNonNull(parameters, "parameters is null"));
+    }
 }
