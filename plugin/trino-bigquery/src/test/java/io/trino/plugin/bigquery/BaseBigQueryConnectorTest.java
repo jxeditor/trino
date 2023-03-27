@@ -232,6 +232,20 @@ public abstract class BaseBigQueryConnectorTest
     }
 
     @Override
+    public void testNoDataSystemTable()
+    {
+        // TODO (https://github.com/trinodb/trino/issues/6515): Big Query throws an error when trying to read "some_table$data".
+        assertThatThrownBy(super::testNoDataSystemTable)
+                .hasMessageFindingMatch("\\Q" +
+                        "Expecting message:\n" +
+                        "  \"Cannot read partition information from a table that is not partitioned: \\E\\S+\\Q:tpch.nation$data\"\n" +
+                        "to match regex:\n" +
+                        "  \"line 1:1: Table '\\w+.\\w+.nation\\$data' does not exist\"\n" +
+                        "but did not.");
+        throw new SkipException("TODO");
+    }
+
+    @Override
     protected boolean isColumnNameRejected(Exception exception, String columnName, boolean delimited)
     {
         return nullToEmpty(exception.getMessage()).matches(".*Invalid field name \"%s\". Fields must contain the allowed characters, and be at most 300 characters long..*".formatted(columnName.replace("\\", "\\\\")));
@@ -253,7 +267,7 @@ public abstract class BaseBigQueryConnectorTest
             assertQuery(format("SELECT value FROM %s WHERE \"$partition_date\" = DATE '2159-12-31'", table.getName()), "VALUES 2");
 
             // Verify DESCRIBE result doesn't have hidden columns
-            assertThat(query("DESCRIBE " + table.getName())).projected(0).skippingTypesCheck().matches("VALUES 'value'");
+            assertThat(query("DESCRIBE " + table.getName())).projected("Column").skippingTypesCheck().matches("VALUES 'value'");
         }
     }
 
@@ -272,7 +286,7 @@ public abstract class BaseBigQueryConnectorTest
             assertQuery(format("SELECT value FROM %s WHERE \"$partition_time\" = CAST('2159-12-31 23:00:00 UTC' AS TIMESTAMP(6) WITH TIME ZONE)", table.getName()), "VALUES 2");
 
             // Verify DESCRIBE result doesn't have hidden columns
-            assertThat(query("DESCRIBE " + table.getName())).projected(0).skippingTypesCheck().matches("VALUES 'value'");
+            assertThat(query("DESCRIBE " + table.getName())).projected("Column").skippingTypesCheck().matches("VALUES 'value'");
         }
     }
 

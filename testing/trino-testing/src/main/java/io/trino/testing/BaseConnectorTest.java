@@ -887,12 +887,12 @@ public abstract class BaseConnectorTest
 
         // column listing
         assertThat(query("SHOW COLUMNS FROM " + testView))
-                .projected(0) // column types can very between connectors
+                .projected("Column") // column types can very between connectors
                 .skippingTypesCheck()
                 .matches("VALUES 'orderkey', 'orderstatus', 'half'");
 
         assertThat(query("DESCRIBE " + testView))
-                .projected(0) // column types can very between connectors
+                .projected("Column") // column types can very between connectors
                 .skippingTypesCheck()
                 .matches("VALUES 'orderkey', 'orderstatus', 'half'");
 
@@ -1065,12 +1065,12 @@ public abstract class BaseConnectorTest
 
         // column listing
         assertThat(query("SHOW COLUMNS FROM " + view.getObjectName()))
-                .projected(0) // column types can very between connectors
+                .projected("Column") // column types can very between connectors
                 .skippingTypesCheck()
                 .matches("VALUES 'nationkey', 'name', 'regionkey', 'comment'");
 
         assertThat(query("DESCRIBE " + view.getObjectName()))
-                .projected(0) // column types can very between connectors
+                .projected("Column") // column types can very between connectors
                 .skippingTypesCheck()
                 .matches("VALUES 'nationkey', 'name', 'regionkey', 'comment'");
 
@@ -2983,7 +2983,7 @@ public abstract class BaseConnectorTest
 
         String baseTableName = "test_rename_target_" + randomNameSuffix();
 
-        int maxLength = maxTableNameLength()
+        int maxLength = maxTableRenameLength()
                 // Assume 2^16 is enough for most use cases. Add a bit more to ensure 2^16 isn't actual limit.
                 .orElse(65536 + 5);
 
@@ -2993,7 +2993,7 @@ public abstract class BaseConnectorTest
         assertQuery("SELECT x FROM " + validTargetTableName, "VALUES 123");
         assertUpdate("DROP TABLE " + validTargetTableName);
 
-        if (maxTableNameLength().isEmpty()) {
+        if (maxTableRenameLength().isEmpty()) {
             return;
         }
 
@@ -3008,6 +3008,11 @@ public abstract class BaseConnectorTest
     protected OptionalInt maxTableNameLength()
     {
         return OptionalInt.empty();
+    }
+
+    protected OptionalInt maxTableRenameLength()
+    {
+        return maxTableNameLength();
     }
 
     protected void verifyTableNameLengthFailurePermissible(Throwable e)
@@ -4426,7 +4431,7 @@ public abstract class BaseConnectorTest
                     .collect(toImmutableList());
 
             assertThat(query("DESCRIBE " + tableName))
-                    .projected(0)
+                    .projected("Column")
                     .skippingTypesCheck()
                     .matches(Stream.concat(Stream.of("col"), addedColumns.stream())
                             .map(value -> format("'%s'", value))
@@ -4673,6 +4678,17 @@ public abstract class BaseConnectorTest
         finally {
             assertUpdate("DROP TABLE IF EXISTS " + tableName);
         }
+    }
+
+    /**
+     * Some connectors support system table denoted with $-suffix. Ensure no connector exposes table_name$data
+     * directly to users, as it would mean the same thing as table_name itself.
+     */
+    @Test
+    public void testNoDataSystemTable()
+    {
+        assertQuerySucceeds("TABLE nation");
+        assertQueryFails("TABLE \"nation$data\"", "line 1:1: Table '\\w+.\\w+.nation\\$data' does not exist");
     }
 
     @Test(dataProvider = "testColumnNameDataProvider")
