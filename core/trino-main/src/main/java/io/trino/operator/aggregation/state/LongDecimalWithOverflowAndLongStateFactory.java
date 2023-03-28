@@ -19,6 +19,7 @@ import io.trino.spi.function.AccumulatorStateFactory;
 
 import javax.annotation.Nullable;
 
+import static io.airlift.slice.SizeOf.SIZE_OF_LONG;
 import static io.airlift.slice.SizeOf.instanceSize;
 import static io.airlift.slice.SizeOf.sizeOf;
 import static java.lang.System.arraycopy;
@@ -38,7 +39,7 @@ public class LongDecimalWithOverflowAndLongStateFactory
         return new GroupedLongDecimalWithOverflowAndLongState();
     }
 
-    public static class GroupedLongDecimalWithOverflowAndLongState
+    private static final class GroupedLongDecimalWithOverflowAndLongState
             extends AbstractGroupedAccumulatorState
             implements LongDecimalWithOverflowAndLongState
     {
@@ -135,11 +136,11 @@ public class LongDecimalWithOverflowAndLongStateFactory
         }
     }
 
-    public static class SingleLongDecimalWithOverflowAndLongState
+    private static final class SingleLongDecimalWithOverflowAndLongState
             implements LongDecimalWithOverflowAndLongState
     {
         private static final int INSTANCE_SIZE = instanceSize(SingleLongDecimalWithOverflowAndLongState.class);
-        private static final int SIZE = (int) sizeOf(new long[2]);
+        private static final int SIZE = (int) sizeOf(new long[2]) + SIZE_OF_LONG + SIZE_OF_LONG;
 
         private final long[] unscaledDecimal = new long[2];
         private long longValue;
