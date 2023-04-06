@@ -65,16 +65,12 @@ public abstract class BaseOracleConnectorTest
             case SUPPORTS_CREATE_SCHEMA:
                 return false;
 
-            case SUPPORTS_CREATE_TABLE_WITH_TABLE_COMMENT:
             case SUPPORTS_CREATE_TABLE_WITH_COLUMN_COMMENT:
             case SUPPORTS_RENAME_TABLE_ACROSS_SCHEMAS:
                 return false;
 
             case SUPPORTS_ADD_COLUMN_WITH_COMMENT:
             case SUPPORTS_SET_COLUMN_TYPE:
-                return false;
-
-            case SUPPORTS_COMMENT_ON_TABLE:
                 return false;
 
             case SUPPORTS_ARRAY:
@@ -488,6 +484,12 @@ public abstract class BaseOracleConnectorTest
     protected void verifyColumnNameLengthFailurePermissible(Throwable e)
     {
         assertThat(e).hasMessage("ORA-00972: identifier is too long\n");
+    }
+
+    @Override
+    protected String sumDistinctAggregationPushdownExpectedResult()
+    {
+        return "VALUES (BIGINT '4', DECIMAL '8')";
     }
 
     private void predicatePushdownTest(String oracleType, String oracleLiteral, String operator, String filterLiteral)
