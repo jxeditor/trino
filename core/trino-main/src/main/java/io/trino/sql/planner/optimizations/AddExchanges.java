@@ -121,7 +121,7 @@ import static io.trino.sql.planner.SystemPartitioningHandle.SCALED_WRITER_HASH_D
 import static io.trino.sql.planner.SystemPartitioningHandle.SCALED_WRITER_ROUND_ROBIN_DISTRIBUTION;
 import static io.trino.sql.planner.SystemPartitioningHandle.SINGLE_DISTRIBUTION;
 import static io.trino.sql.planner.optimizations.ActualProperties.Global.partitionedOn;
-import static io.trino.sql.planner.optimizations.ActualProperties.Global.singleStreamPartition;
+import static io.trino.sql.planner.optimizations.ActualProperties.Global.singlePartition;
 import static io.trino.sql.planner.optimizations.LocalProperties.grouped;
 import static io.trino.sql.planner.optimizations.PreferredProperties.partitionedWithLocal;
 import static io.trino.sql.planner.plan.ExchangeNode.Scope.REMOTE;
@@ -265,8 +265,7 @@ public class AddExchanges
                         gatheringExchange(idAllocator.getNextId(), REMOTE, child.getNode()),
                         child.getProperties());
             }
-            else if ((!isStreamPartitionedOn(child.getProperties(), partitioningRequirement) && !isNodePartitionedOn(child.getProperties(), partitioningRequirement)) ||
-                    node.hasEmptyGroupingSet()) {
+            else if (!isNodePartitionedOn(child.getProperties(), partitioningRequirement) || node.hasEmptyGroupingSet()) {
                 List<Symbol> partitioningKeys = parentPreferredProperties.getGlobalProperties()
                         .flatMap(PreferredProperties.Global::getPartitioningProperties)
                         .map(PreferredProperties.PartitioningProperties::getPartitioningColumns)
@@ -361,8 +360,7 @@ public class AddExchanges
 
             PlanWithProperties child = node.getSource().accept(this, preferredChildProperties);
 
-            if (child.getProperties().isSingleNode() ||
-                    !isStreamPartitionedOn(child.getProperties(), node.getDistinctSymbols())) {
+            if (child.getProperties().isSingleNode() || !isNodePartitionedOn(child.getProperties(), node.getDistinctSymbols())) {
                 child = withDerivedProperties(
                         partitionedExchange(
                                 idAllocator.getNextId(),
@@ -391,8 +389,7 @@ public class AddExchanges
                             partitionedWithLocal(ImmutableSet.copyOf(node.getPartitionBy()), desiredProperties),
                             preferredProperties));
 
-            if (!isStreamPartitionedOn(child.getProperties(), node.getPartitionBy()) &&
-                    !isNodePartitionedOn(child.getProperties(), node.getPartitionBy())) {
+            if (!isNodePartitionedOn(child.getProperties(), node.getPartitionBy())) {
                 if (node.getPartitionBy().isEmpty()) {
                     child = withDerivedProperties(
                             gatheringExchange(idAllocator.getNextId(), REMOTE, child.getNode()),
@@ -423,8 +420,7 @@ public class AddExchanges
                             partitionedWithLocal(ImmutableSet.copyOf(node.getPartitionBy()), desiredProperties),
                             preferredProperties));
 
-            if (!isStreamPartitionedOn(child.getProperties(), node.getPartitionBy()) &&
-                    !isNodePartitionedOn(child.getProperties(), node.getPartitionBy())) {
+            if (!isNodePartitionedOn(child.getProperties(), node.getPartitionBy())) {
                 if (node.getPartitionBy().isEmpty()) {
                     child = withDerivedProperties(
                             gatheringExchange(idAllocator.getNextId(), REMOTE, child.getNode()),
@@ -476,8 +472,7 @@ public class AddExchanges
                         gatheringExchange(idAllocator.getNextId(), REMOTE, child.getNode()),
                         child.getProperties());
             }
-            else if (!isStreamPartitionedOn(child.getProperties(), partitionBy) &&
-                    !isNodePartitionedOn(child.getProperties(), partitionBy)) {
+            else if (!isNodePartitionedOn(child.getProperties(), partitionBy)) {
                 if (partitionBy.isEmpty()) {
                     child = withDerivedProperties(
                             gatheringExchange(idAllocator.getNextId(), REMOTE, child.getNode()),
@@ -514,8 +509,7 @@ public class AddExchanges
                             preferredProperties));
 
             // TODO: add config option/session property to force parallel plan if child is unpartitioned and window has a PARTITION BY clause
-            if (!isStreamPartitionedOn(child.getProperties(), node.getPartitionBy())
-                    && !isNodePartitionedOn(child.getProperties(), node.getPartitionBy())) {
+            if (!isNodePartitionedOn(child.getProperties(), node.getPartitionBy())) {
                 child = withDerivedProperties(
                         partitionedExchange(
                                 idAllocator.getNextId(),
@@ -549,8 +543,7 @@ public class AddExchanges
             }
 
             PlanWithProperties child = planChild(node, preferredChildProperties);
-            if (!isStreamPartitionedOn(child.getProperties(), node.getPartitionBy())
-                    && !isNodePartitionedOn(child.getProperties(), node.getPartitionBy())) {
+            if (!isNodePartitionedOn(child.getProperties(), node.getPartitionBy())) {
                 // add exchange + push function to child
                 child = withDerivedProperties(
                         new TopNRankingNode(
@@ -741,7 +734,7 @@ public class AddExchanges
             return new PlanWithProperties(
                     node,
                     ActualProperties.builder()
-                            .global(singleStreamPartition())
+                            .global(singlePartition())
                             .build());
         }
 
@@ -819,7 +812,7 @@ public class AddExchanges
             return new PlanWithProperties(
                     node,
                     ActualProperties.builder()
-                            .global(singleStreamPartition())
+                            .global(singlePartition())
                             .build());
         }
 
@@ -829,7 +822,7 @@ public class AddExchanges
             return new PlanWithProperties(
                     node,
                     ActualProperties.builder()
-                            .global(singleStreamPartition())
+                            .global(singlePartition())
                             .build());
         }
 
@@ -1197,7 +1190,7 @@ public class AddExchanges
             return new PlanWithProperties(
                     node,
                     ActualProperties.builder()
-                            .global(singleStreamPartition())
+                            .global(singlePartition())
                             .build());
         }
 
@@ -1285,7 +1278,7 @@ public class AddExchanges
                 return new PlanWithProperties(
                         newNode,
                         ActualProperties.builder()
-                                .global(partitionedOn(desiredParentPartitioning, Optional.of(desiredParentPartitioning)))
+                                .global(partitionedOn(desiredParentPartitioning))
                                 .build()
                                 .withReplicatedNulls(parentPartitioningPreference.isNullsAndAnyReplicated()));
             }
@@ -1368,7 +1361,7 @@ public class AddExchanges
             return new PlanWithProperties(
                     result,
                     ActualProperties.builder()
-                            .global(singleStreamPartition())
+                            .global(singlePartition())
                             .build());
         }
 
@@ -1473,11 +1466,6 @@ public class AddExchanges
         private boolean isNodePartitionedOn(ActualProperties properties, Collection<Symbol> columns)
         {
             return properties.isNodePartitionedOn(columns, isUseExactPartitioning(session));
-        }
-
-        private boolean isStreamPartitionedOn(ActualProperties properties, Collection<Symbol> columns)
-        {
-            return properties.isStreamPartitionedOn(columns, isUseExactPartitioning(session));
         }
     }
 
