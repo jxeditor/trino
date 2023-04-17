@@ -207,6 +207,7 @@ import static io.trino.plugin.deltalake.transactionlog.DeltaLakeSchemaSupport.ge
 import static io.trino.plugin.deltalake.transactionlog.DeltaLakeSchemaSupport.isAppendOnly;
 import static io.trino.plugin.deltalake.transactionlog.DeltaLakeSchemaSupport.serializeSchemaAsJson;
 import static io.trino.plugin.deltalake.transactionlog.DeltaLakeSchemaSupport.serializeStatsAsJson;
+import static io.trino.plugin.deltalake.transactionlog.DeltaLakeSchemaSupport.unsupportedReaderFeatures;
 import static io.trino.plugin.deltalake.transactionlog.DeltaLakeSchemaSupport.validateType;
 import static io.trino.plugin.deltalake.transactionlog.DeltaLakeSchemaSupport.verifySupportedColumnMapping;
 import static io.trino.plugin.deltalake.transactionlog.MetadataEntry.DELTA_CHANGE_DATA_FEED_ENABLED_PROPERTY;
@@ -283,8 +284,9 @@ public class DeltaLakeMetadata
 
     public static final int DEFAULT_READER_VERSION = 1;
     public static final int DEFAULT_WRITER_VERSION = 2;
-    // The highest reader and writer versions Trino supports writing to
-    public static final int MAX_WRITER_VERSION = 4;
+    // The highest reader and writer versions Trino supports
+    private static final int MAX_READER_VERSION = 3;
+    private static final int MAX_WRITER_VERSION = 4;
     private static final int CDF_SUPPORTED_WRITER_VERSION = 4;
 
     // Matches the dummy column Databricks stores in the metastore
@@ -437,6 +439,16 @@ public class DeltaLakeMetadata
             }
             throw e;
         }
+        ProtocolEntry protocolEntry = metastore.getProtocol(session, tableSnapshot);
+        if (protocolEntry.getMinReaderVersion() > MAX_READER_VERSION) {
+            LOG.debug("Skip %s because the reader version is unsupported: %d", dataTableName, protocolEntry.getMinReaderVersion());
+            return null;
+        }
+        Set<String> unsupportedReaderFeatures = unsupportedReaderFeatures(protocolEntry.getReaderFeatures().orElse(ImmutableSet.of()));
+        if (!unsupportedReaderFeatures.isEmpty()) {
+            LOG.debug("Skip %s because the table contains unsupported reader features: %s", dataTableName, unsupportedReaderFeatures);
+            return null;
+        }
         verifySupportedColumnMapping(getColumnMappingMode(metadataEntry));
         return new DeltaLakeTableHandle(
                 dataTableName.getSchemaName(),
@@ -470,32 +482,36 @@ public class DeltaLakeMetadata
     {
         DeltaLakeTableHandle tableHandle = checkValidTableHandle(table);
         String location = metastore.getTableLocation(tableHandle.getSchemaTableName());
-        Map<String, String> columnComments = getColumnComments(tableHandle.getMetadataEntry());
-        Map<String, Boolean> columnsNullability = getColumnsNullability(tableHandle.getMetadataEntry());
-        Map<String, String> columnGenerations = getGeneratedColumnExpressions(tableHandle.getMetadataEntry());
+        MetadataEntry metadataEntry = tableHandle.getMetadataEntry();
+        Map<String, String> columnComments = getColumnComments(metadataEntry);
+        Map<String, Boolean> columnsNullability = getColumnsNullability(metadataEntry);
+        Map<String, String> columnGenerations = getGeneratedColumnExpressions(metadataEntry);
         List<String> constraints = ImmutableList.<String>builder()
-                .addAll(getCheckConstraints(tableHandle.getMetadataEntry()).values())
-                .addAll(getColumnInvariants(tableHandle.getMetadataEntry()).values()) // The internal logic for column invariants in Delta Lake is same as check constraints
+                .addAll(getCheckConstraints(metadataEntry).values())
+                .addAll(getColumnInvariants(metadataEntry).values()) // The internal logic for column invariants in Delta Lake is same as check constraints
                 .build();
-        List<ColumnMetadata> columns = getColumns(tableHandle.getMetadataEntry()).stream()
+        List<ColumnMetadata> columns = getColumns(metadataEntry).stream()
                 .map(column -> getColumnMetadata(column, columnComments.get(column.getName()), columnsNullability.getOrDefault(column.getName(), true), columnGenerations.get(column.getName())))
                 .collect(toImmutableList());
 
         ImmutableMap.Builder<String, Object> properties = ImmutableMap.<String, Object>builder()
-                .put(LOCATION_PROPERTY, location)
-                .put(PARTITIONED_BY_PROPERTY, tableHandle.getMetadataEntry().getCanonicalPartitionColumns());
+                .put(LOCATION_PROPERTY, location);
+        List<String> partitionColumnNames = metadataEntry.getCanonicalPartitionColumns();
+        if (!partitionColumnNames.isEmpty()) {
+            properties.put(PARTITIONED_BY_PROPERTY, partitionColumnNames);
+        }
 
-        Optional<Long> checkpointInterval = tableHandle.getMetadataEntry().getCheckpointInterval();
+        Optional<Long> checkpointInterval = metadataEntry.getCheckpointInterval();
         checkpointInterval.ifPresent(value -> properties.put(CHECKPOINT_INTERVAL_PROPERTY, value));
 
-        Optional<Boolean> changeDataFeedEnabled = tableHandle.getMetadataEntry().isChangeDataFeedEnabled();
+        Optional<Boolean> changeDataFeedEnabled = metadataEntry.isChangeDataFeedEnabled();
         changeDataFeedEnabled.ifPresent(value -> properties.put(CHANGE_DATA_FEED_ENABLED_PROPERTY, value));
 
         return new ConnectorTableMetadata(
                 tableHandle.getSchemaTableName(),
                 columns,
                 properties.buildOrThrow(),
-                Optional.ofNullable(tableHandle.getMetadataEntry().getDescription()),
+                Optional.ofNullable(metadataEntry.getDescription()),
                 constraints.stream()
                         .map(constraint -> {
                             try {
@@ -1742,7 +1758,7 @@ public class DeltaLakeMetadata
             // Enabling cdf (change data feed) requires setting the writer version to 4
             writerVersion = CDF_SUPPORTED_WRITER_VERSION;
         }
-        return new ProtocolEntry(DEFAULT_READER_VERSION, writerVersion);
+        return new ProtocolEntry(DEFAULT_READER_VERSION, writerVersion, Optional.empty(), Optional.empty());
     }
 
     private void writeCheckpointIfNeeded(ConnectorSession session, SchemaTableName table, Optional<Long> checkpointInterval, long newVersion)
@@ -1886,7 +1902,7 @@ public class DeltaLakeMetadata
 
         Optional<ProtocolEntry> protocolEntry = Optional.empty();
         if (requiredWriterVersion != currentProtocolEntry.getMinWriterVersion()) {
-            protocolEntry = Optional.of(new ProtocolEntry(currentProtocolEntry.getMinReaderVersion(), requiredWriterVersion));
+            protocolEntry = Optional.of(new ProtocolEntry(currentProtocolEntry.getMinReaderVersion(), requiredWriterVersion, currentProtocolEntry.getReaderFeatures(), currentProtocolEntry.getWriterFeatures()));
         }
 
         try {
