@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.hive.formats.compression;
+package io.trino.plugin.base.io;
 
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
@@ -329,6 +329,7 @@ public final class ChunkedSliceOutput
     {
         // add trimmed view of slice to closed slices
         closedSlices.add(slice.slice(0, bufferPosition));
+        closedSlicesRetainedSize += slice.getRetainedSize();
 
         // create a new buffer
         // double size until we hit the max chunk size
