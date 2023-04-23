@@ -240,6 +240,12 @@
                                     <justification>It is just marked @Experimental</justification>
                                 </item>
                                 <item>
+                                    <ignore>true</ignore>
+                                    <code>java.class.removed</code>
+                                    <old>enum io.trino.spi.ptf.EmptyTableFunctionHandle</old>
+                                    <justification>Default implementation should not be used, as ConnectorTableHandle represents table function identity.</justification>
+                                </item>
+                                <item>
                                     <regex>true</regex>
                                     <code>java.class.externalClassExposedInAPI</code>
                                     <newArchive>io.opentelemetry:opentelemetry-(api|context):.*</newArchive>
@@ -262,6 +268,10 @@
                                     <code>java.class.removed</code>
                                     <old>class io.trino.spi.block.Int96ArrayBlockEncoding</old>
                                     <justification>Int96Array renamed to Fixed12 since this is never used as a number</justification>
+                                </item>
+                                <item>
+                                    <code>java.method.finalMethodAddedToNonFinalClass</code>
+                                    <new>method int io.trino.spi.type.AbstractIntType::getInt(io.trino.spi.block.Block, int)</new>
                                 </item>
                             </differences>
                         </revapi.differences>

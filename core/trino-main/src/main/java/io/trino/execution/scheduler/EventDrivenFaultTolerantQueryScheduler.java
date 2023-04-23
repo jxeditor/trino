@@ -1131,7 +1131,7 @@ public class EventDrivenFaultTolerantQueryScheduler
         private static List<SubPlan> sortPlanInTopologicalOrder(SubPlan subPlan)
         {
             ImmutableList.Builder<SubPlan> result = ImmutableList.builder();
-            Traverser.forTree(SubPlan::getChildren).depthFirstPreOrder(subPlan).forEach(result::add);
+            Traverser.forTree(SubPlan::getChildren).depthFirstPostOrder(subPlan).forEach(result::add);
             return result.build();
         }
 
@@ -1297,7 +1297,7 @@ public class EventDrivenFaultTolerantQueryScheduler
             }
 
             StagePartition partition = getStagePartition(partitionId);
-            partition.seal(partitionId);
+            partition.seal();
 
             if (!partition.isRunning()) {
                 // if partition is not yet running update its priority as it is no longer speculative
@@ -1771,7 +1771,7 @@ public class EventDrivenFaultTolerantQueryScheduler
             return finalSelectors.contains(planNodeId);
         }
 
-        public void seal(int partitionId)
+        public void seal()
         {
             checkState(openTaskDescriptor.isPresent(), "openTaskDescriptor is empty");
             TaskDescriptor taskDescriptor = openTaskDescriptor.get().createTaskDescriptor(partitionId);
@@ -2008,6 +2008,12 @@ public class EventDrivenFaultTolerantQueryScheduler
         {
             return priority < SPECULATIVE_EXECUTION_PRIORITY;
         }
+
+        @Override
+        public String toString()
+        {
+            return "" + task.stageId() + "/" + task.partitionId() + "[" + priority + "]";
+        }
     }
 
     private static class SchedulingQueue
@@ -2041,7 +2047,8 @@ public class EventDrivenFaultTolerantQueryScheduler
             if (prioritizedTask.isNonSpeculative()) {
                 nonSpeculativeTaskCount++;
             }
-            queue.addOrUpdate(prioritizedTask.task(), prioritizedTask.priority());
+            // using negative priority here as will return entries with lowest pririty first and here we use bigger number for tasks with lower priority
+            queue.addOrUpdate(prioritizedTask.task(), -prioritizedTask.priority());
         }
     }
 
