@@ -28,10 +28,13 @@ import io.trino.metadata.Metadata;
 import io.trino.metadata.QualifiedObjectName;
 import io.trino.metadata.TableHandle;
 import io.trino.operator.OperatorStats;
+import io.trino.plugin.hive.TestingHivePlugin;
+import io.trino.plugin.iceberg.fileio.ForwardingFileIo;
 import io.trino.spi.QueryId;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.ConstraintApplicationResult;
+import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.connector.TableNotFoundException;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.TupleDomain;
@@ -40,6 +43,7 @@ import io.trino.sql.planner.plan.OutputNode;
 import io.trino.sql.planner.plan.ValuesNode;
 import io.trino.testing.BaseConnectorTest;
 import io.trino.testing.DataProviders;
+import io.trino.testing.DistributedQueryRunner;
 import io.trino.testing.MaterializedResult;
 import io.trino.testing.MaterializedResultWithQueryId;
 import io.trino.testing.MaterializedRow;
@@ -53,6 +57,9 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
+import org.apache.iceberg.io.FileIO;
 import org.intellij.lang.annotations.Language;
 import org.testng.SkipException;
 import org.testng.annotations.BeforeClass;
@@ -100,6 +107,7 @@ import static io.trino.SystemSessionProperties.TASK_PARTITIONED_WRITER_COUNT;
 import static io.trino.SystemSessionProperties.TASK_WRITER_COUNT;
 import static io.trino.plugin.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static io.trino.plugin.hive.HiveTestUtils.SESSION;
+import static io.trino.plugin.hive.metastore.file.FileHiveMetastore.createTestingFileHiveMetastore;
 import static io.trino.plugin.iceberg.IcebergFileFormat.AVRO;
 import static io.trino.plugin.iceberg.IcebergFileFormat.ORC;
 import static io.trino.plugin.iceberg.IcebergFileFormat.PARQUET;
@@ -108,6 +116,7 @@ import static io.trino.plugin.iceberg.IcebergSessionProperties.EXTENDED_STATISTI
 import static io.trino.plugin.iceberg.IcebergSplitManager.ICEBERG_DOMAIN_COMPACTION_THRESHOLD;
 import static io.trino.plugin.iceberg.IcebergTestUtils.withSmallRowGroups;
 import static io.trino.plugin.iceberg.IcebergUtil.TRINO_QUERY_ID_NAME;
+import static io.trino.plugin.iceberg.procedure.RegisterTableProcedure.getLatestMetadataLocation;
 import static io.trino.spi.predicate.Domain.multipleValues;
 import static io.trino.spi.predicate.Domain.singleValue;
 import static io.trino.spi.type.BigintType.BIGINT;
@@ -6688,6 +6697,232 @@ public abstract class BaseIcebergConnectorTest
                 "The following properties cannot be updated: orc_bloom_filter_columns");
 
         assertUpdate("DROP TABLE " + tableName);
+    }
+
+    @Test
+    public void testDropTableWithMissingMetadataFile()
+            throws Exception
+    {
+        String tableName = "test_drop_table_with_missing_metadata_file_" + randomNameSuffix();
+        assertUpdate("CREATE TABLE " + tableName + " AS SELECT 1 x, 'INDIA' y", 1);
+
+        TrinoFileSystem trinoFileSystem = fileSystemFactory.create(SESSION);
+        String tableLocation = getTableLocation(tableName);
+        String metadataLocation = getLatestMetadataLocation(trinoFileSystem, tableLocation);
+
+        // Delete current metadata file
+        trinoFileSystem.deleteFile(metadataLocation);
+        assertFalse(trinoFileSystem.newInputFile(metadataLocation).exists(), "Current metadata file should not exist");
+
+        // try to drop table
+        assertUpdate("DROP TABLE " + tableName);
+        assertFalse(getQueryRunner().tableExists(getSession(), tableName));
+        assertFalse(trinoFileSystem.listFiles(tableLocation).hasNext(), "Table location should not exist");
+    }
+
+    @Test
+    public void testDropTableWithMissingSnapshotFile()
+            throws Exception
+    {
+        String tableName = "test_drop_table_with_missing_snapshot_file_" + randomNameSuffix();
+        assertUpdate("CREATE TABLE " + tableName + " AS SELECT 1 x, 'INDIA' y", 1);
+
+        TrinoFileSystem trinoFileSystem = fileSystemFactory.create(SESSION);
+        String tableLocation = getTableLocation(tableName);
+        String metadataLocation = getLatestMetadataLocation(trinoFileSystem, tableLocation);
+        TableMetadata tableMetadata = TableMetadataParser.read(new ForwardingFileIo(trinoFileSystem), metadataLocation);
+        String currentSnapshotFile = tableMetadata.currentSnapshot().manifestListLocation();
+
+        // Delete current snapshot file
+        trinoFileSystem.deleteFile(currentSnapshotFile);
+        assertFalse(trinoFileSystem.newInputFile(currentSnapshotFile).exists(), "Current snapshot file should not exist");
+
+        // try to drop table
+        assertUpdate("DROP TABLE " + tableName);
+        assertFalse(getQueryRunner().tableExists(getSession(), tableName));
+        assertFalse(trinoFileSystem.listFiles(tableLocation).hasNext(), "Table location should not exist");
+    }
+
+    @Test
+    public void testDropTableWithMissingManifestListFile()
+            throws Exception
+    {
+        String tableName = "test_drop_table_with_missing_manifest_list_file_" + randomNameSuffix();
+        assertUpdate("CREATE TABLE " + tableName + " AS SELECT 1 x, 'INDIA' y", 1);
+
+        TrinoFileSystem trinoFileSystem = fileSystemFactory.create(SESSION);
+        String tableLocation = getTableLocation(tableName);
+        String metadataLocation = getLatestMetadataLocation(trinoFileSystem, tableLocation);
+        FileIO fileIo = new ForwardingFileIo(trinoFileSystem);
+        TableMetadata tableMetadata = TableMetadataParser.read(fileIo, metadataLocation);
+        String manifestListFile = tableMetadata.currentSnapshot().allManifests(fileIo).get(0).path();
+
+        // Delete Manifest List file
+        trinoFileSystem.deleteFile(manifestListFile);
+        assertFalse(trinoFileSystem.newInputFile(manifestListFile).exists(), "Manifest list file should not exist");
+
+        // try to drop table
+        assertUpdate("DROP TABLE " + tableName);
+        assertFalse(getQueryRunner().tableExists(getSession(), tableName));
+        assertFalse(trinoFileSystem.listFiles(tableLocation).hasNext(), "Table location should not exist");
+    }
+
+    @Test
+    public void testDropTableWithMissingDataFile()
+            throws Exception
+    {
+        String tableName = "test_drop_table_with_missing_data_file_" + randomNameSuffix();
+        assertUpdate("CREATE TABLE " + tableName + " AS SELECT 1 x, 'INDIA' y", 1);
+        assertUpdate("INSERT INTO " + tableName + " VALUES (2, 'POLAND')", 1);
+
+        TrinoFileSystem trinoFileSystem = fileSystemFactory.create(SESSION);
+        String tableLocation = getTableLocation(tableName);
+        String tableDataPath = String.format("%s/%s", tableLocation, "data");
+        FileIterator fileIterator = trinoFileSystem.listFiles(tableDataPath);
+        assertTrue(fileIterator.hasNext());
+        String dataFile = fileIterator.next().location();
+
+        // Delete data file
+        trinoFileSystem.deleteFile(dataFile);
+        assertFalse(trinoFileSystem.newInputFile(dataFile).exists(), "Data file should not exist");
+
+        // try to drop table
+        assertUpdate("DROP TABLE " + tableName);
+        assertFalse(getQueryRunner().tableExists(getSession(), tableName));
+        assertFalse(trinoFileSystem.listFiles(tableLocation).hasNext(), "Table location should not exist");
+    }
+
+    @Test
+    public void testDropTableWithNonExistentTableLocation()
+            throws Exception
+    {
+        String tableName = "test_drop_table_with_non_existent_table_location_" + randomNameSuffix();
+        assertUpdate("CREATE TABLE " + tableName + " AS SELECT 1 x, 'INDIA' y", 1);
+        assertUpdate("INSERT INTO " + tableName + " VALUES (2, 'POLAND')", 1);
+
+        TrinoFileSystem trinoFileSystem = fileSystemFactory.create(SESSION);
+        String tableLocation = getTableLocation(tableName);
+
+        // Delete table location
+        trinoFileSystem.deleteDirectory(tableLocation);
+        assertFalse(trinoFileSystem.listFiles(tableLocation).hasNext(), "Table location should not exist");
+
+        // try to drop table
+        assertUpdate("DROP TABLE " + tableName);
+        assertFalse(getQueryRunner().tableExists(getSession(), tableName));
+    }
+
+    @Test
+    public void testCorruptedTableLocation()
+            throws Exception
+    {
+        String tableName = "test_corrupted_table_location_" + randomNameSuffix();
+        SchemaTableName schemaTableName = SchemaTableName.schemaTableName(getSession().getSchema().orElseThrow(), tableName);
+        assertUpdate("CREATE TABLE " + tableName + " (id INT, country VARCHAR, independence ROW(month VARCHAR, year INT))");
+        assertUpdate("INSERT INTO " + tableName + " VALUES (1, 'INDIA', ROW ('Aug', 1947)), (2, 'POLAND', ROW ('Nov', 1918)), (3, 'USA', ROW ('Jul', 1776))", 3);
+
+        TrinoFileSystem trinoFileSystem = fileSystemFactory.create(SESSION);
+        String tableLocation = getTableLocation(tableName);
+        String metadataLocation = tableLocation + "/metadata";
+
+        // break the table by deleting all metadata files
+        trinoFileSystem.deleteDirectory(metadataLocation);
+        assertFalse(trinoFileSystem.listFiles(metadataLocation).hasNext(), "Metadata location should not exist");
+
+        // Assert queries fail cleanly
+        assertQueryFails("TABLE " + tableName, "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("SELECT * FROM " + tableName + " WHERE false", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("SELECT 1 FROM " + tableName + " WHERE false", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("SHOW CREATE TABLE " + tableName, "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("CREATE TABLE a_new_table (LIKE " + tableName + " EXCLUDING PROPERTIES)", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("DESCRIBE " + tableName, "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("SHOW COLUMNS FROM " + tableName, "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("SHOW STATS FOR " + tableName, "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("ANALYZE " + tableName, "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("ALTER TABLE " + tableName + " EXECUTE optimize", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("ALTER TABLE " + tableName + " EXECUTE vacuum", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("ALTER TABLE " + tableName + " RENAME TO bad_person_some_new_name", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("ALTER TABLE " + tableName + " ADD COLUMN foo int", "Metadata not found in metadata location for table " + schemaTableName);
+        // TODO (https://github.com/trinodb/trino/issues/16248) ADD field
+        assertQueryFails("ALTER TABLE " + tableName + " DROP COLUMN country", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("ALTER TABLE " + tableName + " DROP COLUMN independence.month", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("ALTER TABLE " + tableName + " SET PROPERTIES format = 'PARQUET'", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("INSERT INTO " + tableName + " VALUES (NULL, NULL, ROW(NULL, NULL))", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("UPDATE " + tableName + " SET country = 'AUSTRIA'", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("DELETE FROM " + tableName, "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("MERGE INTO  " + tableName + " USING (SELECT 1 a) input ON true WHEN MATCHED THEN DELETE", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("TRUNCATE TABLE " + tableName, "This connector does not support truncating tables");
+        assertQueryFails("COMMENT ON TABLE " + tableName + " IS NULL", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("COMMENT ON COLUMN " + tableName + ".foo IS NULL", "Metadata not found in metadata location for table " + schemaTableName);
+        assertQueryFails("CALL iceberg.system.rollback_to_snapshot(CURRENT_SCHEMA, '" + tableName + "', 8954597067493422955)", "Metadata not found in metadata location for table " + schemaTableName);
+
+        // Avoid failing metadata queries
+        assertQuery("SHOW TABLES LIKE 'test_corrupted_table_location_%' ESCAPE '\\'", "VALUES '" + tableName + "'");
+        assertQueryReturnsEmptyResult("SELECT column_name, data_type FROM information_schema.columns " +
+                "WHERE table_schema = CURRENT_SCHEMA AND table_name LIKE 'test_corrupted_table_location_%' ESCAPE '\\'");
+        assertQueryReturnsEmptyResult("SELECT column_name, data_type FROM system.jdbc.columns " +
+                "WHERE table_cat = CURRENT_CATALOG AND table_schem = CURRENT_SCHEMA AND table_name LIKE 'test_corrupted_table_location_%' ESCAPE '\\'");
+
+        // DROP TABLE should succeed so that users can remove their corrupted table
+        assertQuerySucceeds("DROP TABLE " + tableName);
+        assertFalse(getQueryRunner().tableExists(getSession(), tableName));
+        assertFalse(trinoFileSystem.listFiles(tableLocation).hasNext(), "Table location should not exist");
+    }
+
+    @Test
+    public void testDropCorruptedTableWithHiveRedirection()
+            throws Exception
+    {
+        String hiveRedirectionCatalog = "hive_with_redirections";
+        String icebergCatalog = "iceberg_test";
+        String schema = "default";
+        String tableName = "test_drop_corrupted_table_with_hive_redirection_" + randomNameSuffix();
+        String hiveTableName = "%s.%s.%s".formatted(hiveRedirectionCatalog, schema, tableName);
+        String icebergTableName = "%s.%s.%s".formatted(icebergCatalog, schema, tableName);
+
+        File dataDirectory = Files.createTempDirectory("test_corrupted_iceberg_table").toFile();
+        dataDirectory.deleteOnExit();
+
+        Session icebergSession = testSessionBuilder()
+                .setCatalog(icebergCatalog)
+                .setSchema(schema)
+                .build();
+
+        DistributedQueryRunner queryRunner = DistributedQueryRunner.builder(icebergSession)
+                .build();
+        queryRunner.installPlugin(new IcebergPlugin());
+        queryRunner.createCatalog(
+                icebergCatalog,
+                "iceberg",
+                ImmutableMap.of(
+                        "iceberg.catalog.type", "TESTING_FILE_METASTORE",
+                        "hive.metastore.catalog.dir", dataDirectory.getPath()));
+
+        queryRunner.installPlugin(new TestingHivePlugin(createTestingFileHiveMetastore(dataDirectory)));
+        queryRunner.createCatalog(
+                hiveRedirectionCatalog,
+                "hive",
+                ImmutableMap.of("hive.iceberg-catalog-name", icebergCatalog));
+
+        queryRunner.execute("CREATE SCHEMA " + schema);
+        queryRunner.execute("CREATE TABLE " + icebergTableName + " (id INT, country VARCHAR, independence ROW(month VARCHAR, year INT))");
+        queryRunner.execute("INSERT INTO " + icebergTableName + " VALUES (1, 'INDIA', ROW ('Aug', 1947)), (2, 'POLAND', ROW ('Nov', 1918)), (3, 'USA', ROW ('Jul', 1776))");
+
+        assertThat(queryRunner.execute("TABLE " + hiveTableName))
+                .containsAll(queryRunner.execute("TABLE " + icebergTableName));
+
+        TrinoFileSystem trinoFileSystem = fileSystemFactory.create(SESSION);
+        String tableLocation = (String) queryRunner.execute("SELECT DISTINCT regexp_replace(\"$path\", '/[^/]*/[^/]*$', '') FROM " + tableName).getOnlyValue();
+        String metadataLocation = tableLocation + "/metadata";
+
+        // break the table by deleting all metadata files
+        trinoFileSystem.deleteDirectory(metadataLocation);
+        assertFalse(trinoFileSystem.listFiles(metadataLocation).hasNext(), "Metadata location should not exist");
+
+        // DROP TABLE should succeed using hive redirection
+        queryRunner.execute("DROP TABLE " + hiveTableName);
+        assertFalse(queryRunner.tableExists(getSession(), icebergTableName));
+        assertFalse(trinoFileSystem.listFiles(tableLocation).hasNext(), "Table location should not exist");
     }
 
     @Override
