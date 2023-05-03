@@ -18,6 +18,7 @@ import com.google.common.collect.Maps;
 import io.airlift.slice.Slices;
 import io.airlift.units.DataSize;
 import io.airlift.units.DataSize.Unit;
+import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoInputFile;
 import io.trino.filesystem.hdfs.HdfsFileSystemFactory;
@@ -35,10 +36,10 @@ import io.trino.plugin.hive.HiveColumnHandle;
 import io.trino.plugin.hive.HiveConfig;
 import io.trino.plugin.hive.HivePageSourceFactory;
 import io.trino.plugin.hive.HiveTimestampPrecision;
-import io.trino.plugin.hive.MonitoredTrinoInputFile;
 import io.trino.plugin.hive.ReaderColumns;
 import io.trino.plugin.hive.ReaderPageSource;
 import io.trino.plugin.hive.acid.AcidTransaction;
+import io.trino.plugin.hive.fs.MonitoredInputFile;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ConnectorPageSource;
 import io.trino.spi.connector.ConnectorSession;
@@ -141,8 +142,9 @@ public class RcFilePageSourceFactory
                     .collect(toImmutableList());
         }
 
+        Location location = Location.of(path.toString());
         TrinoFileSystem trinoFileSystem = new HdfsFileSystemFactory(hdfsEnvironment).create(session.getIdentity());
-        TrinoInputFile inputFile = new MonitoredTrinoInputFile(stats, trinoFileSystem.newInputFile(path.toString()));
+        TrinoInputFile inputFile = new MonitoredInputFile(stats, trinoFileSystem.newInputFile(location));
         try {
             length = min(inputFile.length() - start, length);
             if (!inputFile.exists()) {
@@ -151,7 +153,7 @@ public class RcFilePageSourceFactory
             if (estimatedFileSize < BUFFER_SIZE.toBytes()) {
                 try (InputStream inputStream = inputFile.newStream()) {
                     byte[] data = inputStream.readAllBytes();
-                    inputFile = new MemoryInputFile(path.toString(), Slices.wrappedBuffer(data));
+                    inputFile = new MemoryInputFile(location, Slices.wrappedBuffer(data));
                 }
             }
         }

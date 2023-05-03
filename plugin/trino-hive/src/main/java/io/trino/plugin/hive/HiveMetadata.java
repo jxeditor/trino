@@ -28,6 +28,7 @@ import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.airlift.units.DataSize;
+import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.TrinoOutputFile;
@@ -583,9 +584,18 @@ public class HiveMetadata
     }
 
     @Override
+    public SchemaTableName getTableName(ConnectorSession session, ConnectorTableHandle table)
+    {
+        return ((HiveTableHandle) table).getSchemaTableName();
+    }
+
+    @Override
     public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
-        return getTableMetadata(session, ((HiveTableHandle) tableHandle).getSchemaTableName());
+        HiveTableHandle handle = (HiveTableHandle) tableHandle;
+        // This method does not calculate column metadata for the projected columns
+        checkArgument(handle.getProjectedColumns().size() == handle.getPartitionColumns().size() + handle.getDataColumns().size(), "Unexpected projected columns");
+        return getTableMetadata(session, handle.getSchemaTableName());
     }
 
     private ConnectorTableMetadata getTableMetadata(ConnectorSession session, SchemaTableName tableName)
@@ -954,7 +964,7 @@ public class HiveMetadata
         }
 
         if (bucketProperty.isPresent() && getAvroSchemaLiteral(tableMetadata.getProperties()) != null) {
-            throw new TrinoException(NOT_SUPPORTED, "Bucketing/Partitioning columns not spported when Avro schema literal is set");
+            throw new TrinoException(NOT_SUPPORTED, "Bucketing/Partitioning columns not supported when Avro schema literal is set");
         }
 
         if (isTransactional) {
@@ -1031,8 +1041,6 @@ public class HiveMetadata
 
         // When metastore is configured with metastore.create.as.acid=true, it will also change Trino-created tables
         // behind the scenes. In particular, this won't work with CTAS.
-        // TODO (https://github.com/trinodb/trino/issues/1956) convert this into normal table property
-
         boolean transactional = HiveTableProperties.isTransactional(tableMetadata.getProperties()).orElse(false);
         tableProperties.put(TRANSACTIONAL, String.valueOf(transactional));
 
@@ -1866,7 +1874,7 @@ public class HiveMetadata
         if (format.getOutputFormat().equals(HIVE_IGNORE_KEY_OUTPUT_FORMAT_CLASS)) {
             TrinoFileSystem fileSystem = new HdfsFileSystemFactory(hdfsEnvironment).create(session.getIdentity());
             for (String fileName : fileNames) {
-                TrinoOutputFile trinoOutputFile = fileSystem.newOutputFile(new Path(path, fileName).toString());
+                TrinoOutputFile trinoOutputFile = fileSystem.newOutputFile(Location.of(path.toString()).appendPath(fileName));
                 try {
                     // create empty file
                     trinoOutputFile.create(newSimpleAggregatedMemoryContext()).close();
@@ -2243,7 +2251,7 @@ public class HiveMetadata
     private void createOrcAcidVersionFile(ConnectorIdentity identity, String deltaDirectory)
     {
         try {
-            writeAcidVersionFile(fileSystemFactory.create(identity), deltaDirectory);
+            writeAcidVersionFile(fileSystemFactory.create(identity), Location.of(deltaDirectory));
         }
         catch (IOException e) {
             throw new TrinoException(HIVE_FILESYSTEM_ERROR, "Exception writing _orc_acid_version file for delta directory: " + deltaDirectory, e);

@@ -5,12 +5,12 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>137</version>
+        <version>138</version>
     </parent>
 
     <groupId>io.trino</groupId>
     <artifactId>trino-root</artifactId>
-    <version>415-SNAPSHOT</version>
+    <version>416-SNAPSHOT</version>
 
     <name>trino-root</name>
     <description>Trino</description>
@@ -1068,7 +1068,7 @@
             <dependency>
                 <groupId>com.databricks</groupId>
                 <artifactId>databricks-jdbc</artifactId>
-                <version>2.6.29</version>
+                <version>2.6.32</version>
             </dependency>
 
             <dependency>
@@ -2032,11 +2032,9 @@
                                 <includes combine.children="append">
                                     <!-- 2.x versions are not affected by CVE-2022-1471 -->
                                     <include>org.yaml:snakeyaml:2.0</include>
-                                    <!-- allow in test scope (tempto and benchto are using old versions) -->
-                                    <include>org.yaml:snakeyaml:*:jar:test</include>
                                 </includes>
                             </bannedDependencies>
-                            <requireProfileIdsExist/>
+                            <requireProfileIdsExist />
                         </rules>
                     </configuration>
                     <dependencies>

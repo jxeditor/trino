@@ -39,10 +39,10 @@ import io.trino.spi.connector.TableColumnsMetadata;
 import io.trino.spi.connector.TableNotFoundException;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.TypeManager;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hudi.common.model.HoodieTableType;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -58,6 +58,7 @@ import static io.trino.plugin.hive.HiveTimestampPrecision.NANOSECONDS;
 import static io.trino.plugin.hive.util.HiveUtil.columnMetadataGetter;
 import static io.trino.plugin.hive.util.HiveUtil.hiveColumnHandles;
 import static io.trino.plugin.hive.util.HiveUtil.isHiveSystemSchema;
+import static io.trino.plugin.hudi.HudiErrorCode.HUDI_FILESYSTEM_ERROR;
 import static io.trino.plugin.hudi.HudiSessionProperties.getColumnsToHide;
 import static io.trino.plugin.hudi.HudiTableProperties.LOCATION_PROPERTY;
 import static io.trino.plugin.hudi.HudiTableProperties.PARTITIONED_BY_PROPERTY;
@@ -70,7 +71,6 @@ import static java.util.function.Function.identity;
 import static org.apache.hudi.common.fs.FSUtils.getFs;
 import static org.apache.hudi.common.table.HoodieTableMetaClient.METAFOLDER_NAME;
 import static org.apache.hudi.common.util.StringUtils.isNullOrEmpty;
-import static org.apache.hudi.exception.TableNotFoundException.checkTableValidity;
 
 public class HudiMetadata
         implements ConnectorMetadata
@@ -121,11 +121,11 @@ public class HudiMetadata
     @Override
     public Optional<SystemTable> getSystemTable(ConnectorSession session, SchemaTableName tableName)
     {
-        return getRawSystemTable(session, tableName)
+        return getRawSystemTable(tableName)
                 .map(systemTable -> new ClassLoaderSafeSystemTable(systemTable, getClass().getClassLoader()));
     }
 
-    private Optional<SystemTable> getRawSystemTable(ConnectorSession session, SchemaTableName tableName)
+    private Optional<SystemTable> getRawSystemTable(SchemaTableName tableName)
     {
         HudiTableName name = HudiTableName.from(tableName.getTableName());
         if (name.getTableType() == TableType.DATA) {
@@ -141,8 +141,7 @@ public class HudiMetadata
                 break;
             case TIMELINE:
                 SchemaTableName systemTableName = new SchemaTableName(tableName.getSchemaName(), name.getTableNameWithType());
-                Configuration configuration = hdfsEnvironment.getConfiguration(new HdfsContext(session), new Path(tableOptional.get().getStorage().getLocation()));
-                return Optional.of(new TimelineTable(configuration, systemTableName, tableOptional.get()));
+                return Optional.of(new TimelineTable(hdfsEnvironment, systemTableName, tableOptional.get()));
         }
         return Optional.empty();
     }
@@ -228,13 +227,18 @@ public class HudiMetadata
     private boolean isHudiTable(ConnectorSession session, Table table)
     {
         String basePath = table.getStorage().getLocation();
-        Configuration configuration = hdfsEnvironment.getConfiguration(new HdfsContext(session), new Path(basePath));
         try {
-            checkTableValidity(getFs(basePath, configuration), new Path(basePath), new Path(basePath, METAFOLDER_NAME));
+            if (!getFs(basePath, hdfsEnvironment.getConfiguration(new HdfsContext(session), new Path(basePath))).getFileStatus(new Path(basePath, METAFOLDER_NAME)).isDirectory()) {
+                log.warn("Could not find Hudi table at path '%s'.", basePath);
+                return false;
+            }
         }
-        catch (org.apache.hudi.exception.TableNotFoundException e) {
-            log.warn("Could not find Hudi table at path '%s'", basePath);
+        catch (IllegalArgumentException e) {
+            log.warn("Could not find Hudi table at path '%s'. Error: %s", basePath, e.getMessage());
             return false;
+        }
+        catch (IOException e) {
+            throw new TrinoException(HUDI_FILESYSTEM_ERROR, format("Could not check if %s is a valid table", basePath), e);
         }
         return true;
     }
