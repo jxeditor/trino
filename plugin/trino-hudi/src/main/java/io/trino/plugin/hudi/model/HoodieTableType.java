@@ -11,21 +11,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.json.ir;
+package io.trino.plugin.hudi.model;
 
-import static java.util.Objects.requireNonNull;
-
-public record IrExistsPredicate(IrPathNode path)
-        implements IrPredicate
+/**
+ * Type of the Hoodie Table.
+ * <p>
+ * Currently, 2 types are supported.
+ * <ul>
+ * <li> COPY_ON_WRITE - Performs upserts by versioning entire files, with later versions containing newer value of a record.
+ * <li> MERGE_ON_READ - Speeds up upserts, by delaying merge until enough work piles up.
+ * </ul>
+ */
+public enum HoodieTableType
 {
-    public IrExistsPredicate
-    {
-        requireNonNull(path, "path is null");
-    }
-
-    @Override
-    public <R, C> R accept(IrJsonPathVisitor<R, C> visitor, C context)
-    {
-        return visitor.visitIrExistsPredicate(this, context);
-    }
+    COPY_ON_WRITE,
+    MERGE_ON_READ
 }

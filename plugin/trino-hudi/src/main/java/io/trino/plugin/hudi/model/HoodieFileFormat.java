@@ -11,27 +11,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.json.ir;
-
-import io.trino.spi.type.Type;
-
-import java.util.Optional;
+package io.trino.plugin.hudi.model;
 
 import static java.util.Objects.requireNonNull;
 
-public record IrMemberAccessor(IrPathNode base, Optional<String> key, Optional<Type> type)
-        implements IrPathNode
+public enum HoodieFileFormat
 {
-    public IrMemberAccessor
+    PARQUET(".parquet"),
+    HOODIE_LOG(".log"),
+    HFILE(".hfile"),
+    ORC(".orc");
+
+    private final String extension;
+
+    HoodieFileFormat(String extension)
     {
-        requireNonNull(type, "type is null");
-        requireNonNull(base, "member accessor base is null");
-        requireNonNull(key, "key is null"); // object member key or Optional.empty for wildcard member accessor
+        this.extension = requireNonNull(extension, "extension is null");
     }
 
-    @Override
-    public <R, C> R accept(IrJsonPathVisitor<R, C> visitor, C context)
+    public String getFileExtension()
     {
-        return visitor.visitIrMemberAccessor(this, context);
+        return extension;
     }
 }
