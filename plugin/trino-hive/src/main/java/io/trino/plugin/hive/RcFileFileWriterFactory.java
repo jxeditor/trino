@@ -17,9 +17,8 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
+import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.TrinoInputFile;
-import io.trino.filesystem.hdfs.HdfsFileSystemFactory;
-import io.trino.hdfs.HdfsEnvironment;
 import io.trino.hive.formats.compression.CompressionKind;
 import io.trino.hive.formats.encodings.ColumnEncodingFactory;
 import io.trino.hive.formats.encodings.binary.BinaryColumnEncodingFactory;
@@ -32,7 +31,6 @@ import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeManager;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.joda.time.DateTimeZone;
@@ -64,28 +62,28 @@ import static java.util.stream.Collectors.toList;
 public class RcFileFileWriterFactory
         implements HiveFileWriterFactory
 {
+    private final TrinoFileSystemFactory fileSystemFactory;
     private final DateTimeZone timeZone;
-    private final HdfsEnvironment hdfsEnvironment;
     private final TypeManager typeManager;
     private final NodeVersion nodeVersion;
 
     @Inject
     public RcFileFileWriterFactory(
-            HdfsEnvironment hdfsEnvironment,
+            TrinoFileSystemFactory fileSystemFactory,
             TypeManager typeManager,
             NodeVersion nodeVersion,
             HiveConfig hiveConfig)
     {
-        this(hdfsEnvironment, typeManager, nodeVersion, hiveConfig.getRcfileDateTimeZone());
+        this(fileSystemFactory, typeManager, nodeVersion, hiveConfig.getRcfileDateTimeZone());
     }
 
     public RcFileFileWriterFactory(
-            HdfsEnvironment hdfsEnvironment,
+            TrinoFileSystemFactory fileSystemFactory,
             TypeManager typeManager,
             NodeVersion nodeVersion,
             DateTimeZone timeZone)
     {
-        this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
+        this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.nodeVersion = requireNonNull(nodeVersion, "nodeVersion is null");
         this.timeZone = requireNonNull(timeZone, "timeZone is null");
@@ -93,7 +91,7 @@ public class RcFileFileWriterFactory
 
     @Override
     public Optional<FileWriter> createFileWriter(
-            Path path,
+            Location location,
             List<String> inputColumnNames,
             StorageFormat storageFormat,
             Properties schema,
@@ -134,8 +132,7 @@ public class RcFileFileWriterFactory
                 .toArray();
 
         try {
-            Location location = Location.of(path.toString());
-            TrinoFileSystem fileSystem = new HdfsFileSystemFactory(hdfsEnvironment).create(session.getIdentity());
+            TrinoFileSystem fileSystem = fileSystemFactory.create(session);
             AggregatedMemoryContext outputStreamMemoryContext = newSimpleAggregatedMemoryContext();
             OutputStream outputStream = fileSystem.newOutputFile(location).create(outputStreamMemoryContext);
 
