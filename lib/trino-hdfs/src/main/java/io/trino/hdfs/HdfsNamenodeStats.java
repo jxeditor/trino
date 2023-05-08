@@ -11,9 +11,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive;
+package io.trino.hdfs;
 
-/**
- * Dummy class needed to preserve the legacy JMX object name.
- */
-public final class NamenodeStats {}
+import org.weakref.jmx.Managed;
+import org.weakref.jmx.Nested;
+
+public final class HdfsNamenodeStats
+{
+    private final CallStats listLocatedStatus = new CallStats();
+    private final CallStats remoteIteratorNext = new CallStats();
+
+    @Managed
+    @Nested
+    public CallStats getListLocatedStatus()
+    {
+        return listLocatedStatus;
+    }
+
+    @Managed
+    @Nested
+    public CallStats getRemoteIteratorNext()
+    {
+        return remoteIteratorNext;
+    }
+}
