@@ -11,15 +11,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive;
+package io.trino.plugin.oracle;
 
-public enum TableType
+import io.trino.operator.RetryPolicy;
+
+public class TestOracleTaskFailureRecoveryTest
+        extends BaseOracleFailureRecoveryTest
 {
-    MANAGED_TABLE,
-    EXTERNAL_TABLE,
-    VIRTUAL_VIEW,
-    /**
-     * A table type denoting materialized view created by Hive, not by Trino.
-     */
-    MATERIALIZED_VIEW,
+    public TestOracleTaskFailureRecoveryTest()
+    {
+        super(RetryPolicy.TASK);
+    }
 }
