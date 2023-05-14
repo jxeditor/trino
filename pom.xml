@@ -74,7 +74,7 @@
         <dep.jna.version>5.13.0</dep.jna.version>
         <dep.okio.version>3.3.0</dep.okio.version>
 
-        <dep.docker.images.version>79</dep.docker.images.version>
+        <dep.docker.images.version>80</dep.docker.images.version>
 
         <!--
           America/Bahia_Banderas has:
@@ -1056,14 +1056,8 @@
             <dependency>
                 <groupId>com.clickhouse</groupId>
                 <artifactId>clickhouse-jdbc</artifactId>
-                <version>0.4.1</version>
+                <version>0.4.6</version>
                 <classifier>all</classifier>
-                <exclusions>
-                    <exclusion>
-                        <groupId>*</groupId>
-                        <artifactId>*</artifactId>
-                    </exclusion>
-                </exclusions>
             </dependency>
 
             <dependency>
