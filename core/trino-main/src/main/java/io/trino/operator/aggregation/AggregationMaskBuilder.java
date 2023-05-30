@@ -13,24 +13,19 @@
  */
 package io.trino.operator.aggregation;
 
-import io.trino.operator.GroupByIdBlock;
 import io.trino.spi.Page;
 import io.trino.spi.block.Block;
-import io.trino.spi.block.BlockBuilder;
 
-public interface GroupedAccumulator
+import java.util.Optional;
+
+public interface AggregationMaskBuilder
 {
-    long getEstimatedSize();
-
-    void setGroupCount(long groupCount);
-
-    void addInput(GroupByIdBlock groupIdsBlock, Page page, AggregationMask mask);
-
-    void addIntermediate(GroupByIdBlock groupIdsBlock, Block block);
-
-    void evaluateIntermediate(int groupId, BlockBuilder output);
-
-    void evaluateFinal(int groupId, BlockBuilder output);
-
-    void prepareFinal();
+    /**
+     * Create an AggregationMask that only selects positions that pass the specified
+     * mask block, and do not have null for non-null arguments. The returned mask
+     * can be further modified if desired, but it should not be used after the next
+     * call to this method. Internally implementations are allowed to reuse position
+     * arrays across multiple calls.
+     */
+    AggregationMask buildAggregationMask(Page arguments, Optional<Block> optionalMaskBlock);
 }
