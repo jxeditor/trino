@@ -174,12 +174,7 @@ public class TestDeltaLakeConnectorTest
         assertThat(e)
                 .hasMessage("Failed to write Delta Lake transaction log entry")
                 .cause()
-                .hasMessageMatching(
-                        "Transaction log locked.*" +
-                                "|.*/_delta_log/\\d+.json already exists" +
-                                "|Conflicting concurrent writes found..*" +
-                                "|Multiple live locks found for:.*" +
-                                "|Target file .* was created during locking");
+                .hasMessageMatching(transactionConflictErrors());
     }
 
     @Override
@@ -188,12 +183,7 @@ public class TestDeltaLakeConnectorTest
         assertThat(e)
                 .hasMessage("Failed to write Delta Lake transaction log entry")
                 .cause()
-                .hasMessageMatching(
-                        "Transaction log locked.*" +
-                                "|.*/_delta_log/\\d+.json already exists" +
-                                "|Conflicting concurrent writes found..*" +
-                                "|Multiple live locks found for:.*" +
-                                "|Target file .* was created during locking");
+                .hasMessageMatching(transactionConflictErrors());
     }
 
     @Override
@@ -202,12 +192,17 @@ public class TestDeltaLakeConnectorTest
         assertThat(e)
                 .hasMessageMatching("Unable to add '.*' column for: .*")
                 .cause()
-                .hasMessageMatching(
-                        "Transaction log locked.*" +
-                                "|.*/_delta_log/\\d+.json already exists" +
-                                "|Conflicting concurrent writes found..*" +
-                                "|Multiple live locks found for:.*" +
-                                "|Target file .* was created during locking");
+                .hasMessageMatching(transactionConflictErrors());
+    }
+
+    @Language("RegExp")
+    private static String transactionConflictErrors()
+    {
+        return "Transaction log locked.*" +
+                "|Target file already exists: .*/_delta_log/\\d+.json" +
+                "|Conflicting concurrent writes found\\..*" +
+                "|Multiple live locks found for:.*" +
+                "|Target file was created during locking: .*";
     }
 
     @Override
@@ -1460,7 +1455,7 @@ public class TestDeltaLakeConnectorTest
         getQueryRunner().execute(sessionWithShortRetentionUnlocked, "CALL delta.system.vacuum('test_schema', '" + tableName + "', '" + retention + "s')");
         allFilesFromCdfDirectory = getAllFilesFromCdfDirectory(tableName);
         assertThat(allFilesFromCdfDirectory).hasSizeBetween(1, 2);
-        assertQueryFails("SELECT * FROM TABLE(system.table_changes('test_schema', '" + tableName + "', 2))", ".*File does not exist.*");
+        assertQueryFails("SELECT * FROM TABLE(system.table_changes('test_schema', '" + tableName + "', 2))", "Error opening Hive split .*");
         assertTableChangesQuery("SELECT * FROM TABLE(system.table_changes('test_schema', '" + tableName + "', 3))",
                 """
                         VALUES

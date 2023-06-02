@@ -26,7 +26,6 @@ import io.trino.testing.TestingConnectorBehavior;
 import io.trino.tpch.TpchTable;
 import org.testng.SkipException;
 import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,7 +34,6 @@ import java.util.Optional;
 
 import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
-import static io.trino.plugin.hive.HiveTestUtils.HDFS_FILE_SYSTEM_FACTORY;
 import static io.trino.plugin.iceberg.IcebergTestUtils.checkOrcFileSorting;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -43,23 +41,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 public class TestIcebergNessieCatalogConnectorSmokeTest
         extends BaseIcebergConnectorSmokeTest
 {
-    private static NessieContainer nessieContainer;
-    private static Path tempDir;
+    private Path tempDir;
 
     public TestIcebergNessieCatalogConnectorSmokeTest()
     {
         super(new IcebergConfig().getFileFormat().toIceberg());
-    }
-
-    @BeforeClass
-    @Override
-    public void init()
-            throws Exception
-    {
-        nessieContainer = NessieContainer.builder().build();
-        nessieContainer.start();
-        tempDir = Files.createTempDirectory("test_trino_nessie_catalog");
-        super.init();
     }
 
     @AfterClass(alwaysRun = true)
@@ -67,15 +53,17 @@ public class TestIcebergNessieCatalogConnectorSmokeTest
             throws IOException
     {
         deleteRecursively(tempDir, ALLOW_INSECURE);
-        if (nessieContainer != null) {
-            nessieContainer.close();
-        }
     }
 
     @Override
     protected QueryRunner createQueryRunner()
             throws Exception
     {
+        NessieContainer nessieContainer = closeAfterClass(NessieContainer.builder().build());
+        nessieContainer.start();
+
+        tempDir = Files.createTempDirectory("test_trino_nessie_catalog");
+
         return IcebergQueryRunner.builder()
                 .setBaseDataDir(Optional.of(tempDir))
                 .setIcebergProperties(
@@ -258,7 +246,7 @@ public class TestIcebergNessieCatalogConnectorSmokeTest
     @Override
     protected boolean isFileSorted(Location path, String sortColumnName)
     {
-        return checkOrcFileSorting(HDFS_FILE_SYSTEM_FACTORY, path, sortColumnName);
+        return checkOrcFileSorting(fileSystem, path, sortColumnName);
     }
 
     @Override
