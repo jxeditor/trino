@@ -2030,6 +2030,9 @@
                             <exclusion>com/google/common/collect/Iterables.getOnlyElement:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;</exclusion>
                             <!-- com.google.common.io.BaseEncoding.base64 provides more reach interfaces than java.util.Base64 -->
                             <exclusion>com/google/common/io/BaseEncoding.base64:()Lcom/google/common/io/BaseEncoding;</exclusion>
+
+                            <!-- disable default modernizer violation -->
+                            <exclusion>com/google/inject/Provider</exclusion>
                         </exclusions>
                     </configuration>
                 </plugin>
@@ -2068,6 +2071,7 @@
                                 <includes combine.children="append">
                                     <!-- 2.x versions are not affected by CVE-2022-1471 -->
                                     <include>org.yaml:snakeyaml:2.0</include>
+                                    <include>javax.inject:inject:*</include>
                                 </includes>
                             </bannedDependencies>
                             <requireProfileIdsExist />
@@ -2078,11 +2082,6 @@
                             <groupId>com.github.ferstl</groupId>
                             <artifactId>pedantic-pom-enforcers</artifactId>
                             <version>2.1.0</version>
-                        </dependency>
-                        <dependency>
-                            <groupId>de.skuzzle.enforcer</groupId>
-                            <artifactId>restrict-imports-enforcer-rule</artifactId>
-                            <version>2.2.0</version>
                         </dependency>
                     </dependencies>
                 </plugin>
