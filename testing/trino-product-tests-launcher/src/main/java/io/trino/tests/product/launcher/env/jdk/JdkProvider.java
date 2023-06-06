@@ -11,27 +11,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.tests.product.launcher.env;
+package io.trino.tests.product.launcher.env.jdk;
 
-public enum SupportedTrinoJdk
+import io.trino.tests.product.launcher.env.DockerContainer;
+
+import static io.trino.tests.product.launcher.Configurations.nameForJdkProvider;
+
+public interface JdkProvider
 {
-    ZULU_17("/usr/lib/jvm/zulu-17"),
-    /**/;
+    DockerContainer applyTo(DockerContainer container);
 
-    private final String javaHome;
+    String getJavaHome();
 
-    SupportedTrinoJdk(String javaHome)
+    String getDescription();
+
+    default String getJavaCommand()
     {
-        this.javaHome = javaHome;
+        return getJavaHome() + "/bin/java";
     }
 
-    public String getJavaHome()
+    default String getName()
     {
-        return javaHome;
-    }
-
-    public String getJavaCommand()
-    {
-        return javaHome + "/bin/java";
+        return nameForJdkProvider(this.getClass());
     }
 }
