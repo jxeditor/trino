@@ -96,6 +96,7 @@ public final class Location
                 }
             }
 
+            checkArgument((userInfo.isEmpty() && host.isEmpty() && port.isEmpty()) || authoritySplit.size() == 2, "Path missing in file system location: %s", location);
             String path = (authoritySplit.size() == 2) ? authoritySplit.get(1) : "";
 
             return new Location(location, Optional.of(scheme), userInfo, host, port, path);
@@ -187,14 +188,12 @@ public final class Location
     {
         // todo should this only be allowed for file locations?
         verifyValidFileLocation();
-        checkState(!path.isEmpty(), "root location does not have parent: %s", location);
+        checkState(!path.isEmpty() && !path.equals("/"), "root location does not have parent: %s", location);
 
         int lastIndexOfSlash = path.lastIndexOf('/');
         if (lastIndexOfSlash < 0) {
             String newLocation = location.substring(0, location.length() - path.length() - 1);
-            if (newLocation.isEmpty()) {
-                newLocation = "/";
-            }
+            newLocation += "/";
             return withPath(newLocation, "");
         }
 
@@ -277,7 +276,7 @@ public final class Location
         // file path must not be empty
         checkState(!path.isEmpty() && !path.equals("/"), "File location must contain a path: %s", location);
         // file path cannot end with a slash
-        checkState(!path.endsWith("/"), "File location cannot end with '/': '%s'", location);
+        checkState(!path.endsWith("/"), "File location cannot end with '/': %s", location);
         // file path cannot end with whitespace
         checkState(!isWhitespace(path.charAt(path.length() - 1)), "File location cannot end with whitespace: %s", location);
     }
