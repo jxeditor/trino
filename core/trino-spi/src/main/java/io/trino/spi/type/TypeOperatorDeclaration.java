@@ -14,6 +14,7 @@
 package io.trino.spi.type;
 
 import io.trino.spi.block.Block;
+import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.function.BlockIndex;
 import io.trino.spi.function.BlockPosition;
@@ -41,6 +42,7 @@ import static io.trino.spi.function.InvocationConvention.InvocationArgumentConve
 import static io.trino.spi.function.InvocationConvention.InvocationArgumentConvention.BOXED_NULLABLE;
 import static io.trino.spi.function.InvocationConvention.InvocationArgumentConvention.NEVER_NULL;
 import static io.trino.spi.function.InvocationConvention.InvocationArgumentConvention.NULL_FLAG;
+import static io.trino.spi.function.InvocationConvention.InvocationReturnConvention.BLOCK_BUILDER;
 import static io.trino.spi.function.InvocationConvention.InvocationReturnConvention.FAIL_ON_NULL;
 import static io.trino.spi.function.InvocationConvention.InvocationReturnConvention.NULLABLE_RETURN;
 import static io.trino.spi.function.InvocationConvention.simpleConvention;
@@ -52,6 +54,7 @@ public final class TypeOperatorDeclaration
 {
     public static final TypeOperatorDeclaration NO_TYPE_OPERATOR_DECLARATION = builder(boolean.class).build();
 
+    private final Collection<OperatorMethodHandle> readValueOperators;
     private final Collection<OperatorMethodHandle> equalOperators;
     private final Collection<OperatorMethodHandle> hashCodeOperators;
     private final Collection<OperatorMethodHandle> xxHash64Operators;
@@ -63,6 +66,7 @@ public final class TypeOperatorDeclaration
     private final Collection<OperatorMethodHandle> lessThanOrEqualOperators;
 
     private TypeOperatorDeclaration(
+            Collection<OperatorMethodHandle> readValueOperators,
             Collection<OperatorMethodHandle> equalOperators,
             Collection<OperatorMethodHandle> hashCodeOperators,
             Collection<OperatorMethodHandle> xxHash64Operators,
@@ -73,6 +77,7 @@ public final class TypeOperatorDeclaration
             Collection<OperatorMethodHandle> lessThanOperators,
             Collection<OperatorMethodHandle> lessThanOrEqualOperators)
     {
+        this.readValueOperators = List.copyOf(requireNonNull(readValueOperators, "readValueOperators is null"));
         this.equalOperators = List.copyOf(requireNonNull(equalOperators, "equalOperators is null"));
         this.hashCodeOperators = List.copyOf(requireNonNull(hashCodeOperators, "hashCodeOperators is null"));
         this.xxHash64Operators = List.copyOf(requireNonNull(xxHash64Operators, "xxHash64Operators is null"));
@@ -92,6 +97,11 @@ public final class TypeOperatorDeclaration
     public boolean isOrderable()
     {
         return !comparisonUnorderedLastOperators.isEmpty();
+    }
+
+    public Collection<OperatorMethodHandle> getReadValueOperators()
+    {
+        return readValueOperators;
     }
 
     public Collection<OperatorMethodHandle> getEqualOperators()
@@ -155,6 +165,7 @@ public final class TypeOperatorDeclaration
     {
         private final Class<?> typeJavaType;
 
+        private final Collection<OperatorMethodHandle> readValueOperators = new ArrayList<>();
         private final Collection<OperatorMethodHandle> equalOperators = new ArrayList<>();
         private final Collection<OperatorMethodHandle> hashCodeOperators = new ArrayList<>();
         private final Collection<OperatorMethodHandle> xxHash64Operators = new ArrayList<>();
@@ -173,6 +184,7 @@ public final class TypeOperatorDeclaration
 
         public Builder addOperators(TypeOperatorDeclaration operatorDeclaration)
         {
+            operatorDeclaration.getReadValueOperators().forEach(this::addReadValueOperator);
             operatorDeclaration.getEqualOperators().forEach(this::addEqualOperator);
             operatorDeclaration.getHashCodeOperators().forEach(this::addHashCodeOperator);
             operatorDeclaration.getXxHash64Operators().forEach(this::addXxHash64Operator);
@@ -182,6 +194,13 @@ public final class TypeOperatorDeclaration
             operatorDeclaration.getComparisonUnorderedFirstOperators().forEach(this::addComparisonUnorderedFirstOperator);
             operatorDeclaration.getLessThanOperators().forEach(this::addLessThanOperator);
             operatorDeclaration.getLessThanOrEqualOperators().forEach(this::addLessThanOrEqualOperator);
+            return this;
+        }
+
+        public Builder addReadValueOperator(OperatorMethodHandle readValueOperator)
+        {
+            verifyMethodHandleSignature(1, typeJavaType, readValueOperator);
+            this.readValueOperators.add(readValueOperator);
             return this;
         }
 
@@ -348,6 +367,9 @@ public final class TypeOperatorDeclaration
                 }
 
                 switch (operatorType) {
+                    case READ_VALUE:
+                        addReadValueOperator(new OperatorMethodHandle(parseInvocationConvention(operatorType, typeJavaType, method, typeJavaType), methodHandle));
+                        break;
                     case EQUAL:
                         addEqualOperator(new OperatorMethodHandle(parseInvocationConvention(operatorType, typeJavaType, method, boolean.class), methodHandle));
                         break;
@@ -400,6 +422,7 @@ public final class TypeOperatorDeclaration
             int expectedParameterCount = convention.getArgumentConventions().stream()
                     .mapToInt(InvocationArgumentConvention::getParameterCount)
                     .sum();
+            expectedParameterCount += convention.getReturnConvention().getParameterCount();
             checkArgument(expectedParameterCount == methodType.parameterCount(),
                     "Expected %s method parameters, but got %s", expectedParameterCount, methodType.parameterCount());
 
@@ -445,6 +468,12 @@ public final class TypeOperatorDeclaration
                     checkArgument(methodType.returnType().equals(wrap(returnJavaType)),
                             "Expected return type to be %s, but is %s", returnJavaType, wrap(methodType.returnType()));
                     break;
+                case BLOCK_BUILDER:
+                    checkArgument(methodType.lastParameterType().equals(BlockBuilder.class),
+                            "Expected last argument type to be BlockBuilder, but is %s", methodType.returnType());
+                    checkArgument(methodType.returnType().equals(void.class),
+                            "Expected return type to be void, but is %s", methodType.returnType());
+                    break;
                 default:
                     throw new UnsupportedOperationException("Unknown return convention: " + returnConvention);
             }
@@ -458,6 +487,8 @@ public final class TypeOperatorDeclaration
 
             List<Class<?>> parameterTypes = List.of(method.getParameterTypes());
             List<Annotation[]> parameterAnnotations = List.of(method.getParameterAnnotations());
+            parameterTypes = parameterTypes.subList(0, parameterTypes.size() - returnConvention.getParameterCount());
+            parameterAnnotations = parameterAnnotations.subList(0, parameterAnnotations.size() - returnConvention.getParameterCount());
 
             InvocationArgumentConvention leftArgumentConvention = extractNextArgumentConvention(typeJavaType, parameterTypes, parameterAnnotations, operatorType, method);
             if (leftArgumentConvention.getParameterCount() == parameterTypes.size()) {
@@ -490,6 +521,11 @@ public final class TypeOperatorDeclaration
             }
             else if (method.isAnnotationPresent(SqlNullable.class) && method.getReturnType().equals(wrap(expectedReturnType))) {
                 returnConvention = NULLABLE_RETURN;
+            }
+            else if (method.getReturnType().equals(void.class) &&
+                    method.getParameterCount() >= 1 &&
+                    method.getParameterTypes()[method.getParameterCount() - 1].equals(BlockBuilder.class)) {
+                returnConvention = BLOCK_BUILDER;
             }
             else {
                 throw new IllegalArgumentException(format("Expected %s operator to return %s: %s", operatorType, expectedReturnType, method));
@@ -569,6 +605,7 @@ public final class TypeOperatorDeclaration
             }
 
             return new TypeOperatorDeclaration(
+                    readValueOperators,
                     equalOperators,
                     hashCodeOperators,
                     xxHash64Operators,
