@@ -11,34 +11,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive.parquet;
+package io.trino.plugin.mongodb;
 
-import io.trino.plugin.hive.HiveQueryRunner;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import io.trino.testing.BaseComplexTypesPredicatePushDownTest;
 import io.trino.testing.QueryRunner;
-import org.testng.annotations.Test;
 
-import static io.trino.testing.TestingNames.randomNameSuffix;
-import static org.assertj.core.api.Assertions.assertThat;
+import static io.trino.plugin.mongodb.MongoQueryRunner.createMongoQueryRunner;
 
-public class TestHiveParquetComplexTypePredicatePushDown
+public class TestMongoComplexTypePredicatePushDown
         extends BaseComplexTypesPredicatePushDownTest
 {
     @Override
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        return HiveQueryRunner.builder()
-                .addHiveProperty("hive.storage-format", "PARQUET")
-                .build();
-    }
-
-    @Test
-    public void ensureFormatParquet()
-    {
-        String tableName = "test_table_" + randomNameSuffix();
-        assertUpdate("CREATE TABLE " + tableName + " (colTest BIGINT)");
-        assertThat(((String) computeScalar("SHOW CREATE TABLE " + tableName))).contains("PARQUET");
-        assertUpdate("DROP TABLE " + tableName);
+        MongoServer server = closeAfterClass(new MongoServer());
+        return createMongoQueryRunner(server, ImmutableMap.of(), ImmutableList.of());
     }
 }

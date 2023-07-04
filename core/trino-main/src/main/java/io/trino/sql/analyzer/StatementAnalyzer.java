@@ -2225,7 +2225,6 @@ class StatementAnalyzer
                     .withRelationType(RelationId.anonymous(), new RelationType(outputFields))
                     .build();
             analyzeFiltersAndMasks(table, targetTableName, new RelationType(outputFields), accessControlScope);
-            analyzeCheckConstraints(table, targetTableName, accessControlScope, tableSchema.getTableSchema().getCheckConstraints());
             analysis.registerTable(table, tableHandle, targetTableName, session.getIdentity().getUser(), accessControlScope);
 
             Scope tableScope = createAndAssignScope(table, scope, outputFields);
@@ -3252,10 +3251,6 @@ class StatementAnalyzer
             if (!accessControl.getRowFilters(session.toSecurityContext(), tableName).isEmpty()) {
                 throw semanticException(NOT_SUPPORTED, update, "Updating a table with a row filter is not supported");
             }
-            if (!tableSchema.getTableSchema().getCheckConstraints().isEmpty()) {
-                // TODO https://github.com/trinodb/trino/issues/15411 Add support for CHECK constraint to UPDATE statement
-                throw semanticException(NOT_SUPPORTED, update, "Updating a table with a check constraint is not supported");
-            }
 
             // TODO: how to deal with connectors that need to see the pre-image of rows to perform the update without
             //       flowing that data through the masking logic
@@ -3282,6 +3277,8 @@ class StatementAnalyzer
 
             Scope tableScope = analyzer.analyzeForUpdate(table, scope, UpdateKind.UPDATE);
             update.getWhere().ifPresent(where -> analyzeWhere(update, tableScope, where));
+            analyzeCheckConstraints(table, tableName, tableScope, tableSchema.getTableSchema().getCheckConstraints());
+            analysis.registerTable(table, redirection.getTableHandle(), tableName, session.getIdentity().getUser(), tableScope);
 
             ImmutableList.Builder<ExpressionAnalysis> analysesBuilder = ImmutableList.builder();
             ImmutableList.Builder<Type> expressionTypesBuilder = ImmutableList.builder();
