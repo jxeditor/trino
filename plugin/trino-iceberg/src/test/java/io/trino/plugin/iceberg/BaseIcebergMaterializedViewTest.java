@@ -62,11 +62,9 @@ public abstract class BaseIcebergMaterializedViewTest
         assertUpdate("CREATE TABLE base_table1(_bigint BIGINT, _date DATE) WITH (partitioning = ARRAY['_date'])");
         assertUpdate("INSERT INTO base_table1 VALUES (0, DATE '2019-09-08'), (1, DATE '2019-09-09'), (2, DATE '2019-09-09')", 3);
         assertUpdate("INSERT INTO base_table1 VALUES (3, DATE '2019-09-09'), (4, DATE '2019-09-10'), (5, DATE '2019-09-10')", 3);
-        assertQuery("SELECT count(*) FROM base_table1", "VALUES 6");
 
         assertUpdate("CREATE TABLE base_table2 (_varchar VARCHAR, _bigint BIGINT, _date DATE) WITH (partitioning = ARRAY['_bigint', '_date'])");
         assertUpdate("INSERT INTO base_table2 VALUES ('a', 0, DATE '2019-09-08'), ('a', 1, DATE '2019-09-08'), ('a', 0, DATE '2019-09-09')", 3);
-        assertQuery("SELECT count(*) FROM base_table2", "VALUES 3");
 
         assertUpdate("CREATE SCHEMA " + storageSchemaName);
     }
@@ -404,8 +402,8 @@ public abstract class BaseIcebergMaterializedViewTest
         assertThat(getExplainPlan("SELECT * FROM materialized_view_join_part_stale", ExplainType.Type.IO))
                 .doesNotContain("base_table3", "base_table4");
 
-        assertUpdate("DROP TABLE IF EXISTS base_table3");
-        assertUpdate("DROP TABLE IF EXISTS base_table4");
+        assertUpdate("DROP TABLE base_table3");
+        assertUpdate("DROP TABLE base_table4");
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_part_stale");
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_join_stale");
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_join_part_stale");
@@ -548,7 +546,7 @@ public abstract class BaseIcebergMaterializedViewTest
         assertThat(getExplainPlan("SELECT * FROM materialized_view_level1", ExplainType.Type.IO))
                 .contains("base_table5");
 
-        assertUpdate("DROP TABLE IF EXISTS base_table5");
+        assertUpdate("DROP TABLE base_table5");
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_level1");
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_level2");
     }
