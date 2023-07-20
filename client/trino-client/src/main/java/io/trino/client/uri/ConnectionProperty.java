@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.jdbc;
+package io.trino.client.uri;
 
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
@@ -22,15 +22,18 @@ import static java.lang.String.format;
 
 interface ConnectionProperty<V, T>
 {
-    String getKey();
+    default String getKey()
+    {
+        return getPropertyName().toString();
+    }
 
-    Optional<V> getDefault();
+    PropertyName getPropertyName();
 
     DriverPropertyInfo getDriverPropertyInfo(Properties properties);
 
     boolean isRequired(Properties properties);
 
-    boolean isAllowed(Properties properties);
+    boolean isValid(Properties properties);
 
     Optional<T> getValue(Properties properties)
             throws SQLException;
@@ -39,8 +42,11 @@ interface ConnectionProperty<V, T>
             throws SQLException
     {
         return getValue(properties).orElseThrow(() ->
-                new SQLException(format("Connection property '%s' is required", getKey())));
+                new SQLException(format("Connection property %s is required", getKey())));
     }
+
+    Optional<T> getValueOrDefault(Properties properties, Optional<T> defaultValue)
+            throws SQLException;
 
     void validate(Properties properties)
             throws SQLException;

@@ -11,14 +11,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.jdbc;
+package io.trino.tracing;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.util.List;
+import io.trino.security.AccessControl;
+import org.junit.jupiter.api.Test;
 
-public interface DnsResolver
+import static io.trino.spi.testing.InterfaceTestUtils.assertAllMethodsOverridden;
+
+public class TestTracingAccessControl
 {
-    List<InetAddress> lookup(String hostname)
-            throws UnknownHostException;
+    @Test
+    public void testEverythingImplemented()
+    {
+        assertAllMethodsOverridden(AccessControl.class, TracingAccessControl.class);
+    }
 }

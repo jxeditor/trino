@@ -11,27 +11,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.ignite;
-
-import io.trino.plugin.jdbc.BaseJdbcConfig;
-import jakarta.validation.constraints.AssertTrue;
-import org.apache.ignite.IgniteJdbcThinDriver;
+package io.trino.client.uri;
 
 import java.sql.SQLException;
 
-import static org.apache.ignite.internal.jdbc.thin.JdbcThinUtils.URL_PREFIX;
-
-public class IgniteJdbcConfig
-        extends BaseJdbcConfig
+public class RestrictedPropertyException
+        extends SQLException
 {
-    @AssertTrue(message = "JDBC URL for Ignite connector should start with " + URL_PREFIX)
-    public boolean isUrlValid()
+    private final PropertyName name;
+
+    public RestrictedPropertyException(PropertyName name, String message)
     {
-        try {
-            return new IgniteJdbcThinDriver().acceptsURL(getConnectionUrl());
-        }
-        catch (SQLException e) {
-            return false;
-        }
+        super(message);
+        this.name = name;
+    }
+
+    public PropertyName getPropertyName()
+    {
+        return this.name;
     }
 }
