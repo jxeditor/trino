@@ -27,7 +27,6 @@ import io.airlift.slice.Slice;
 import io.airlift.slice.SliceUtf8;
 import io.trino.filesystem.Location;
 import io.trino.hadoop.TextLineLengthLimitExceededException;
-import io.trino.hive.formats.compression.CompressionKind;
 import io.trino.orc.OrcWriterOptions;
 import io.trino.plugin.hive.HiveColumnHandle;
 import io.trino.plugin.hive.HivePartitionKey;
@@ -56,7 +55,6 @@ import io.trino.spi.type.VarbinaryType;
 import io.trino.spi.type.VarcharType;
 import jakarta.annotation.Nullable;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat;
 import org.apache.hadoop.hive.serde2.AbstractSerDe;
@@ -66,8 +64,6 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
-import org.apache.hadoop.io.compress.CompressionCodec;
-import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.apache.hadoop.mapred.FileSplit;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.JobConf;
@@ -87,8 +83,6 @@ import org.joda.time.format.DateTimePrinter;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.HexFormat;
 import java.util.List;
@@ -139,13 +133,16 @@ import static io.trino.plugin.hive.metastore.SortingColumn.Order.ASCENDING;
 import static io.trino.plugin.hive.metastore.SortingColumn.Order.DESCENDING;
 import static io.trino.plugin.hive.util.HiveBucketing.isSupportedBucketing;
 import static io.trino.plugin.hive.util.HiveClassNames.AVRO_SERDE_CLASS;
+import static io.trino.plugin.hive.util.HiveClassNames.HUDI_INPUT_FORMAT;
+import static io.trino.plugin.hive.util.HiveClassNames.HUDI_PARQUET_INPUT_FORMAT;
+import static io.trino.plugin.hive.util.HiveClassNames.HUDI_PARQUET_REALTIME_INPUT_FORMAT;
+import static io.trino.plugin.hive.util.HiveClassNames.HUDI_REALTIME_INPUT_FORMAT;
 import static io.trino.plugin.hive.util.HiveClassNames.LAZY_SIMPLE_SERDE_CLASS;
 import static io.trino.plugin.hive.util.HiveClassNames.SYMLINK_TEXT_INPUT_FORMAT_CLASS;
 import static io.trino.plugin.hive.util.SerdeConstants.COLLECTION_DELIM;
 import static io.trino.plugin.hive.util.SerdeConstants.LIST_COLUMNS;
 import static io.trino.plugin.hive.util.SerdeConstants.LIST_COLUMN_TYPES;
 import static io.trino.plugin.hive.util.SerdeConstants.SERIALIZATION_LIB;
-import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.type.BigintType.BIGINT;
@@ -185,12 +182,6 @@ public final class HiveUtil
 
     public static final String ICEBERG_TABLE_TYPE_NAME = "table_type";
     public static final String ICEBERG_TABLE_TYPE_VALUE = "iceberg";
-
-    // Input formats class names are listed below as String due to hudi-hadoop-mr dependency is not in the context of trino-hive plugin
-    public static final String HUDI_PARQUET_INPUT_FORMAT = "org.apache.hudi.hadoop.HoodieParquetInputFormat";
-    private static final String HUDI_PARQUET_REALTIME_INPUT_FORMAT = "org.apache.hudi.hadoop.realtime.HoodieParquetRealtimeInputFormat";
-    private static final String HUDI_INPUT_FORMAT = "com.uber.hoodie.hadoop.HoodieInputFormat";
-    private static final String HUDI_REALTIME_INPUT_FORMAT = "com.uber.hoodie.hadoop.realtime.HoodieRealtimeInputFormat";
 
     private static final HexFormat HEX_UPPER_FORMAT = HexFormat.of().withUpperCase();
 
@@ -258,7 +249,7 @@ public final class HiveUtil
         configuration = copy(configuration);
         setReadColumns(configuration, readHiveColumnIndexes);
 
-        InputFormat<?, ?> inputFormat = getInputFormat(configuration, schema, true);
+        InputFormat<?, ?> inputFormat = getInputFormat(configuration, schema);
         JobConf jobConf = toJobConf(configuration);
         FileSplit fileSplit = new FileSplit(path, start, length, (String[]) null);
 
@@ -296,7 +287,7 @@ public final class HiveUtil
                     path,
                     start,
                     length,
-                    getInputFormatName(schema),
+                    getInputFormatName(schema).orElse(null),
                     firstNonNull(e.getMessage(), e.getClass().getName())),
                     e);
         }
@@ -335,33 +326,16 @@ public final class HiveUtil
         jobConf.set("io.compression.codecs", String.join(",", codecs));
     }
 
-    public static Optional<CompressionCodec> getCompressionCodec(TextInputFormat inputFormat, String file)
+    public static InputFormat<?, ?> getInputFormat(Configuration configuration, Properties schema)
     {
-        CompressionCodecFactory compressionCodecFactory;
-
-        try {
-            compressionCodecFactory = (CompressionCodecFactory) COMPRESSION_CODECS_FIELD.get(inputFormat);
-        }
-        catch (IllegalAccessException e) {
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to find compressionCodec for inputFormat: " + inputFormat.getClass().getName(), e);
-        }
-
-        if (compressionCodecFactory == null) {
-            return Optional.empty();
-        }
-
-        return Optional.ofNullable(compressionCodecFactory.getCodec(new Path(file)));
-    }
-
-    public static InputFormat<?, ?> getInputFormat(Configuration configuration, Properties schema, boolean symlinkTarget)
-    {
-        String inputFormatName = getInputFormatName(schema);
+        String inputFormatName = getInputFormatName(schema).orElseThrow(() ->
+                new TrinoException(HIVE_INVALID_METADATA, "Table or partition is missing Hive input format property: " + FILE_INPUT_FORMAT));
         try {
             JobConf jobConf = toJobConf(configuration);
             configureCompressionCodecs(jobConf);
 
             Class<? extends InputFormat<?, ?>> inputFormatClass = getInputFormatClass(jobConf, inputFormatName);
-            if (symlinkTarget && inputFormatClass.getName().equals(SYMLINK_TEXT_INPUT_FORMAT_CLASS)) {
+            if (inputFormatClass.getName().equals(SYMLINK_TEXT_INPUT_FORMAT_CLASS)) {
                 String serde = getDeserializerClassName(schema);
                 // LazySimpleSerDe is used by TEXTFILE and SEQUENCEFILE. Default to TEXTFILE
                 // per Hive spec (https://hive.apache.org/javadocs/r2.1.1/api/org/apache/hadoop/hive/ql/io/SymlinkTextInputFormat.html)
@@ -399,11 +373,9 @@ public final class HiveUtil
         return (Class<? extends InputFormat<?, ?>>) clazz.asSubclass(InputFormat.class);
     }
 
-    public static String getInputFormatName(Properties schema)
+    public static Optional<String> getInputFormatName(Properties schema)
     {
-        String name = schema.getProperty(FILE_INPUT_FORMAT);
-        checkCondition(name != null, HIVE_INVALID_METADATA, "Table or partition is missing Hive input format property: %s", FILE_INPUT_FORMAT);
-        return name;
+        return Optional.ofNullable(schema.getProperty(FILE_INPUT_FORMAT));
     }
 
     private static long parseHiveDate(String value)
@@ -418,43 +390,6 @@ public final class HiveUtil
     public static long parseHiveTimestamp(String value)
     {
         return HIVE_TIMESTAMP_PARSER.parseMillis(value) * MICROSECONDS_PER_MILLISECOND;
-    }
-
-    public static boolean isSplittable(InputFormat<?, ?> inputFormat, FileSystem fileSystem, Path path)
-    {
-        // TODO move this to HiveStorageFormat when Hadoop library is removed
-        switch (inputFormat.getClass().getSimpleName()) {
-            case "OrcInputFormat", "MapredParquetInputFormat", "AvroContainerInputFormat", "RCFileInputFormat", "SequenceFileInputFormat" -> {
-                // These formats have splitting built into the format
-                return true;
-            }
-            case "TextInputFormat" -> {
-                // Only uncompressed text input format is splittable
-                return CompressionKind.forFile(path.getName()).isEmpty();
-            }
-        }
-
-        // use reflection to get isSplittable method on FileInputFormat
-        Method method = null;
-        for (Class<?> clazz = inputFormat.getClass(); clazz != null; clazz = clazz.getSuperclass()) {
-            try {
-                method = clazz.getDeclaredMethod("isSplitable", FileSystem.class, Path.class);
-                break;
-            }
-            catch (NoSuchMethodException ignored) {
-            }
-        }
-
-        if (method == null) {
-            return false;
-        }
-        try {
-            method.setAccessible(true);
-            return (boolean) method.invoke(inputFormat, fileSystem, path);
-        }
-        catch (InvocationTargetException | IllegalAccessException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     public static StructObjectInspector getTableObjectInspector(Deserializer deserializer)
