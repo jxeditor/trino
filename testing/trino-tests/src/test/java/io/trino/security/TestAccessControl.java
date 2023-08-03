@@ -134,7 +134,8 @@ public class TestAccessControl
                             .in(Scopes.SINGLETON);
                 })
                 .setNodeCount(1)
-                .setSystemAccessControl(new ForwardingSystemAccessControl() {
+                .setSystemAccessControl(new ForwardingSystemAccessControl()
+                {
                     @Override
                     protected SystemAccessControl delegate()
                     {
@@ -177,7 +178,8 @@ public class TestAccessControl
                             new SchemaTableName("default", "test_view_definer"), definitionRunAsDefiner,
                             new SchemaTableName("default", "test_view_invoker"), definitionRunAsInvoker);
                 })
-                .withGetMaterializedViews(new BiFunction<ConnectorSession, SchemaTablePrefix, Map<SchemaTableName, ConnectorMaterializedViewDefinition>>() {
+                .withGetMaterializedViews(new BiFunction<ConnectorSession, SchemaTablePrefix, Map<SchemaTableName, ConnectorMaterializedViewDefinition>>()
+                {
                     @Override
                     public Map<SchemaTableName, ConnectorMaterializedViewDefinition> apply(ConnectorSession session, SchemaTablePrefix schemaTablePrefix)
                     {
@@ -558,6 +560,18 @@ public class TestAccessControl
         assertAccessDenied("ANALYZE nation", "Cannot ANALYZE \\(missing insert privilege\\) table .*.nation.*", privilege("nation", INSERT_TABLE));
         assertAccessDenied("ANALYZE nation", "Cannot select from columns \\[.*] in table or view .*.nation", privilege("nation", SELECT_COLUMN));
         assertAccessDenied("ANALYZE nation", "Cannot select from columns \\[.*nationkey.*] in table or view .*.nation", privilege("nation.nationkey", SELECT_COLUMN));
+    }
+
+    @Test
+    public void testMetadataFilterColumns()
+    {
+        getQueryRunner().getAccessControl().deny(privilege("nation.regionkey", SELECT_COLUMN));
+
+        assertThat(query("SELECT column_name FROM information_schema.columns WHERE table_catalog = CURRENT_CATALOG AND table_schema = CURRENT_SCHEMA and table_name = 'nation'"))
+                .matches("VALUES VARCHAR 'nationkey', 'name', 'comment'");
+
+        assertThat(query("SELECT column_name FROM system.jdbc.columns WHERE table_cat = CURRENT_CATALOG AND table_schem = CURRENT_SCHEMA and table_name = 'nation'"))
+                .matches("VALUES VARCHAR 'nationkey', 'name', 'comment'");
     }
 
     @Test
