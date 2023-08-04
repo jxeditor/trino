@@ -180,6 +180,7 @@
         <dep.okio.version>3.3.0</dep.okio.version>
         <dep.flyway.version>9.21.0</dep.flyway.version>
         <dep.parquet.version>1.13.1</dep.parquet.version>
+        <dep.jmh.version>1.37</dep.jmh.version>
 
         <dep.docker.images.version>81</dep.docker.images.version>
 
@@ -606,12 +607,6 @@
                 <groupId>io.airlift</groupId>
                 <artifactId>joni</artifactId>
                 <version>2.1.5.3</version>
-            </dependency>
-
-            <dependency>
-                <groupId>io.airlift</groupId>
-                <artifactId>parameternames</artifactId>
-                <version>1.4</version>
             </dependency>
 
             <dependency>
