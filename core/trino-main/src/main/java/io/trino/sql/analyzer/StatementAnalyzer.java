@@ -456,20 +456,25 @@ class StatementAnalyzer
         this.correlationSupport = requireNonNull(correlationSupport, "correlationSupport is null");
     }
 
-    public Scope analyze(Node node, Scope outerQueryScope)
+    public Scope analyze(Node node)
     {
-        return analyze(node, Optional.of(outerQueryScope));
+        return analyze(node, Optional.empty(), true);
     }
 
-    public Scope analyze(Node node, Optional<Scope> outerQueryScope)
+    public Scope analyze(Node node, Scope outerQueryScope)
     {
-        return new Visitor(outerQueryScope, warningCollector, Optional.empty())
+        return analyze(node, Optional.of(outerQueryScope), false);
+    }
+
+    private Scope analyze(Node node, Optional<Scope> outerQueryScope, boolean isTopLevel)
+    {
+        return new Visitor(outerQueryScope, warningCollector, Optional.empty(), isTopLevel)
                 .process(node, Optional.empty());
     }
 
     public Scope analyzeForUpdate(Relation relation, Optional<Scope> outerQueryScope, UpdateKind updateKind)
     {
-        return new Visitor(outerQueryScope, warningCollector, Optional.of(updateKind))
+        return new Visitor(outerQueryScope, warningCollector, Optional.of(updateKind), true)
                 .process(relation, Optional.empty());
     }
 
@@ -488,15 +493,17 @@ class StatementAnalyzer
     private final class Visitor
             extends AstVisitor<Scope, Optional<Scope>>
     {
+        private final boolean isTopLevel;
         private final Optional<Scope> outerQueryScope;
         private final WarningCollector warningCollector;
         private final Optional<UpdateKind> updateKind;
 
-        private Visitor(Optional<Scope> outerQueryScope, WarningCollector warningCollector, Optional<UpdateKind> updateKind)
+        private Visitor(Optional<Scope> outerQueryScope, WarningCollector warningCollector, Optional<UpdateKind> updateKind, boolean isTopLevel)
         {
             this.outerQueryScope = requireNonNull(outerQueryScope, "outerQueryScope is null");
             this.warningCollector = requireNonNull(warningCollector, "warningCollector is null");
             this.updateKind = requireNonNull(updateKind, "updateKind is null");
+            this.isTopLevel = isTopLevel;
         }
 
         @Override
@@ -539,7 +546,7 @@ class StatementAnalyzer
             }
 
             // analyze the query that creates the data
-            Scope queryScope = analyze(insert.getQuery(), createScope(scope));
+            Scope queryScope = analyze(insert.getQuery());
 
             // verify the insert destination columns match the query
             RedirectionAwareTableHandle redirection = metadata.getRedirectionAwareTableHandle(session, targetTable);
@@ -921,7 +928,7 @@ class StatementAnalyzer
             accessControl.checkCanCreateTable(session.toSecurityContext(), targetTable, explicitlySetProperties);
 
             // analyze the query that creates the table
-            Scope queryScope = analyze(node.getQuery(), createScope(scope));
+            Scope queryScope = analyze(node.getQuery());
 
             ImmutableList.Builder<ColumnMetadata> columns = ImmutableList.builder();
 
@@ -997,7 +1004,7 @@ class StatementAnalyzer
             // analyze the query that creates the view
             StatementAnalyzer analyzer = statementAnalyzerFactory.createStatementAnalyzer(analysis, session, warningCollector, CorrelationSupport.ALLOWED);
 
-            Scope queryScope = analyzer.analyze(node.getQuery(), scope);
+            Scope queryScope = analyzer.analyze(node.getQuery());
 
             accessControl.checkCanCreateView(session.toSecurityContext(), viewName);
 
@@ -1212,7 +1219,7 @@ class StatementAnalyzer
                 }
             }
 
-            Scope tableScope = analyze(table, scope);
+            Scope tableScope = analyze(table);
 
             String catalogName = tableName.getCatalogName();
             CatalogHandle catalogHandle = getRequiredCatalogHandle(metadata, session, node, catalogName);
@@ -1396,7 +1403,7 @@ class StatementAnalyzer
             // analyze the query that creates the view
             StatementAnalyzer analyzer = statementAnalyzerFactory.createStatementAnalyzer(analysis, session, warningCollector, CorrelationSupport.ALLOWED);
 
-            Scope queryScope = analyzer.analyze(node.getQuery(), scope);
+            Scope queryScope = analyzer.analyze(node.getQuery());
 
             validateColumns(node, queryScope.getRelationType());
 
@@ -1504,7 +1511,7 @@ class StatementAnalyzer
             if (node.getOrderBy().isPresent()) {
                 orderByExpressions = analyzeOrderBy(node, getSortItemsFromOrderBy(node.getOrderBy()), queryBodyScope);
 
-                if (queryBodyScope.getOuterQueryParent().isPresent() && node.getLimit().isEmpty() && node.getOffset().isEmpty()) {
+                if ((queryBodyScope.getOuterQueryParent().isPresent() || !isTopLevel) && node.getLimit().isEmpty() && node.getOffset().isEmpty()) {
                     // not the root scope and ORDER BY is ineffective
                     analysis.markRedundantOrderBy(node.getOrderBy().get());
                     warningCollector.add(new TrinoWarning(REDUNDANT_ORDER_BY, "ORDER BY in subquery may have no effect"));
@@ -1590,7 +1597,7 @@ class StatementAnalyzer
         protected Scope visitLateral(Lateral node, Optional<Scope> scope)
         {
             StatementAnalyzer analyzer = statementAnalyzerFactory.createStatementAnalyzer(analysis, session, warningCollector, CorrelationSupport.ALLOWED);
-            Scope queryScope = analyzer.analyze(node.getQuery(), scope);
+            Scope queryScope = analyzer.analyze(node.getQuery(), scope.orElseThrow());
             return createAndAssignScope(node, scope, queryScope.getRelationType());
         }
 
@@ -2969,7 +2976,7 @@ class StatementAnalyzer
         protected Scope visitTableSubquery(TableSubquery node, Optional<Scope> scope)
         {
             StatementAnalyzer analyzer = statementAnalyzerFactory.createStatementAnalyzer(analysis, session, warningCollector, CorrelationSupport.ALLOWED);
-            Scope queryScope = analyzer.analyze(node.getQuery(), scope);
+            Scope queryScope = analyzer.analyze(node.getQuery(), scope.orElseThrow());
             return createAndAssignScope(node, scope, queryScope.getRelationType());
         }
 
@@ -3000,7 +3007,7 @@ class StatementAnalyzer
 
                 orderByExpressions = analyzeOrderBy(node, orderBy.getSortItems(), orderByScope.get());
 
-                if (sourceScope.getOuterQueryParent().isPresent() && node.getLimit().isEmpty() && node.getOffset().isEmpty()) {
+                if ((sourceScope.getOuterQueryParent().isPresent() || !isTopLevel) && node.getLimit().isEmpty() && node.getOffset().isEmpty()) {
                     // not the root scope and ORDER BY is ineffective
                     analysis.markRedundantOrderBy(orderBy);
                     warningCollector.add(new TrinoWarning(REDUNDANT_ORDER_BY, "ORDER BY in subquery may have no effect"));
@@ -3412,9 +3419,10 @@ class StatementAnalyzer
                 throw semanticException(NOT_SUPPORTED, merge, "Cannot merge into a table with check constraints");
             }
 
-            Scope targetTableScope = analyzer.analyzeForUpdate(relation, scope, UpdateKind.MERGE);
-            Scope sourceTableScope = process(merge.getSource(), scope);
-            Scope joinScope = createAndAssignScope(merge, scope, targetTableScope.getRelationType().joinWith(sourceTableScope.getRelationType()));
+            Scope mergeScope = createScope(scope);
+            Scope targetTableScope = analyzer.analyzeForUpdate(relation, Optional.of(mergeScope), UpdateKind.MERGE);
+            Scope sourceTableScope = process(merge.getSource(), mergeScope);
+            Scope joinScope = createAndAssignScope(merge, Optional.of(mergeScope), targetTableScope.getRelationType().joinWith(sourceTableScope.getRelationType()));
 
             for (ColumnSchema column : dataColumnSchemas) {
                 if (accessControl.getColumnMask(session.toSecurityContext(), tableName, column.getName(), column.getType()).isPresent()) {
@@ -4581,7 +4589,7 @@ class StatementAnalyzer
                 StatementAnalyzer analyzer = statementAnalyzerFactory
                         .withSpecializedAccessControl(viewAccessControl)
                         .createStatementAnalyzer(analysis, viewSession, warningCollector, CorrelationSupport.ALLOWED);
-                Scope queryScope = analyzer.analyze(query, Scope.create());
+                Scope queryScope = analyzer.analyze(query);
                 return queryScope.getRelationType().withAlias(name.getObjectName(), null);
             }
             catch (RuntimeException e) {
@@ -4912,7 +4920,7 @@ class StatementAnalyzer
 
                 if (!isRecursive) {
                     Query query = withQuery.getQuery();
-                    process(query, withScopeBuilder.build());
+                    analyze(query, withScopeBuilder.build());
 
                     // check if all or none of the columns are explicitly alias
                     if (withQuery.getColumnNames().isPresent()) {
