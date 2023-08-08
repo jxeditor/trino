@@ -1139,7 +1139,7 @@ public class TestHiveGlueMetastore
                                 OptionalLong.of(-1000 - i),
                                 OptionalLong.of(1000 + i),
                                 OptionalLong.of(i),
-                                OptionalLong.of(2 * i)));
+                                OptionalLong.of(2L * i)));
             }
 
             PartitionStatistics partitionStatistics = PartitionStatistics.builder()
@@ -1340,6 +1340,15 @@ public class TestHiveGlueMetastore
         finally {
             dropTable(tableName);
         }
+    }
+
+    @Override
+    public void testPartitionColumnProperties()
+    {
+        // Glue currently does not support parameters on the partitioning columns
+        assertThatThrownBy(super::testPartitionColumnProperties)
+                .isInstanceOf(TrinoException.class)
+                .hasMessageStartingWith("Parameters not supported for partition columns (Service: AWSGlue; Status Code: 400; Error Code: InvalidInputException;");
     }
 
     @Test

@@ -44,12 +44,17 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.UnaryOperator;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
@@ -58,7 +63,10 @@ import static io.trino.spi.expression.StandardFunctions.AND_FUNCTION_NAME;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
 import static java.util.Locale.ENGLISH;
+import static java.util.function.Function.identity;
+import static java.util.stream.Collectors.collectingAndThen;
 import static java.util.stream.Collectors.toUnmodifiableList;
+import static java.util.stream.Collectors.toUnmodifiableSet;
 
 public interface ConnectorMetadata
 {
@@ -133,8 +141,7 @@ public interface ConnectorMetadata
     /**
      * Create initial handle for execution of table procedure. The handle will be used through planning process. It will be converted to final
      * handle used for execution via @{link {@link ConnectorMetadata#beginTableExecute}
-     *
-     * <p/>
+     * <p>
      * If connector does not support execution with retries, the method should throw:
      * <pre>
      *     new TrinoException(NOT_SUPPORTED, "This connector does not support query retries")
@@ -304,6 +311,64 @@ public interface ConnectorMetadata
     {
         return listTableColumns(session, prefix).entrySet().stream()
                 .map(entry -> TableColumnsMetadata.forTable(entry.getKey(), entry.getValue()))
+                .iterator();
+    }
+
+    /**
+     * Gets comments for all relations (tables, views, materialized views), possibly filtered by schemaName.
+     * (e.g. for all relations that would be returned by {@link #listTables(ConnectorSession, Optional)}).
+     * Redirected table names are included, but the comment for them is not.
+     */
+    @Experimental(eta = "2024-01-01")
+    default Iterator<RelationCommentMetadata> streamRelationComments(ConnectorSession session, Optional<String> schemaName, UnaryOperator<Set<SchemaTableName>> relationFilter)
+    {
+        List<RelationCommentMetadata> materializedViews = getMaterializedViews(session, schemaName).entrySet().stream()
+                .map(entry -> RelationCommentMetadata.forTable(entry.getKey(), entry.getValue().getComment()))
+                .toList();
+        Set<SchemaTableName> mvNames = materializedViews.stream()
+                .map(RelationCommentMetadata::name)
+                .collect(toUnmodifiableSet());
+
+        List<RelationCommentMetadata> views = getViews(session, schemaName).entrySet().stream()
+                .map(entry -> RelationCommentMetadata.forTable(entry.getKey(), entry.getValue().getComment()))
+                .filter(commentMetadata -> !mvNames.contains(commentMetadata.name()))
+                .toList();
+        Set<SchemaTableName> mvAndViewNames = Stream.concat(mvNames.stream(), views.stream().map(RelationCommentMetadata::name))
+                .collect(toUnmodifiableSet());
+
+        List<RelationCommentMetadata> tables = listTables(session, schemaName).stream()
+                .filter(tableName -> !mvAndViewNames.contains(tableName))
+                .collect(collectingAndThen(toUnmodifiableSet(), relationFilter)).stream()
+                .map(tableName -> {
+                    if (redirectTable(session, tableName).isPresent()) {
+                        return RelationCommentMetadata.forRedirectedTable(tableName);
+                    }
+                    try {
+                        ConnectorTableHandle tableHandle = getTableHandle(session, tableName, Optional.empty(), Optional.empty());
+                        if (tableHandle == null) {
+                            // disappeared during listing
+                            return null;
+                        }
+                        return RelationCommentMetadata.forTable(tableName, getTableMetadata(session, tableHandle).getComment());
+                    }
+                    catch (RuntimeException e) {
+                        // getTableHandle or getTableMetadata failed call may fail if table disappeared during listing or is unsupported.
+                        Helper.juliLogger.log(Level.WARNING, () -> "Failed to get metadata for table: " + tableName);
+                        // Since the getTableHandle did not return null (i.e. succeeded or failed), we assume the table would be returned by listTables
+                        return RelationCommentMetadata.forTable(tableName, Optional.empty());
+                    }
+                })
+                .filter(Objects::nonNull)
+                .toList();
+
+        Set<SchemaTableName> availableMvAndViews = relationFilter.apply(mvAndViewNames);
+        return Stream.of(
+                        materializedViews.stream()
+                                .filter(commentMetadata -> availableMvAndViews.contains(commentMetadata.name())),
+                        views.stream()
+                                .filter(commentMetadata -> availableMvAndViews.contains(commentMetadata.name())),
+                        tables.stream())
+                .flatMap(identity())
                 .iterator();
     }
 
@@ -596,8 +661,7 @@ public interface ConnectorMetadata
 
     /**
      * Begin the atomic creation of a table with data.
-     *
-     * <p/>
+     * <p>
      * If connector does not support execution with retries, the method should throw:
      * <pre>
      *     new TrinoException(NOT_SUPPORTED, "This connector does not support query retries")
@@ -630,8 +694,7 @@ public interface ConnectorMetadata
 
     /**
      * Begin insert query.
-     *
-     * <p/>
+     * <p>
      * If connector does not support execution with retries, the method should throw:
      * <pre>
      *     new TrinoException(NOT_SUPPORTED, "This connector does not support query retries")
@@ -677,8 +740,7 @@ public interface ConnectorMetadata
 
     /**
      * Begin materialized view query.
-     *
-     * <p/>
+     * <p>
      * If connector does not support execution with retries, the method should throw:
      * <pre>
      *     new TrinoException(NOT_SUPPORTED, "This connector does not support query retries")
@@ -1510,5 +1572,12 @@ public interface ConnectorMetadata
     default OptionalInt getMaxWriterTasks(ConnectorSession session)
     {
         return OptionalInt.empty();
+    }
+
+    final class Helper
+    {
+        private Helper() {}
+
+        static final Logger juliLogger = Logger.getLogger(ConnectorMetadata.class.getName());
     }
 }

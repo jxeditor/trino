@@ -248,7 +248,7 @@
             <dependency>
                 <groupId>org.jdbi</groupId>
                 <artifactId>jdbi3-bom</artifactId>
-                <version>3.39.1</version>
+                <version>3.40.0</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -1863,7 +1863,7 @@
             <dependency>
                 <groupId>org.roaringbitmap</groupId>
                 <artifactId>RoaringBitmap</artifactId>
-                <version>0.9.46</version>
+                <version>0.9.47</version>
             </dependency>
 
             <dependency>
@@ -2468,6 +2468,7 @@
                                     <!-- Sometimes our javadoc contains just a @see directive -->
                                     -Xep:MissingSummary:OFF \
                                     -Xep:MutablePublicArray:ERROR \
+                                    -Xep:NarrowCalculation:ERROR \
                                     -Xep:NarrowingCompoundAssignment:ERROR \
                                     -Xep:NullOptional:ERROR \
                                     -Xep:NullableOptional:ERROR \
