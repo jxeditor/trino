@@ -11,11 +11,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.decoder;
+package io.trino.plugin.kafka.encoder;
 
-import io.trino.spi.connector.ConnectorSession;
-
-public interface RowDecoderFactory
+public enum KafkaFieldType
 {
-    RowDecoder create(ConnectorSession session, RowDecoderSpec rowDecoderSpec);
+    KEY,
+    MESSAGE,
 }

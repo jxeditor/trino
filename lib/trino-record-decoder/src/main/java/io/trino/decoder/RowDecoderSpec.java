@@ -11,15 +11,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.kafka.schema;
+package io.trino.decoder;
 
-import io.trino.plugin.kafka.KafkaTableHandle;
+import java.util.Map;
+import java.util.Set;
 
-import java.util.Optional;
+import static java.util.Objects.requireNonNull;
 
-public interface ContentSchemaReader
+public record RowDecoderSpec(String dataFormat, Map<String, String> decoderParams, Set<DecoderColumnHandle> columns)
 {
-    Optional<String> readKeyContentSchema(KafkaTableHandle tableHandle);
-
-    Optional<String> readValueContentSchema(KafkaTableHandle tableHandle);
+    public RowDecoderSpec
+    {
+        requireNonNull(dataFormat, "dataFormat is null");
+        requireNonNull(decoderParams, "decoderParams is null");
+        requireNonNull(columns, "columns is null");
+    }
 }
