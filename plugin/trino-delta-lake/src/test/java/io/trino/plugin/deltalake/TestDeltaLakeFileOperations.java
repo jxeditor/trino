@@ -271,9 +271,10 @@ public class TestDeltaLakeFileOperations
     {
         return trackingFileSystemFactory.getOperationCounts()
                 .entrySet().stream()
+                .filter(entry -> !entry.getKey().location().path().endsWith(".trinoSchema"))
                 .flatMap(entry -> nCopies(entry.getValue(), FileOperation.create(
-                        entry.getKey().getLocation().path(),
-                        entry.getKey().getOperationType())).stream())
+                        entry.getKey().location().path(),
+                        entry.getKey().operationType())).stream())
                 .collect(toCollection(HashMultiset::create));
     }
 
