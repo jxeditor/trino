@@ -11,9 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.execution.executor;
+package io.trino.execution.executor.scheduler;
 
-public interface TaskHandle
+enum State
 {
-    boolean isDestroyed();
+    BLOCKED, // all tasks are blocked
+    RUNNING, // all tasks are dequeued and running
+    RUNNABLE // some tasks are enqueued and ready to run
 }

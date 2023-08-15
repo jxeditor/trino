@@ -13,16 +13,11 @@
  */
 package io.trino.execution;
 
-import com.google.common.base.Ticker;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
-import com.google.errorprone.annotations.concurrent.GuardedBy;
 import io.airlift.node.NodeInfo;
 import io.airlift.stats.TestingGcMonitor;
-import io.airlift.testing.TestingTicker;
 import io.airlift.units.DataSize;
 import io.airlift.units.DataSize.Unit;
 import io.airlift.units.Duration;
@@ -38,7 +33,6 @@ import io.trino.execution.buffer.OutputBuffers;
 import io.trino.execution.buffer.PipelinedOutputBuffers;
 import io.trino.execution.buffer.PipelinedOutputBuffers.OutputBufferId;
 import io.trino.execution.executor.TaskExecutor;
-import io.trino.execution.executor.TaskHandle;
 import io.trino.memory.LocalMemoryManager;
 import io.trino.memory.NodeMemoryConfig;
 import io.trino.memory.QueryContext;
@@ -53,21 +47,21 @@ import io.trino.spi.exchange.ExchangeId;
 import io.trino.spiller.LocalSpillManager;
 import io.trino.spiller.NodeSpillConfig;
 import io.trino.version.EmbedVersion;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.Timeout;
 
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Predicate;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.google.common.util.concurrent.Futures.immediateVoidFuture;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.airlift.tracing.Tracing.noopTracer;
 import static io.trino.SessionTestUtils.TEST_SESSION;
@@ -81,6 +75,7 @@ import static io.trino.execution.buffer.PagesSerdeUtil.getSerializedPagePosition
 import static io.trino.execution.buffer.PipelinedOutputBuffers.BufferType.PARTITIONED;
 import static io.trino.testing.TestingSession.testSessionBuilder;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
@@ -88,27 +83,26 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-public class TestSqlTaskManager
+@TestInstance(PER_CLASS)
+public abstract class BaseTestSqlTaskManager
 {
-    private static final TaskId TASK_ID = new TaskId(new StageId("query", 0), 1, 0);
     public static final OutputBufferId OUT = new OutputBufferId(0);
+    private final AtomicInteger sequence = new AtomicInteger();
 
     private TaskExecutor taskExecutor;
     private TaskManagementExecutor taskManagementExecutor;
-    private LocalMemoryManager localMemoryManager;
-    private LocalSpillManager localSpillManager;
 
-    @BeforeClass
+    protected abstract TaskExecutor createTaskExecutor();
+
+    @BeforeAll
     public void setUp()
     {
-        localMemoryManager = new LocalMemoryManager(new NodeMemoryConfig());
-        localSpillManager = new LocalSpillManager(new NodeSpillConfig());
-        taskExecutor = new TaskExecutor(8, 16, 3, 4, Ticker.systemTicker());
+        taskExecutor = createTaskExecutor();
         taskExecutor.start();
         taskManagementExecutor = new TaskManagementExecutor();
     }
 
-    @AfterClass(alwaysRun = true)
+    @AfterAll
     public void tearDown()
     {
         taskExecutor.stop();
@@ -121,7 +115,7 @@ public class TestSqlTaskManager
     public void testEmptyQuery()
     {
         try (SqlTaskManager sqlTaskManager = createSqlTaskManager(new TaskManagerConfig())) {
-            TaskId taskId = TASK_ID;
+            TaskId taskId = newTaskId();
             TaskInfo taskInfo = createTask(sqlTaskManager, taskId, PipelinedOutputBuffers.createInitial(PARTITIONED).withNoMoreBufferIds());
             assertEquals(taskInfo.getTaskStatus().getState(), TaskState.RUNNING);
 
@@ -136,12 +130,13 @@ public class TestSqlTaskManager
         }
     }
 
-    @Test(timeOut = 30_000)
+    @Test
+    @Timeout(30)
     public void testSimpleQuery()
             throws Exception
     {
         try (SqlTaskManager sqlTaskManager = createSqlTaskManager(new TaskManagerConfig())) {
-            TaskId taskId = TASK_ID;
+            TaskId taskId = newTaskId();
             createTask(sqlTaskManager, taskId, ImmutableSet.of(SPLIT), PipelinedOutputBuffers.createInitial(PARTITIONED).withBuffer(OUT, 0).withNoMoreBufferIds());
 
             TaskInfo taskInfo = sqlTaskManager.getTaskInfo(taskId, TaskStatus.STARTING_VERSION).get();
@@ -174,7 +169,7 @@ public class TestSqlTaskManager
             throws InterruptedException, ExecutionException, TimeoutException
     {
         try (SqlTaskManager sqlTaskManager = createSqlTaskManager(new TaskManagerConfig())) {
-            TaskId taskId = TASK_ID;
+            TaskId taskId = newTaskId();
             TaskInfo taskInfo = createTask(sqlTaskManager, taskId, PipelinedOutputBuffers.createInitial(PARTITIONED).withBuffer(OUT, 0).withNoMoreBufferIds());
             assertEquals(taskInfo.getTaskStatus().getState(), TaskState.RUNNING);
             assertNull(taskInfo.getStats().getEndTime());
@@ -198,7 +193,7 @@ public class TestSqlTaskManager
             throws InterruptedException, ExecutionException, TimeoutException
     {
         try (SqlTaskManager sqlTaskManager = createSqlTaskManager(new TaskManagerConfig())) {
-            TaskId taskId = TASK_ID;
+            TaskId taskId = newTaskId();
             TaskInfo taskInfo = createTask(sqlTaskManager, taskId, PipelinedOutputBuffers.createInitial(PARTITIONED).withBuffer(OUT, 0).withNoMoreBufferIds());
             assertEquals(taskInfo.getTaskStatus().getState(), TaskState.RUNNING);
             assertNull(taskInfo.getStats().getEndTime());
@@ -217,12 +212,13 @@ public class TestSqlTaskManager
         }
     }
 
-    @Test(timeOut = 30_000)
+    @Test
+    @Timeout(30)
     public void testAbortResults()
             throws Exception
     {
         try (SqlTaskManager sqlTaskManager = createSqlTaskManager(new TaskManagerConfig())) {
-            TaskId taskId = TASK_ID;
+            TaskId taskId = newTaskId();
             createTask(sqlTaskManager, taskId, ImmutableSet.of(SPLIT), PipelinedOutputBuffers.createInitial(PARTITIONED).withBuffer(OUT, 0).withNoMoreBufferIds());
 
             TaskInfo taskInfo = sqlTaskManager.getTaskInfo(taskId, TaskStatus.STARTING_VERSION).get();
@@ -243,7 +239,7 @@ public class TestSqlTaskManager
             throws InterruptedException, ExecutionException, TimeoutException
     {
         try (SqlTaskManager sqlTaskManager = createSqlTaskManager(new TaskManagerConfig().setInfoMaxAge(new Duration(5, TimeUnit.MILLISECONDS)))) {
-            TaskId taskId = TASK_ID;
+            TaskId taskId = newTaskId();
 
             TaskInfo taskInfo = createTask(sqlTaskManager, taskId, PipelinedOutputBuffers.createInitial(PARTITIONED).withBuffer(OUT, 0).withNoMoreBufferIds());
             assertEquals(taskInfo.getTaskStatus().getState(), TaskState.RUNNING);
@@ -260,58 +256,6 @@ public class TestSqlTaskManager
             for (TaskInfo info : sqlTaskManager.getAllTaskInfo()) {
                 assertNotEquals(info.getTaskStatus().getTaskId(), taskId);
             }
-        }
-    }
-
-    @Test
-    public void testFailStuckSplitTasks()
-            throws InterruptedException, ExecutionException, TimeoutException
-    {
-        TestingTicker ticker = new TestingTicker();
-
-        TaskHandle taskHandle = taskExecutor.addTask(
-                TASK_ID,
-                () -> 1.0,
-                1,
-                new Duration(1, SECONDS),
-                OptionalInt.of(1));
-        MockSplitRunner mockSplitRunner = new MockSplitRunner();
-
-        TaskExecutor taskExecutor = new TaskExecutor(4, 8, 3, 4, ticker);
-        // Here we explicitly enqueue an indefinite running split runner
-        taskExecutor.enqueueSplits(taskHandle, false, ImmutableList.of(mockSplitRunner));
-
-        taskExecutor.start();
-        try {
-            // wait for the task executor to start processing the split
-            mockSplitRunner.waitForStart();
-
-            TaskManagerConfig taskManagerConfig = new TaskManagerConfig()
-                    .setInterruptStuckSplitTasksEnabled(true)
-                    .setInterruptStuckSplitTasksDetectionInterval(new Duration(10, SECONDS))
-                    .setInterruptStuckSplitTasksWarningThreshold(new Duration(10, SECONDS))
-                    .setInterruptStuckSplitTasksTimeout(new Duration(10, SECONDS));
-
-            try (SqlTaskManager sqlTaskManager = createSqlTaskManager(taskManagerConfig, new NodeMemoryConfig(), taskExecutor, stackTraceElements -> true)) {
-                sqlTaskManager.addStateChangeListener(TASK_ID, (state) -> {
-                    if (state.isTerminatingOrDone() && !taskHandle.isDestroyed()) {
-                        taskExecutor.removeTask(taskHandle);
-                    }
-                });
-
-                ticker.increment(30, SECONDS);
-                sqlTaskManager.failStuckSplitTasks();
-
-                mockSplitRunner.waitForFinish();
-                List<TaskInfo> taskInfos = sqlTaskManager.getAllTaskInfo();
-                assertEquals(taskInfos.size(), 1);
-
-                TaskInfo taskInfo = pollTerminatingTaskInfoUntilDone(sqlTaskManager, taskInfos.get(0));
-                assertEquals(taskInfo.getTaskStatus().getState(), TaskState.FAILED);
-            }
-        }
-        finally {
-            taskExecutor.stop();
         }
     }
 
@@ -382,41 +326,15 @@ public class TestSqlTaskManager
                 taskExecutor,
                 createTestSplitMonitor(),
                 new NodeInfo("test"),
-                localMemoryManager,
+                new LocalMemoryManager(nodeMemoryConfig),
                 taskManagementExecutor,
                 taskManagerConfig,
                 nodeMemoryConfig,
-                localSpillManager,
+                new LocalSpillManager(new NodeSpillConfig()),
                 new NodeSpillConfig(),
                 new TestingGcMonitor(),
                 noopTracer(),
                 new ExchangeManagerRegistry());
-    }
-
-    private SqlTaskManager createSqlTaskManager(
-            TaskManagerConfig taskManagerConfig,
-            NodeMemoryConfig nodeMemoryConfig,
-            TaskExecutor taskExecutor,
-            Predicate<List<StackTraceElement>> stuckSplitStackTracePredicate)
-    {
-        return new SqlTaskManager(
-                new EmbedVersion("testversion"),
-                new NoConnectorServicesProvider(),
-                createTestingPlanner(),
-                new MockLocationFactory(),
-                taskExecutor,
-                createTestSplitMonitor(),
-                new NodeInfo("test"),
-                localMemoryManager,
-                taskManagementExecutor,
-                taskManagerConfig,
-                nodeMemoryConfig,
-                localSpillManager,
-                new NodeSpillConfig(),
-                new TestingGcMonitor(),
-                noopTracer(),
-                new ExchangeManagerRegistry(),
-                stuckSplitStackTracePredicate);
     }
 
     private TaskInfo createTask(SqlTaskManager sqlTaskManager, TaskId taskId, ImmutableSet<ScheduledSplit> splits, OutputBuffers outputBuffers)
@@ -500,94 +418,6 @@ public class TestSqlTaskManager
         }
     }
 
-    private static class MockSplitRunner
-            implements SplitRunner
-    {
-        private final SettableFuture<Void> startedFuture = SettableFuture.create();
-        private final SettableFuture<Void> finishedFuture = SettableFuture.create();
-
-        @GuardedBy("this")
-        private Thread runnerThread;
-        @GuardedBy("this")
-        private boolean closed;
-
-        public void waitForStart()
-                throws ExecutionException, InterruptedException, TimeoutException
-        {
-            startedFuture.get(10, SECONDS);
-        }
-
-        public void waitForFinish()
-                throws ExecutionException, InterruptedException, TimeoutException
-        {
-            finishedFuture.get(10, SECONDS);
-        }
-
-        @Override
-        public int getPipelineId()
-        {
-            return 0;
-        }
-
-        @Override
-        public Span getPipelineSpan()
-        {
-            return Span.getInvalid();
-        }
-
-        @Override
-        public synchronized boolean isFinished()
-        {
-            return closed;
-        }
-
-        @Override
-        public ListenableFuture<Void> processFor(Duration duration)
-        {
-            startedFuture.set(null);
-            synchronized (this) {
-                runnerThread = Thread.currentThread();
-
-                if (closed) {
-                    finishedFuture.set(null);
-                    return immediateVoidFuture();
-                }
-            }
-
-            while (true) {
-                try {
-                    Thread.sleep(100000);
-                }
-                catch (InterruptedException e) {
-                    break;
-                }
-            }
-
-            synchronized (this) {
-                closed = true;
-            }
-            finishedFuture.set(null);
-
-            return immediateVoidFuture();
-        }
-
-        @Override
-        public String getInfo()
-        {
-            return "MockSplitRunner";
-        }
-
-        @Override
-        public synchronized void close()
-        {
-            closed = true;
-
-            if (runnerThread != null) {
-                runnerThread.interrupt();
-            }
-        }
-    }
-
     private static class NoConnectorServicesProvider
             implements ConnectorServicesProvider
     {
@@ -608,5 +438,10 @@ public class TestSqlTaskManager
         {
             throw new UnsupportedOperationException();
         }
+    }
+
+    private TaskId newTaskId()
+    {
+        return new TaskId(new StageId("query" + sequence.incrementAndGet(), 0), 1, 0);
     }
 }
