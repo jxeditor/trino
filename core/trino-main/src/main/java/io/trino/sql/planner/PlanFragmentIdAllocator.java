@@ -13,24 +13,19 @@
  */
 package io.trino.sql.planner;
 
-import io.trino.sql.planner.plan.PlanNodeId;
+import io.trino.sql.planner.plan.PlanFragmentId;
 
-public class PlanNodeIdAllocator
+public class PlanFragmentIdAllocator
 {
     private int nextId;
 
-    public PlanNodeIdAllocator()
-    {
-        this(0);
-    }
-
-    public PlanNodeIdAllocator(int startId)
+    public PlanFragmentIdAllocator(int startId)
     {
         this.nextId = startId;
     }
 
-    public PlanNodeId getNextId()
+    public PlanFragmentId getNextId()
     {
-        return new PlanNodeId(Integer.toString(nextId++));
+        return new PlanFragmentId(Integer.toString(nextId++));
     }
 }
