@@ -142,7 +142,7 @@ public final class TaskTestUtils
                 new NodeTaskMap(finalizerService)));
         NodePartitioningManager nodePartitioningManager = new NodePartitioningManager(
                 nodeScheduler,
-                blockTypeOperators,
+                PLANNER_CONTEXT.getTypeOperators(),
                 CatalogServiceProvider.fail());
 
         PageFunctionCompiler pageFunctionCompiler = new PageFunctionCompiler(PLANNER_CONTEXT.getFunctionManager(), 0);
@@ -174,6 +174,7 @@ public final class TaskTestUtils
                 new OrderingCompiler(PLANNER_CONTEXT.getTypeOperators()),
                 new DynamicFilterConfig(),
                 blockTypeOperators,
+                PLANNER_CONTEXT.getTypeOperators(),
                 new TableExecuteContextManager(),
                 new ExchangeManagerRegistry(),
                 new NodeVersion("test"));
