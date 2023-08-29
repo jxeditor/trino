@@ -149,14 +149,12 @@ public class TestDeltaLakeConnectorTest
                     SUPPORTS_AGGREGATION_PUSHDOWN,
                     SUPPORTS_CREATE_MATERIALIZED_VIEW,
                     SUPPORTS_DROP_FIELD,
-                    SUPPORTS_DROP_SCHEMA_CASCADE,
                     SUPPORTS_LIMIT_PUSHDOWN,
                     SUPPORTS_PREDICATE_PUSHDOWN,
                     SUPPORTS_RENAME_FIELD,
                     SUPPORTS_RENAME_SCHEMA,
                     SUPPORTS_SET_COLUMN_TYPE,
-                    SUPPORTS_TOPN_PUSHDOWN,
-                    SUPPORTS_TRUNCATE -> false;
+                    SUPPORTS_TOPN_PUSHDOWN -> false;
             default -> super.hasBehavior(connectorBehavior);
         };
     }
@@ -1085,6 +1083,14 @@ public class TestDeltaLakeConnectorTest
     {
         testCreateTableColumnMappingMode(mode, tableName ->
                 assertUpdate("CREATE TABLE " + tableName + " WITH (column_mapping_mode='" + mode + "')" +
+                        " AS SELECT 1 AS a_int, CAST(row(11) AS row(x integer)) AS a_row", 1));
+    }
+
+    @Test(dataProvider = "columnMappingModeDataProvider")
+    public void testCreatePartitionTableAsSelectWithColumnMappingMode(ColumnMappingMode mode)
+    {
+        testCreateTableColumnMappingMode(mode, tableName ->
+                assertUpdate("CREATE TABLE " + tableName + " WITH (column_mapping_mode='" + mode + "', partitioned_by=ARRAY['a_int'])" +
                         " AS SELECT 1 AS a_int, CAST(row(11) AS row(x integer)) AS a_row", 1));
     }
 
