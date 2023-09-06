@@ -11,18 +11,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive.util;
+package io.trino.server.testing;
 
-import io.trino.spi.connector.RecordCursor;
-import org.testng.annotations.Test;
+import com.google.common.collect.ImmutableMap;
 
-import static io.trino.spi.testing.InterfaceTestUtils.assertAllMethodsOverridden;
+import java.util.Map;
 
-public class TestForwardingRecordCursor
+import static java.util.Objects.requireNonNull;
+
+public record FactoryConfiguration(String factoryName, Map<String, String> configuration)
 {
-    @Test
-    public void testAllMethodsOverridden()
+    public FactoryConfiguration
     {
-        assertAllMethodsOverridden(RecordCursor.class, ForwardingRecordCursor.class);
+        requireNonNull(factoryName, "factoryName is null");
+        configuration = ImmutableMap.copyOf(requireNonNull(configuration, "configuration is null"));
     }
 }

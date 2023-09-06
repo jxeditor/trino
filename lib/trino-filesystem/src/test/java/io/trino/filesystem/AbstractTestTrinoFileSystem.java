@@ -964,6 +964,7 @@ public abstract class AbstractTestTrinoFileSystem
             assertThat(getFileSystem().directoryExists(createLocation("level0/level1"))).contains(true);
             assertThat(getFileSystem().directoryExists(createLocation("level0"))).contains(true);
 
+            // rename interior directory
             getFileSystem().renameDirectory(createLocation("level0/level1"), createLocation("level0/renamed"));
 
             assertThat(getFileSystem().directoryExists(createLocation("level0/level1"))).contains(false);
@@ -973,9 +974,83 @@ public abstract class AbstractTestTrinoFileSystem
 
             assertThat(getFileSystem().newInputFile(blob).exists()).isFalse();
 
-            assertThat(readLocation(createLocation("level0/renamed/level2-file")))
+            Location renamedBlob = createLocation("level0/renamed/level2-file");
+            assertThat(readLocation(renamedBlob))
                     .isEqualTo(TEST_BLOB_CONTENT_PREFIX + blob);
+
+            // rename to existing directory is an error
+            Location blob2 = createBlob(closer, "abc/xyz-file");
+
+            assertThat(getFileSystem().directoryExists(createLocation("abc"))).contains(true);
+
+            assertThatThrownBy(() -> getFileSystem().renameDirectory(createLocation("abc"), createLocation("level0")))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining(createLocation("abc").toString())
+                    .hasMessageContaining(createLocation("level0").toString());
+
+            assertThat(getFileSystem().newInputFile(blob2).exists()).isTrue();
+            assertThat(getFileSystem().newInputFile(renamedBlob).exists()).isTrue();
         }
+    }
+
+    @Test
+    public void testListDirectories()
+            throws IOException
+    {
+        testListDirectories(isHierarchical());
+    }
+
+    protected void testListDirectories(boolean hierarchicalNamingConstraints)
+            throws IOException
+    {
+        try (Closer closer = Closer.create()) {
+            createTestDirectoryStructure(closer, hierarchicalNamingConstraints);
+            createBlob(closer, "level0/level1/level2/level3-file0");
+            createBlob(closer, "level0/level1x/level2x-file0");
+            createBlob(closer, "other/file");
+
+            assertThat(listDirectories("")).containsOnly(
+                    createLocation("level0/"),
+                    createLocation("other/"));
+
+            assertThat(listDirectories("level0")).containsOnly(
+                    createLocation("level0/level1/"),
+                    createLocation("level0/level1x/"));
+            assertThat(listDirectories("level0/")).containsOnly(
+                    createLocation("level0/level1/"),
+                    createLocation("level0/level1x/"));
+
+            assertThat(listDirectories("level0/level1")).containsOnly(
+                    createLocation("level0/level1/level2/"));
+            assertThat(listDirectories("level0/level1/")).containsOnly(
+                    createLocation("level0/level1/level2/"));
+
+            assertThat(listDirectories("level0/level1/level2/level3")).isEmpty();
+            assertThat(listDirectories("level0/level1/level2/level3/")).isEmpty();
+
+            assertThat(listDirectories("unknown")).isEmpty();
+            assertThat(listDirectories("unknown/")).isEmpty();
+
+            if (isHierarchical()) {
+                assertThatThrownBy(() -> listDirectories("level0-file0"))
+                        .isInstanceOf(IOException.class)
+                        .hasMessageContaining(createLocation("level0-file0").toString());
+            }
+            else {
+                assertThat(listDirectories("level0-file0")).isEmpty();
+            }
+
+            if (!hierarchicalNamingConstraints && !normalizesListFilesResult()) {
+                // this lists a path in a directory with an empty name
+                assertThat(listDirectories("/")).isEmpty();
+            }
+        }
+    }
+
+    private Set<Location> listDirectories(String path)
+            throws IOException
+    {
+        return getFileSystem().listDirectories(createListingLocation(path));
     }
 
     private List<Location> listPath(String path)
