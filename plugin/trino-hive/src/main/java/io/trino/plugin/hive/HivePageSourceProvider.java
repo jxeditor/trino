@@ -23,6 +23,7 @@ import io.trino.plugin.hive.HivePageSource.BucketValidator;
 import io.trino.plugin.hive.HiveSplit.BucketConversion;
 import io.trino.plugin.hive.HiveSplit.BucketValidation;
 import io.trino.plugin.hive.acid.AcidTransaction;
+import io.trino.plugin.hive.coercions.CoercionUtils.CoercionContext;
 import io.trino.plugin.hive.type.TypeInfo;
 import io.trino.plugin.hive.util.HiveBucketing.BucketingVersion;
 import io.trino.spi.TrinoException;
@@ -68,6 +69,7 @@ import static io.trino.plugin.hive.HiveSessionProperties.getTimestampPrecision;
 import static io.trino.plugin.hive.coercions.CoercionUtils.createTypeFromCoercer;
 import static io.trino.plugin.hive.util.HiveBucketing.HiveBucketFilter;
 import static io.trino.plugin.hive.util.HiveBucketing.getHiveBucketFilter;
+import static io.trino.plugin.hive.util.HiveClassNames.ORC_SERDE_CLASS;
 import static io.trino.plugin.hive.util.HiveUtil.getDeserializerClassName;
 import static io.trino.plugin.hive.util.HiveUtil.getInputFormatName;
 import static io.trino.plugin.hive.util.HiveUtil.getPrefilledColumnValue;
@@ -190,10 +192,12 @@ public class HivePageSourceProvider
         Optional<BucketAdaptation> bucketAdaptation = createBucketAdaptation(bucketConversion, tableBucketNumber, regularAndInterimColumnMappings);
         Optional<BucketValidator> bucketValidator = createBucketValidator(path, bucketValidation, tableBucketNumber, regularAndInterimColumnMappings);
 
-        HiveTimestampPrecision timestampPrecision = getTimestampPrecision(session);
+        // Apache Hive reads Double.NaN as null when coerced to varchar for ORC file format
+        boolean treatNaNAsNull = ORC_SERDE_CLASS.equals(getDeserializerClassName(schema));
+        CoercionContext coercionContext = new CoercionContext(getTimestampPrecision(session), treatNaNAsNull);
 
         for (HivePageSourceFactory pageSourceFactory : pageSourceFactories) {
-            List<HiveColumnHandle> desiredColumns = toColumnHandles(regularAndInterimColumnMappings, typeManager, timestampPrecision);
+            List<HiveColumnHandle> desiredColumns = toColumnHandles(regularAndInterimColumnMappings, typeManager, coercionContext);
 
             Optional<ReaderPageSource> readerWithProjections = pageSourceFactory.createPageSource(
                     session,
@@ -224,7 +228,7 @@ public class HivePageSourceProvider
                         bucketValidator,
                         adapter,
                         typeManager,
-                        timestampPrecision,
+                        coercionContext,
                         pageSource));
             }
         }
@@ -473,7 +477,7 @@ public class HivePageSourceProvider
                     .collect(toImmutableList());
         }
 
-        public static List<HiveColumnHandle> toColumnHandles(List<ColumnMapping> regularColumnMappings, TypeManager typeManager, HiveTimestampPrecision timestampPrecision)
+        public static List<HiveColumnHandle> toColumnHandles(List<ColumnMapping> regularColumnMappings, TypeManager typeManager, CoercionContext coercionContext)
         {
             return regularColumnMappings.stream()
                     .map(columnMapping -> {
@@ -489,14 +493,14 @@ public class HivePageSourceProvider
                                     projectedColumn.getDereferenceIndices(),
                                     projectedColumn.getDereferenceNames(),
                                     fromHiveType,
-                                    createTypeFromCoercer(typeManager, fromHiveType, columnHandle.getHiveType(), timestampPrecision));
+                                    createTypeFromCoercer(typeManager, fromHiveType, columnHandle.getHiveType(), coercionContext));
                         });
 
                         return new HiveColumnHandle(
                                 columnHandle.getBaseColumnName(),
                                 columnHandle.getBaseHiveColumnIndex(),
                                 fromHiveTypeBase,
-                                createTypeFromCoercer(typeManager, fromHiveTypeBase, columnHandle.getBaseHiveType(), timestampPrecision),
+                                createTypeFromCoercer(typeManager, fromHiveTypeBase, columnHandle.getBaseHiveType(), coercionContext),
                                 newColumnProjectionInfo,
                                 columnHandle.getColumnType(),
                                 columnHandle.getComment());
