@@ -468,17 +468,10 @@ public class TransactionLogAccess
         return columnName.toLowerCase(Locale.ENGLISH);
     }
 
-    public static <T> Map<CanonicalColumnName, T> toCanonicalNameKeyedMap(Map<String, T> map)
-    {
-        return map.entrySet().stream()
-                .collect(toImmutableMap(
-                        entry -> new CanonicalColumnName(entry.getKey()),
-                        Map.Entry::getValue));
-    }
-
     public static <T> Map<CanonicalColumnName, T> toCanonicalNameKeyedMap(Map<String, T> map, Map<String, CanonicalColumnName> canonicalColumnNames)
     {
         return map.entrySet().stream()
+                .filter(entry -> entry.getValue() != null)
                 .collect(toImmutableMap(
                         entry -> requireNonNull(
                                 canonicalColumnNames.get(entry.getKey()),
