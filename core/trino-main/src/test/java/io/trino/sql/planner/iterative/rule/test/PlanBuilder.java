@@ -21,14 +21,15 @@ import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Maps;
 import io.trino.Session;
 import io.trino.cost.PlanNodeStatsEstimate;
+import io.trino.metadata.FunctionResolver;
 import io.trino.metadata.IndexHandle;
-import io.trino.metadata.Metadata;
 import io.trino.metadata.OutputTableHandle;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.metadata.TableExecuteHandle;
 import io.trino.metadata.TableFunctionHandle;
 import io.trino.metadata.TableHandle;
 import io.trino.operator.RetryPolicy;
+import io.trino.security.AllowAllAccessControl;
 import io.trino.spi.connector.CatalogHandle;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.SchemaTableName;
@@ -38,6 +39,7 @@ import io.trino.spi.function.table.ConnectorTableFunctionHandle;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.Type;
 import io.trino.sql.ExpressionUtils;
+import io.trino.sql.PlannerContext;
 import io.trino.sql.analyzer.TypeSignatureProvider;
 import io.trino.sql.parser.SqlParser;
 import io.trino.sql.planner.OrderingScheme;
@@ -152,15 +154,15 @@ import static java.util.function.Function.identity;
 public class PlanBuilder
 {
     private final PlanNodeIdAllocator idAllocator;
-    private final Metadata metadata;
     private final Session session;
     private final Map<Symbol, Type> symbols = new HashMap<>();
+    private final FunctionResolver functionResolver;
 
-    public PlanBuilder(PlanNodeIdAllocator idAllocator, Metadata metadata, Session session)
+    public PlanBuilder(PlanNodeIdAllocator idAllocator, PlannerContext plannerContext, Session session)
     {
         this.idAllocator = idAllocator;
-        this.metadata = metadata;
         this.session = session;
+        functionResolver = plannerContext.getFunctionResolver();
     }
 
     public OutputNode output(List<String> columnNames, List<Symbol> outputs, PlanNode source)
@@ -437,7 +439,7 @@ public class PlanBuilder
         {
             checkArgument(expression instanceof FunctionCall);
             FunctionCall aggregation = (FunctionCall) expression;
-            ResolvedFunction resolvedFunction = metadata.resolveFunction(session, aggregation.getName(), TypeSignatureProvider.fromTypes(inputTypes));
+            ResolvedFunction resolvedFunction = functionResolver.resolveFunction(session, aggregation.getName(), TypeSignatureProvider.fromTypes(inputTypes), new AllowAllAccessControl());
             return addAggregation(output, new Aggregation(
                     resolvedFunction,
                     aggregation.getArguments(),
@@ -1285,7 +1287,7 @@ public class PlanBuilder
     {
         checkArgument(expression instanceof FunctionCall);
         FunctionCall aggregation = (FunctionCall) expression;
-        ResolvedFunction resolvedFunction = metadata.resolveFunction(session, aggregation.getName(), TypeSignatureProvider.fromTypes(inputTypes));
+        ResolvedFunction resolvedFunction = functionResolver.resolveFunction(session, aggregation.getName(), TypeSignatureProvider.fromTypes(inputTypes), new AllowAllAccessControl());
         return new Aggregation(
                 resolvedFunction,
                 aggregation.getArguments(),

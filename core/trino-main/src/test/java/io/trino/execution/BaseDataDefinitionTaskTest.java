@@ -57,8 +57,9 @@ import io.trino.sql.tree.QualifiedName;
 import io.trino.testing.LocalQueryRunner;
 import io.trino.testing.TestingMetadata.TestingTableHandle;
 import io.trino.transaction.TransactionManager;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInstance;
 
 import java.net.URI;
 import java.util.HashMap;
@@ -89,7 +90,9 @@ import static io.trino.testing.TestingHandles.TEST_CATALOG_HANDLE;
 import static io.trino.testing.TestingHandles.TEST_CATALOG_NAME;
 import static io.trino.testing.TestingSession.testSessionBuilder;
 import static java.util.Objects.requireNonNull;
+import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_METHOD;
 
+@TestInstance(PER_METHOD)
 public abstract class BaseDataDefinitionTaskTest
 {
     public static final String SCHEMA = "schema";
@@ -112,7 +115,7 @@ public abstract class BaseDataDefinitionTaskTest
     protected TransactionManager transactionManager;
     protected QueryStateMachine queryStateMachine;
 
-    @BeforeMethod
+    @BeforeEach
     public void setUp()
     {
         testSession = testSessionBuilder()
@@ -134,7 +137,7 @@ public abstract class BaseDataDefinitionTaskTest
         queryStateMachine = stateMachine(transactionManager, createTestMetadataManager(), new AllowAllAccessControl(), testSession);
     }
 
-    @AfterMethod(alwaysRun = true)
+    @AfterEach
     public void tearDown()
     {
         if (queryRunner != null) {
@@ -189,6 +192,7 @@ public abstract class BaseDataDefinitionTaskTest
                 Optional.empty(),
                 Optional.empty(),
                 Identity.ofUser("owner"),
+                ImmutableList.of(),
                 Optional.empty(),
                 ImmutableMap.of(MATERIALIZED_VIEW_PROPERTY_2_NAME, MATERIALIZED_VIEW_PROPERTY_2_DEFAULT_VALUE));
     }
@@ -211,7 +215,8 @@ public abstract class BaseDataDefinitionTaskTest
                 Optional.empty(),
                 columns,
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                ImmutableList.of());
     }
 
     private static QueryStateMachine stateMachine(TransactionManager transactionManager, MetadataManager metadata, AccessControl accessControl, Session session)
@@ -480,6 +485,7 @@ public abstract class BaseDataDefinitionTaskTest
                             existingDefinition.getGracePeriod(),
                             existingDefinition.getComment(),
                             existingDefinition.getRunAsIdentity().get(),
+                            existingDefinition.getPath(),
                             existingDefinition.getStorageTable(),
                             newProperties));
         }
@@ -500,6 +506,7 @@ public abstract class BaseDataDefinitionTaskTest
                             view.getGracePeriod(),
                             view.getComment(),
                             view.getRunAsIdentity().get(),
+                            view.getPath(),
                             view.getStorageTable(),
                             view.getProperties()));
         }
@@ -561,7 +568,8 @@ public abstract class BaseDataDefinitionTaskTest
                             view.getSchema(),
                             view.getColumns(),
                             comment,
-                            view.getRunAsIdentity()));
+                            view.getRunAsIdentity(),
+                            view.getPath()));
         }
 
         @Override
@@ -593,7 +601,8 @@ public abstract class BaseDataDefinitionTaskTest
                                     .map(currentViewColumn -> columnName.equals(currentViewColumn.getName()) ? new ViewColumn(currentViewColumn.getName(), currentViewColumn.getType(), comment) : currentViewColumn)
                                     .collect(toImmutableList()),
                             view.getComment(),
-                            view.getRunAsIdentity()));
+                            view.getRunAsIdentity(),
+                            view.getPath()));
         }
 
         @Override

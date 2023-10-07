@@ -24,20 +24,18 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Streams;
 import io.trino.Session;
 import io.trino.execution.warnings.WarningCollector;
+import io.trino.metadata.FunctionResolver;
 import io.trino.metadata.OperatorNotFoundException;
 import io.trino.metadata.QualifiedObjectName;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.operator.scalar.ArrayConstructor;
 import io.trino.operator.scalar.FormatFunction;
 import io.trino.security.AccessControl;
-import io.trino.security.SecurityContext;
 import io.trino.spi.ErrorCode;
 import io.trino.spi.ErrorCodeSupplier;
 import io.trino.spi.TrinoException;
-import io.trino.spi.TrinoWarning;
 import io.trino.spi.function.BoundSignature;
 import io.trino.spi.function.CatalogSchemaFunctionName;
-import io.trino.spi.function.FunctionMetadata;
 import io.trino.spi.function.OperatorType;
 import io.trino.spi.type.CharType;
 import io.trino.spi.type.DateType;
@@ -215,7 +213,6 @@ import static io.trino.spi.StandardErrorCode.OPERATOR_NOT_FOUND;
 import static io.trino.spi.StandardErrorCode.TOO_MANY_ARGUMENTS;
 import static io.trino.spi.StandardErrorCode.TYPE_MISMATCH;
 import static io.trino.spi.StandardErrorCode.TYPE_NOT_FOUND;
-import static io.trino.spi.connector.StandardWarningCode.DEPRECATED_FUNCTION;
 import static io.trino.spi.function.OperatorType.ADD;
 import static io.trino.spi.function.OperatorType.SUBSCRIPT;
 import static io.trino.spi.function.OperatorType.SUBTRACT;
@@ -350,6 +347,7 @@ public class ExpressionAnalyzer
     private final Function<Expression, Type> getPreanalyzedType;
     private final Function<Node, ResolvedWindow> getResolvedWindow;
     private final List<Field> sourceFields = new ArrayList<>();
+    private final FunctionResolver functionResolver;
 
     private ExpressionAnalyzer(
             PlannerContext plannerContext,
@@ -401,6 +399,7 @@ public class ExpressionAnalyzer
         this.typeCoercion = new TypeCoercion(plannerContext.getTypeManager()::getType);
         this.getPreanalyzedType = requireNonNull(getPreanalyzedType, "getPreanalyzedType is null");
         this.getResolvedWindow = requireNonNull(getResolvedWindow, "getResolvedWindow is null");
+        this.functionResolver = plannerContext.getFunctionResolver(warningCollector);
     }
 
     public Map<NodeRef<Expression>, ResolvedFunction> getResolvedFunctions()
@@ -1190,8 +1189,9 @@ public class ExpressionAnalyzer
         @Override
         protected Type visitFunctionCall(FunctionCall node, StackableAstVisitorContext<Context> context)
         {
+            boolean isAggregation = functionResolver.isAggregationFunction(session, node.getName(), accessControl);
             boolean isRowPatternCount = context.getContext().isPatternRecognition() &&
-                    plannerContext.getMetadata().isAggregationFunction(session, node.getName()) &&
+                    isAggregation &&
                     node.getName().getSuffix().equalsIgnoreCase("count");
             // argument of the form `label.*` is only allowed for row pattern count function
             node.getArguments().stream()
@@ -1205,7 +1205,7 @@ public class ExpressionAnalyzer
             if (context.getContext().isPatternRecognition() && isPatternRecognitionFunction(node)) {
                 return analyzePatternRecognitionFunction(node, context);
             }
-            if (context.getContext().isPatternRecognition() && plannerContext.getMetadata().isAggregationFunction(session, node.getName())) {
+            if (context.getContext().isPatternRecognition() && isAggregation) {
                 analyzePatternAggregation(node);
                 patternAggregations.add(NodeRef.of(node));
             }
@@ -1214,7 +1214,7 @@ public class ExpressionAnalyzer
                 if (!context.getContext().isPatternRecognition()) {
                     throw semanticException(INVALID_PROCESSING_MODE, processingMode, "%s semantics is not supported out of pattern recognition context", processingMode.getMode());
                 }
-                if (!plannerContext.getMetadata().isAggregationFunction(session, node.getName())) {
+                if (!isAggregation) {
                     throw semanticException(INVALID_PROCESSING_MODE, processingMode, "%s semantics is supported only for FIRST(), LAST() and aggregation functions. Actual: %s", processingMode.getMode(), node.getName());
                 }
             }
@@ -1227,7 +1227,7 @@ public class ExpressionAnalyzer
                 windowFunctions.add(NodeRef.of(node));
             }
             else {
-                if (node.isDistinct() && !plannerContext.getMetadata().isAggregationFunction(session, node.getName())) {
+                if (node.isDistinct() && !isAggregation) {
                     throw semanticException(FUNCTION_NOT_AGGREGATE, node, "DISTINCT is not supported for non-aggregation functions");
                 }
             }
@@ -1253,13 +1253,13 @@ public class ExpressionAnalyzer
             }
 
             // must run after arguments are processed and labels are recorded
-            if (context.getContext().isPatternRecognition() && plannerContext.getMetadata().isAggregationFunction(session, node.getName())) {
+            if (context.getContext().isPatternRecognition() && isAggregation) {
                 validateAggregationLabelConsistency(node);
             }
 
             ResolvedFunction function;
             try {
-                function = plannerContext.getMetadata().resolveFunction(session, node.getName(), argumentTypes);
+                function = functionResolver.resolveFunction(session, node.getName(), argumentTypes, accessControl);
             }
             catch (TrinoException e) {
                 if (e.getLocation().isPresent()) {
@@ -1313,24 +1313,7 @@ public class ExpressionAnalyzer
                     coerceType(expression, actualType, expectedType, format("Function %s argument %d", function, i));
                 }
             }
-            accessControl.checkCanExecuteFunction(SecurityContext.of(session), node.getName().toString());
-
             resolvedFunctions.put(NodeRef.of(node), function);
-
-            // FunctionMetadata should only be fetched on the coordinator, as workers do not have FunctionMetadata for all functions
-            // Since warning collector is also only set on the coordinator, this check is sufficient
-            // TODO remove this when workers no longer reanalyze expressions
-            if (warningCollector != WarningCollector.NOOP) {
-                FunctionMetadata functionMetadata = plannerContext.getMetadata().getFunctionMetadata(session, function);
-                if (functionMetadata.isDeprecated()) {
-                    warningCollector.add(new TrinoWarning(
-                            DEPRECATED_FUNCTION,
-                            format(
-                                    "Use of deprecated function: %s: %s",
-                                    functionMetadata.getSignature().getName(),
-                                    functionMetadata.getDescription())));
-                }
-            }
 
             Type type = signature.getReturnType();
             return setExpressionType(node, type);
@@ -1944,7 +1927,7 @@ public class ExpressionAnalyzer
         private void checkNoNestedAggregations(FunctionCall node)
         {
             extractExpressions(node.getArguments(), FunctionCall.class).stream()
-                    .filter(function -> plannerContext.getMetadata().isAggregationFunction(session, function.getName()))
+                    .filter(function -> functionResolver.isAggregationFunction(session, function.getName(), accessControl))
                     .findFirst()
                     .ifPresent(aggregation -> {
                         throw semanticException(
@@ -2038,9 +2021,6 @@ public class ExpressionAnalyzer
                 Type expectedTrimCharType = expectedTypes.get(1);
                 coerceType(node.getTrimCharacter().get(), actualTrimCharType, expectedTrimCharType, "trim character argument of trim function");
             }
-
-            accessControl.checkCanExecuteFunction(SecurityContext.of(session), functionName);
-
             resolvedFunctions.put(NodeRef.of(node), function);
 
             return setExpressionType(node, function.getSignature().getReturnType());
@@ -2425,7 +2405,7 @@ public class ExpressionAnalyzer
                 throw semanticException(NOT_SUPPORTED, node, "Lambda expression in pattern recognition context is not yet supported");
             }
 
-            verifyNoAggregateWindowOrGroupingFunctions(session, plannerContext.getMetadata(), node.getBody(), "Lambda expression");
+            verifyNoAggregateWindowOrGroupingFunctions(session, functionResolver, accessControl, node.getBody(), "Lambda expression");
             if (!context.getContext().isExpectingLambda()) {
                 throw semanticException(TYPE_MISMATCH, node, "Lambda expression should always be used inside a function");
             }
@@ -2542,7 +2522,6 @@ public class ExpressionAnalyzer
                 }
                 throw new TrinoException(e::getErrorCode, extractLocation(node), e.getMessage(), e);
             }
-            accessControl.checkCanExecuteFunction(SecurityContext.of(session), JSON_EXISTS_FUNCTION_NAME);
             resolvedFunctions.put(NodeRef.of(node), function);
             Type type = function.getSignature().getReturnType();
 
@@ -2626,8 +2605,6 @@ public class ExpressionAnalyzer
                 }
                 throw new TrinoException(e::getErrorCode, extractLocation(node), e.getMessage(), e);
             }
-
-            accessControl.checkCanExecuteFunction(SecurityContext.of(session), JSON_VALUE_FUNCTION_NAME);
             resolvedFunctions.put(NodeRef.of(node), function);
             Type type = function.getSignature().getReturnType();
 
@@ -2664,7 +2641,6 @@ public class ExpressionAnalyzer
                 }
                 throw new TrinoException(e::getErrorCode, extractLocation(node), e.getMessage(), e);
             }
-            accessControl.checkCanExecuteFunction(SecurityContext.of(session), JSON_QUERY_FUNCTION_NAME);
             resolvedFunctions.put(NodeRef.of(node), function);
 
             // analyze returned type and format
@@ -2970,7 +2946,6 @@ public class ExpressionAnalyzer
                 }
                 throw new TrinoException(e::getErrorCode, extractLocation(node), e.getMessage(), e);
             }
-            accessControl.checkCanExecuteFunction(SecurityContext.of(session), JSON_OBJECT_FUNCTION_NAME);
             resolvedFunctions.put(NodeRef.of(node), function);
 
             // analyze returned type and format
@@ -3081,7 +3056,6 @@ public class ExpressionAnalyzer
                 }
                 throw new TrinoException(e::getErrorCode, extractLocation(node), e.getMessage(), e);
             }
-            accessControl.checkCanExecuteFunction(SecurityContext.of(session), JSON_ARRAY_FUNCTION_NAME);
             resolvedFunctions.put(NodeRef.of(node), function);
 
             // analyze returned type and format

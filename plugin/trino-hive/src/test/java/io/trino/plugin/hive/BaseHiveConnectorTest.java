@@ -2621,7 +2621,7 @@ public abstract class BaseHiveConnectorTest
             assertUpdate(session, createSourceTable, "SELECT count(*) FROM orders");
             assertUpdate(session, createTargetTable, "SELECT count(*) FROM orders");
 
-            transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl()).execute(
+            transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl()).execute(
                     session,
                     transactionalSession -> {
                         assertUpdate(
@@ -3774,7 +3774,7 @@ public abstract class BaseHiveConnectorTest
         Session session = getSession();
         Metadata metadata = getDistributedQueryRunner().getCoordinator().getMetadata();
 
-        return transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
+        return transaction(getQueryRunner().getTransactionManager(), metadata, getQueryRunner().getAccessControl())
                 .readOnly()
                 .execute(session, transactionSession -> {
                     Optional<TableHandle> tableHandle = metadata.getTableHandle(transactionSession, new QualifiedObjectName(catalog, schema, tableName));
@@ -3788,7 +3788,7 @@ public abstract class BaseHiveConnectorTest
         Session session = getSession();
         Metadata metadata = getDistributedQueryRunner().getCoordinator().getMetadata();
 
-        return transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
+        return transaction(getQueryRunner().getTransactionManager(), metadata, getQueryRunner().getAccessControl())
                 .readOnly()
                 .execute(session, transactionSession -> {
                     QualifiedObjectName name = new QualifiedObjectName(catalog, TPCH_SCHEMA, tableName);
@@ -4987,7 +4987,7 @@ public abstract class BaseHiveConnectorTest
                 .getMaterializedRows();
 
         try {
-            transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
+            transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl())
                     .execute(session, transactionSession -> {
                         assertUpdate(transactionSession, "DELETE FROM tmp_delete_insert WHERE z >= 2");
                         assertUpdate(transactionSession, "INSERT INTO tmp_delete_insert VALUES (203, 2), (204, 2), (205, 2), (301, 2), (302, 3)", 5);
@@ -5005,7 +5005,7 @@ public abstract class BaseHiveConnectorTest
         MaterializedResult actualAfterRollback = computeActual(session, "SELECT * FROM tmp_delete_insert");
         assertEqualsIgnoreOrder(actualAfterRollback, expectedBefore);
 
-        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
+        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl())
                 .execute(session, transactionSession -> {
                     assertUpdate(transactionSession, "DELETE FROM tmp_delete_insert WHERE z >= 2");
                     assertUpdate(transactionSession, "INSERT INTO tmp_delete_insert VALUES (203, 2), (204, 2), (205, 2), (301, 2), (302, 3)", 5);
@@ -5033,7 +5033,7 @@ public abstract class BaseHiveConnectorTest
                 .build()
                 .getMaterializedRows();
 
-        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
+        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl())
                 .execute(session, transactionSession -> {
                     assertUpdate(
                             transactionSession,
@@ -7650,6 +7650,67 @@ public abstract class BaseHiveConnectorTest
     }
 
     @Test
+    public void testCreateAvroTableWithCamelCaseFieldSchema()
+            throws Exception
+    {
+        String tableName = "test_create_avro_table_with_camelcase_schema_url_" + randomNameSuffix();
+        File schemaFile = createAvroCamelCaseSchemaFile();
+
+        String createTableSql = format("CREATE TABLE %s.%s.%s (\n" +
+                        "   stringCol varchar,\n" +
+                        "   a INT\n" +
+                        ")\n" +
+                        "WITH (\n" +
+                        "   avro_schema_url = '%s',\n" +
+                        "   format = 'AVRO'\n" +
+                        ")",
+                getSession().getCatalog().get(),
+                getSession().getSchema().get(),
+                tableName,
+                schemaFile);
+
+        assertUpdate(createTableSql);
+        try {
+            assertUpdate("INSERT INTO " + tableName + " VALUES ('hi', 1)", 1);
+            assertQuery("SELECT * FROM " + tableName, "SELECT 'hi', 1");
+        }
+        finally {
+            assertUpdate("DROP TABLE " + tableName);
+            verify(schemaFile.delete(), "cannot delete temporary file: %s", schemaFile);
+        }
+    }
+
+    @Test
+    public void testCreateAvroTableWithNestedCamelCaseFieldSchema()
+            throws Exception
+    {
+        String tableName = "test_create_avro_table_with_nested_camelcase_schema_url_" + randomNameSuffix();
+        File schemaFile = createAvroNestedCamelCaseSchemaFile();
+
+        String createTableSql = format("CREATE TABLE %s.%s.%s (\n" +
+                        "   nestedRow ROW(stringCol varchar, intCol int)\n" +
+                        ")\n" +
+                        "WITH (\n" +
+                        "   avro_schema_url = '%s',\n" +
+                        "   format = 'AVRO'\n" +
+                        ")",
+                getSession().getCatalog().get(),
+                getSession().getSchema().get(),
+                tableName,
+                schemaFile);
+
+        assertUpdate(createTableSql);
+        try {
+            assertUpdate("INSERT INTO " + tableName + " VALUES ROW(ROW('hi', 1))", 1);
+            assertQuery("SELECT nestedRow.stringCol FROM " + tableName, "SELECT 'hi'");
+        }
+        finally {
+            assertUpdate("DROP TABLE " + tableName);
+            verify(schemaFile.delete(), "cannot delete temporary file: %s", schemaFile);
+        }
+    }
+
+    @Test
     public void testAlterAvroTableWithSchemaUrl()
             throws Exception
     {
@@ -7708,6 +7769,50 @@ public abstract class BaseHiveConnectorTest
                 "  \"fields\": [\n" +
                 "    { \"name\":\"string_col\", \"type\":\"string\" }\n" +
                 "]}";
+        writeString(schemaFile.toPath(), schema);
+        return schemaFile;
+    }
+
+    private static File createAvroCamelCaseSchemaFile()
+            throws Exception
+    {
+        File schemaFile = File.createTempFile("avro_camelCamelCase_col-", ".avsc");
+        String schema = "{\n" +
+                "  \"namespace\": \"io.trino.test\",\n" +
+                "  \"name\": \"camelCase\",\n" +
+                "  \"type\": \"record\",\n" +
+                "  \"fields\": [\n" +
+                "    { \"name\":\"stringCol\", \"type\":\"string\" },\n" +
+                "    { \"name\":\"a\", \"type\":\"int\" }\n" +
+                "]}";
+        writeString(schemaFile.toPath(), schema);
+        return schemaFile;
+    }
+
+    private static File createAvroNestedCamelCaseSchemaFile()
+            throws Exception
+    {
+        File schemaFile = File.createTempFile("avro_camelCamelCase_col-", ".avsc");
+        String schema = """
+                {
+                    "namespace": "io.trino.test",
+                    "name": "camelCaseNested",
+                    "type": "record",
+                    "fields": [
+                        {
+                            "name":"nestedRow",
+                            "type": ["null", {
+                                "namespace": "io.trino.test",
+                                 "name": "nestedRecord",
+                                 "type": "record",
+                                 "fields": [
+                                    { "name":"stringCol", "type":"string"},
+                                    { "name":"intCol", "type":"int" }
+                                ]
+                            }]
+                        }
+                    ]
+                 }""";
         writeString(schemaFile.toPath(), schema);
         return schemaFile;
     }
@@ -7772,7 +7877,7 @@ public abstract class BaseHiveConnectorTest
     private HiveInsertTableHandle getHiveInsertTableHandle(Session session, String tableName)
     {
         Metadata metadata = getDistributedQueryRunner().getCoordinator().getMetadata();
-        return transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
+        return transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl())
                 .execute(session, transactionSession -> {
                     QualifiedObjectName objectName = new QualifiedObjectName(catalog, TPCH_SCHEMA, tableName);
                     Optional<TableHandle> handle = metadata.getTableHandle(transactionSession, objectName);

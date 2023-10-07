@@ -19,6 +19,8 @@ import com.google.common.collect.ImmutableSet;
 import io.airlift.slice.Slice;
 import io.trino.connector.system.GlobalSystemConnector;
 import io.trino.metadata.LiteralFunction;
+import io.trino.metadata.Metadata;
+import io.trino.metadata.MetadataManager;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.operator.scalar.Re2JCastToRegexpFunction;
 import io.trino.security.AllowAllAccessControl;
@@ -36,8 +38,9 @@ import io.trino.sql.ExpressionUtils;
 import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.NodeRef;
 import io.trino.transaction.TestingTransactionManager;
+import io.trino.transaction.TransactionManager;
 import io.trino.type.Re2JRegexp;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Base64;
@@ -105,11 +108,12 @@ public class TestLiteralEncoder
                     VARBINARY,
                     ImmutableList.of(VARCHAR)),
             GlobalSystemConnector.CATALOG_HANDLE,
-            toFunctionId(Signature.builder()
-                    .name("from_base64")
-                    .returnType(VARBINARY)
-                    .argumentType(new TypeSignature("varchar", typeVariable("x")))
-                    .build()),
+            toFunctionId(
+                    "from_base64",
+                    Signature.builder()
+                            .returnType(VARBINARY)
+                            .argumentType(new TypeSignature("varchar", typeVariable("x")))
+                            .build()),
             SCALAR,
             true,
             new FunctionNullability(false, ImmutableList.of(false)),
@@ -323,7 +327,9 @@ public class TestLiteralEncoder
 
     private Map<NodeRef<Expression>, Type> getExpressionTypes(Expression expression)
     {
-        return transaction(new TestingTransactionManager(), new AllowAllAccessControl())
+        TransactionManager transactionManager = new TestingTransactionManager();
+        Metadata metadata = MetadataManager.testMetadataManagerBuilder().withTransactionManager(transactionManager).build();
+        return transaction(transactionManager, metadata, new AllowAllAccessControl())
                 .singleStatement()
                 .execute(TEST_SESSION, transactionSession -> {
                     return ExpressionUtils.getExpressionTypes(PLANNER_CONTEXT, transactionSession, expression, TypeProvider.empty());

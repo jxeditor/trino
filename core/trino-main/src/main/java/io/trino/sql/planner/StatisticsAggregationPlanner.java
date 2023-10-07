@@ -16,10 +16,12 @@ package io.trino.sql.planner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.trino.Session;
+import io.trino.metadata.FunctionResolver;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.operator.aggregation.MaxDataSizeForStats;
 import io.trino.operator.aggregation.SumDataSizeForStats;
+import io.trino.security.AllowAllAccessControl;
 import io.trino.spi.TrinoException;
 import io.trino.spi.expression.FunctionName;
 import io.trino.spi.statistics.ColumnStatisticMetadata;
@@ -27,6 +29,7 @@ import io.trino.spi.statistics.ColumnStatisticType;
 import io.trino.spi.statistics.TableStatisticType;
 import io.trino.spi.statistics.TableStatisticsMetadata;
 import io.trino.spi.type.Type;
+import io.trino.sql.PlannerContext;
 import io.trino.sql.planner.plan.AggregationNode;
 import io.trino.sql.planner.plan.StatisticAggregations;
 import io.trino.sql.planner.plan.StatisticAggregationsDescriptor;
@@ -52,12 +55,14 @@ public class StatisticsAggregationPlanner
     private final SymbolAllocator symbolAllocator;
     private final Metadata metadata;
     private final Session session;
+    private final FunctionResolver functionResolver;
 
-    public StatisticsAggregationPlanner(SymbolAllocator symbolAllocator, Metadata metadata, Session session)
+    public StatisticsAggregationPlanner(SymbolAllocator symbolAllocator, PlannerContext plannerContext, Session session)
     {
         this.symbolAllocator = requireNonNull(symbolAllocator, "symbolAllocator is null");
-        this.metadata = requireNonNull(metadata, "metadata is null");
+        this.metadata = plannerContext.getMetadata();
         this.session = requireNonNull(session, "session is null");
+        this.functionResolver = plannerContext.getFunctionResolver();
     }
 
     public TableStatisticAggregation createStatisticsAggregation(TableStatisticsMetadata statisticsMetadata, Map<String, Symbol> columnToSymbolMap)
@@ -138,7 +143,8 @@ public class StatisticsAggregationPlanner
         QualifiedName name = aggregation.getCatalogSchema()
                 .map(catalogSchemaName -> QualifiedName.of(catalogSchemaName.getCatalogName(), catalogSchemaName.getSchemaName(), aggregation.getName()))
                 .orElseGet(() -> QualifiedName.of(aggregation.getName()));
-        return createAggregation(metadata.resolveFunction(session, name, fromTypes(inputType)), input, inputType);
+        // Statistics collection is part of the internal system, so it uses allow all access control
+        return createAggregation(functionResolver.resolveFunction(session, name, fromTypes(inputType), new AllowAllAccessControl()), input, inputType);
     }
 
     private ColumnStatisticsAggregation createAggregation(String functionName, Symbol input, Type inputType)

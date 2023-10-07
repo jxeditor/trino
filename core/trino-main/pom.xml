@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.trino</groupId>
         <artifactId>trino-root</artifactId>
-        <version>428-SNAPSHOT</version>
+        <version>429-SNAPSHOT</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
@@ -473,7 +473,7 @@
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-guava</artifactId>
-            <version>3.4.0</version>
+            <version>${dep.assertj-core.version}</version>
             <scope>test</scope>
         </dependency>
 

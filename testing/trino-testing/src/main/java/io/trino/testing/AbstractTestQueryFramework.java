@@ -292,7 +292,7 @@ public abstract class AbstractTestQueryFramework
 
     protected TransactionBuilder newTransaction()
     {
-        return transaction(queryRunner.getTransactionManager(), queryRunner.getAccessControl());
+        return transaction(queryRunner.getTransactionManager(), queryRunner.getMetadata(), queryRunner.getAccessControl());
     }
 
     protected void inTransaction(Consumer<Session> callback)
@@ -493,6 +493,15 @@ public abstract class AbstractTestQueryFramework
             TestingPrivilege... deniedPrivileges)
     {
         assertException(session, sql, ".*Access Denied: " + exceptionsMessageRegExp, deniedPrivileges);
+    }
+
+    protected void assertFunctionNotFound(
+            Session session,
+            @Language("SQL") String sql,
+            String functionName,
+            TestingPrivilege... deniedPrivileges)
+    {
+        assertException(session, sql, ".*[Ff]unction '" + functionName + "' not registered", deniedPrivileges);
     }
 
     private void assertException(Session session, @Language("SQL") String sql, @Language("RegExp") String exceptionsMessageRegExp, TestingPrivilege[] deniedPrivileges)
@@ -723,7 +732,7 @@ public abstract class AbstractTestQueryFramework
 
     private <T> T inTransaction(Session session, Function<Session, T> transactionSessionConsumer)
     {
-        return transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getAccessControl())
+        return transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl())
                 .singleStatement()
                 .execute(session, transactionSessionConsumer);
     }

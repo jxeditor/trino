@@ -513,8 +513,7 @@ public abstract class AbstractTestHive
             // exclude formats that change table schema with serde and read-only formats
             ImmutableSet.of(AVRO, CSV, REGEX));
 
-    private static final TypeOperators TYPE_OPERATORS = new TypeOperators();
-    private static final JoinCompiler JOIN_COMPILER = new JoinCompiler(TYPE_OPERATORS);
+    private static final JoinCompiler JOIN_COMPILER = new JoinCompiler(new TypeOperators());
 
     protected static final List<ColumnMetadata> STATISTICS_TABLE_COLUMNS = ImmutableList.<ColumnMetadata>builder()
             .add(new ColumnMetadata("t_boolean", BOOLEAN))
@@ -891,8 +890,10 @@ public abstract class AbstractTestHive
                                 Optional.empty(),
                                 Optional.empty(),
                                 ImmutableList.of(new ConnectorMaterializedViewDefinition.Column("abc", TypeId.of("type"))),
+                                Optional.of(java.time.Duration.ZERO),
                                 Optional.empty(),
                                 Optional.of("alice"),
+                                ImmutableList.of(),
                                 ImmutableMap.of()));
                     }
                 },
@@ -925,7 +926,7 @@ public abstract class AbstractTestHive
                 new HdfsFileSystemFactory(hdfsEnvironment, HDFS_FILE_SYSTEM_STATS),
                 PAGE_SORTER,
                 HiveMetastoreFactory.ofInstance(metastoreClient),
-                new GroupByHashPageIndexerFactory(JOIN_COMPILER, TYPE_OPERATORS),
+                new GroupByHashPageIndexerFactory(JOIN_COMPILER),
                 TESTING_TYPE_MANAGER,
                 getHiveConfig(),
                 getSortingFileWriterConfig(),
@@ -4149,7 +4150,8 @@ public abstract class AbstractTestHive
                 ImmutableList.of(new ViewColumn("test", BIGINT.getTypeId(), Optional.empty())),
                 Optional.empty(),
                 Optional.empty(),
-                true);
+                true,
+                ImmutableList.of());
 
         try (Transaction transaction = newTransaction()) {
             transaction.getMetadata().createView(newSession(), viewName, definition, replace);

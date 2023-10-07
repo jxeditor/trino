@@ -33,7 +33,7 @@ import io.trino.spi.type.TypeOperators;
 import io.trino.spi.type.TypeSignature;
 import io.trino.type.BlockTypeOperators;
 import io.trino.type.UnknownType;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.lang.invoke.MethodHandles;
 import java.util.Arrays;
@@ -42,7 +42,6 @@ import java.util.Set;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
-import static io.trino.SessionTestUtils.TEST_SESSION;
 import static io.trino.metadata.GlobalFunctionCatalog.builtinFunctionName;
 import static io.trino.metadata.InternalFunctionBundle.extractFunctions;
 import static io.trino.metadata.OperatorNameUtil.unmangleOperator;
@@ -74,10 +73,9 @@ public class TestGlobalFunctionCatalog
     public void testExactMatchBeforeCoercion()
     {
         TestingFunctionResolution functionResolution = new TestingFunctionResolution();
-        Metadata metadata = functionResolution.getMetadata();
         boolean foundOperator = false;
-        for (FunctionMetadata function : listOperators(metadata)) {
-            OperatorType operatorType = unmangleOperator(function.getSignature().getName());
+        for (FunctionMetadata function : listOperators(functionResolution)) {
+            OperatorType operatorType = unmangleOperator(function.getCanonicalName());
             if (operatorType == CAST || operatorType == OperatorType.SATURATED_FLOOR_CAST) {
                 continue;
             }
@@ -266,14 +264,14 @@ public class TestGlobalFunctionCatalog
                 .failsWithMessage("Could not choose a best candidate operator. Explicit type casts must be added.");
     }
 
-    private static List<FunctionMetadata> listOperators(Metadata metadata)
+    private static List<FunctionMetadata> listOperators(TestingFunctionResolution functionResolution)
     {
         Set<String> operatorNames = Arrays.stream(OperatorType.values())
                 .map(OperatorNameUtil::mangleOperatorName)
                 .collect(toImmutableSet());
 
-        return metadata.listFunctions(TEST_SESSION).stream()
-                .filter(function -> operatorNames.contains(function.getSignature().getName()))
+        return functionResolution.listGlobalFunctions().stream()
+                .filter(function -> operatorNames.contains(function.getCanonicalName()))
                 .collect(toImmutableList());
     }
 
@@ -325,7 +323,7 @@ public class TestGlobalFunctionCatalog
 
         public ResolveFunctionAssertion returns(Signature.Builder functionSignature)
         {
-            Signature expectedSignature = functionSignature.name(TEST_FUNCTION_NAME).build();
+            Signature expectedSignature = functionSignature.build();
             Signature actualSignature = resolveSignature().toSignature();
             assertEquals(actualSignature, expectedSignature);
             return this;
@@ -350,9 +348,8 @@ public class TestGlobalFunctionCatalog
         {
             ImmutableList.Builder<SqlFunction> functions = ImmutableList.builder();
             for (Signature.Builder functionSignature : functionSignatures) {
-                Signature signature = functionSignature.name(TEST_FUNCTION_NAME).build();
-                FunctionMetadata functionMetadata = FunctionMetadata.scalarBuilder()
-                        .signature(signature)
+                FunctionMetadata functionMetadata = FunctionMetadata.scalarBuilder(TEST_FUNCTION_NAME)
+                        .signature(functionSignature.build())
                         .nondeterministic()
                         .description("testing function that does nothing")
                         .build();
