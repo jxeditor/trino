@@ -161,7 +161,7 @@
         <dep.takari.version>2.1.1</dep.takari.version>
         <dep.aws-sdk.version>1.12.561</dep.aws-sdk.version>
         <dep.aws-sdk-v2.version>2.20.158</dep.aws-sdk-v2.version>
-        <dep.jsonwebtoken.version>0.11.5</dep.jsonwebtoken.version>
+        <dep.jsonwebtoken.version>0.12.2</dep.jsonwebtoken.version>
         <dep.oracle.version>21.9.0.0</dep.oracle.version>
         <dep.drift.version>1.21</dep.drift.version>
         <dep.tempto.version>201</dep.tempto.version>
@@ -217,6 +217,7 @@
 
     <dependencyManagement>
         <dependencies>
+
             <dependency>
                 <groupId>com.azure</groupId>
                 <artifactId>azure-sdk-bom</artifactId>
@@ -639,6 +640,11 @@
                 <groupId>io.airlift</groupId>
                 <artifactId>joni</artifactId>
                 <version>2.1.5.3</version>
+            </dependency>
+            <dependency>
+                <groupId>io.airlift</groupId>
+                <artifactId>junit-extensions</artifactId>
+                <version>1</version>
             </dependency>
 
             <dependency>
@@ -2453,7 +2459,8 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <properties>
-                        <configurationParameters>junit.jupiter.execution.timeout.thread.mode.default = SEPARATE_THREAD</configurationParameters>
+                        <configurationParameters>junit.jupiter.execution.timeout.thread.mode.default = SEPARATE_THREAD
+                            junit.jupiter.extensions.autodetection.enabled = true</configurationParameters>
                     </properties>
                     <includes>
                         <!-- Tests classes should start with "Test", but we do also want to include tests incorrectly named, with "Test" at the end -->
