@@ -368,6 +368,10 @@
                     <artifactId>lucene-core</artifactId>
                 </exclusion>
                 <exclusion>
+                    <groupId>org.apache.lucene</groupId>
+                    <artifactId>lucene-sandbox</artifactId>
+                </exclusion>
+                <exclusion>
                     <groupId>org.codehaus.jackson</groupId>
                     <artifactId>jackson-mapper-asl</artifactId>
                 </exclusion>
@@ -510,7 +514,6 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
-            <version>3.11</version>
             <scope>runtime</scope>
         </dependency>
 
