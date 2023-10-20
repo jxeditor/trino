@@ -20,7 +20,7 @@ import io.trino.testing.QueryRunner;
 import io.trino.testing.sql.TestTable;
 import org.jdbi.v3.core.HandleConsumer;
 import org.jdbi.v3.core.Jdbi;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Properties;
@@ -53,27 +53,39 @@ public class TestPostgreSqlTableStatistics
                 ImmutableList.of(ORDERS));
     }
 
+    @Test
     @Override
-    @Test(invocationCount = 10, successPercentage = 50) // PostgreSQL can auto-analyze data before we SHOW STATS
     public void testNotAnalyzed()
     {
         String tableName = "test_stats_not_analyzed";
         assertUpdate("DROP TABLE IF EXISTS " + tableName);
         computeActual(format("CREATE TABLE %s AS SELECT * FROM tpch.tiny.orders", tableName));
+
+        Exception failure = null;
         try {
-            assertQuery(
-                    "SHOW STATS FOR " + tableName,
-                    "VALUES " +
-                            "('orderkey', null, null, null, null, null, null)," +
-                            "('custkey', null, null, null, null, null, null)," +
-                            "('orderstatus', null, null, null, null, null, null)," +
-                            "('totalprice', null, null, null, null, null, null)," +
-                            "('orderdate', null, null, null, null, null, null)," +
-                            "('orderpriority', null, null, null, null, null, null)," +
-                            "('clerk', null, null, null, null, null, null)," +
-                            "('shippriority', null, null, null, null, null, null)," +
-                            "('comment', null, null, null, null, null, null)," +
-                            "(null, null, null, null, 15000, null, null)");
+            for (int i = 0; i < 10; i++) {
+                try {
+                    assertQuery(
+                            "SHOW STATS FOR " + tableName,
+                            "VALUES " +
+                                    "('orderkey', null, null, null, null, null, null)," +
+                                    "('custkey', null, null, null, null, null, null)," +
+                                    "('orderstatus', null, null, null, null, null, null)," +
+                                    "('totalprice', null, null, null, null, null, null)," +
+                                    "('orderdate', null, null, null, null, null, null)," +
+                                    "('orderpriority', null, null, null, null, null, null)," +
+                                    "('clerk', null, null, null, null, null, null)," +
+                                    "('shippriority', null, null, null, null, null, null)," +
+                                    "('comment', null, null, null, null, null, null)," +
+                                    "(null, null, null, null, 15000, null, null)");
+                    return;
+                }
+                catch (Exception e) {
+                    failure = e;
+                }
+            }
+
+            throw new AssertionError(failure);
         }
         finally {
             assertUpdate("DROP TABLE " + tableName);
@@ -331,8 +343,7 @@ public class TestPostgreSqlTableStatistics
     }
 
     @Override
-    @Test(dataProvider = "testCaseColumnNamesDataProvider")
-    public void testCaseColumnNames(String tableName)
+    protected void testCaseColumnNames(String tableName)
     {
         executeInPostgres("" +
                 "CREATE TABLE " + tableName + " " +
