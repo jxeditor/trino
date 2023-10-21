@@ -36,7 +36,7 @@ import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 public class RowBlock
-        implements Block
+        implements ValueBlock
 {
     private static final int INSTANCE_SIZE = instanceSize(RowBlock.class);
     private final int numFields;
@@ -55,7 +55,7 @@ public class RowBlock
     /**
      * Create a row block directly from columnar nulls and field blocks.
      */
-    public static Block fromFieldBlocks(int positionCount, Optional<boolean[]> rowIsNullOptional, Block[] fieldBlocks)
+    public static RowBlock fromFieldBlocks(int positionCount, Optional<boolean[]> rowIsNullOptional, Block[] fieldBlocks)
     {
         boolean[] rowIsNull = rowIsNullOptional.orElse(null);
         int[] fieldBlockOffsets = null;
@@ -256,7 +256,7 @@ public class RowBlock
     }
 
     @Override
-    public Block copyWithAppendedNull()
+    public RowBlock copyWithAppendedNull()
     {
         boolean[] newRowIsNull = copyIsNullAndAppendNull(rowIsNull, startOffset, getPositionCount());
 
@@ -305,7 +305,7 @@ public class RowBlock
     }
 
     @Override
-    public Block copyPositions(int[] positions, int offset, int length)
+    public RowBlock copyPositions(int[] positions, int offset, int length)
     {
         checkArrayRange(positions, offset, length);
 
@@ -354,7 +354,7 @@ public class RowBlock
     }
 
     @Override
-    public Block getRegion(int position, int length)
+    public RowBlock getRegion(int position, int length)
     {
         int positionCount = getPositionCount();
         checkValidRegion(positionCount, position, length);
@@ -492,7 +492,7 @@ public class RowBlock
     }
 
     @Override
-    public Block copyRegion(int position, int length)
+    public RowBlock copyRegion(int position, int length)
     {
         int positionCount = getPositionCount();
         checkValidRegion(positionCount, position, length);
@@ -533,13 +533,17 @@ public class RowBlock
         if (clazz != SqlRow.class) {
             throw new IllegalArgumentException("clazz must be SqlRow.class");
         }
-        checkReadablePosition(this, position);
+        return clazz.cast(getRow(position));
+    }
 
-        return clazz.cast(new SqlRow(getFieldBlockOffset(position), fieldBlocks));
+    public SqlRow getRow(int position)
+    {
+        checkReadablePosition(this, position);
+        return new SqlRow(getFieldBlockOffset(position), fieldBlocks);
     }
 
     @Override
-    public Block getSingleValueBlock(int position)
+    public RowBlock getSingleValueBlock(int position)
     {
         checkReadablePosition(this, position);
 
@@ -582,5 +586,11 @@ public class RowBlock
             return false;
         }
         return rowIsNull[position + startOffset];
+    }
+
+    @Override
+    public RowBlock getUnderlyingValueBlock()
+    {
+        return this;
     }
 }

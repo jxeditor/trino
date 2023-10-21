@@ -41,7 +41,7 @@ import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 public class MapBlock
-        implements Block
+        implements ValueBlock
 {
     private static final int INSTANCE_SIZE = instanceSize(MapBlock.class);
 
@@ -308,7 +308,7 @@ public class MapBlock
     }
 
     @Override
-    public Block copyWithAppendedNull()
+    public MapBlock copyWithAppendedNull()
     {
         boolean[] newMapIsNull = copyIsNullAndAppendNull(mapIsNull, startOffset, getPositionCount());
         int[] newOffsets = copyOffsetsAndAppendNull(offsets, startOffset, getPositionCount());
@@ -347,7 +347,7 @@ public class MapBlock
     }
 
     @Override
-    public Block copyPositions(int[] positions, int offset, int length)
+    public MapBlock copyPositions(int[] positions, int offset, int length)
     {
         checkArrayRange(positions, offset, length);
 
@@ -407,7 +407,7 @@ public class MapBlock
     }
 
     @Override
-    public Block getRegion(int position, int length)
+    public MapBlock getRegion(int position, int length)
     {
         int positionCount = getPositionCount();
         checkValidRegion(positionCount, position, length);
@@ -500,7 +500,7 @@ public class MapBlock
     }
 
     @Override
-    public Block copyRegion(int position, int length)
+    public MapBlock copyRegion(int position, int length)
     {
         int positionCount = getPositionCount();
         checkValidRegion(positionCount, position, length);
@@ -541,21 +541,25 @@ public class MapBlock
         if (clazz != SqlMap.class) {
             throw new IllegalArgumentException("clazz must be SqlMap.class");
         }
-        checkReadablePosition(this, position);
+        return clazz.cast(getMap(position));
+    }
 
+    public SqlMap getMap(int position)
+    {
+        checkReadablePosition(this, position);
         int startEntryOffset = getOffset(position);
         int endEntryOffset = getOffset(position + 1);
-        return clazz.cast(new SqlMap(
+        return new SqlMap(
                 mapType,
                 keyBlock,
                 valueBlock,
                 new SqlMap.HashTableSupplier(this),
                 startEntryOffset,
-                (endEntryOffset - startEntryOffset)));
+                (endEntryOffset - startEntryOffset));
     }
 
     @Override
-    public Block getSingleValueBlock(int position)
+    public MapBlock getSingleValueBlock(int position)
     {
         checkReadablePosition(this, position);
 
@@ -609,6 +613,12 @@ public class MapBlock
         checkReadablePosition(this, position);
         boolean[] mapIsNull = this.mapIsNull;
         return mapIsNull != null && mapIsNull[position + startOffset];
+    }
+
+    @Override
+    public MapBlock getUnderlyingValueBlock()
+    {
+        return this;
     }
 
     // only visible for testing
