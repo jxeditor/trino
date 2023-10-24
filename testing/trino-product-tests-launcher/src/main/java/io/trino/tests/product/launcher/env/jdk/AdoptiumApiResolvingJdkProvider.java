@@ -13,34 +13,32 @@
  */
 package io.trino.tests.product.launcher.env.jdk;
 
-import com.google.inject.Inject;
 import io.trino.testing.containers.TestContainers;
 import io.trino.tests.product.launcher.env.EnvironmentOptions;
 
-public class Zulu19JdkProvider
+public abstract class AdoptiumApiResolvingJdkProvider
         extends TarDownloadingJdkProvider
 {
-    private static final String VERSION = "19.0.2";
-
-    @Inject
-    public Zulu19JdkProvider(EnvironmentOptions environmentOptions)
+    public AdoptiumApiResolvingJdkProvider(EnvironmentOptions environmentOptions)
     {
         super(environmentOptions);
+    }
+
+    protected abstract String getReleaseName();
+
+    @Override
+    public String getDescription()
+    {
+        return "Temurin " + getReleaseName();
     }
 
     @Override
     protected String getDownloadUri(TestContainers.DockerArchitecture architecture)
     {
         return switch (architecture) {
-            case AMD64 -> "https://cdn.azul.com/zulu/bin/zulu19.32.13-ca-jdk%s-linux_x64.tar.gz".formatted(VERSION);
-            case ARM64 -> "https://cdn.azul.com/zulu/bin/zulu19.32.13-ca-jdk%s-linux_aarch64.tar.gz".formatted(VERSION);
-            default -> throw new IllegalArgumentException("Architecture %s is not supported for Zulu 19 distribution".formatted(architecture));
+            case AMD64 -> "https://api.adoptium.net/v3/binary/version/%s/linux/%s/jdk/hotspot/normal/eclipse?project=jdk".formatted(getReleaseName(), "x64");
+            case ARM64 -> "https://api.adoptium.net/v3/binary/version/%s/linux/%s/jdk/hotspot/normal/eclipse?project=jdk".formatted(getReleaseName(), "aarch64");
+            default -> throw new UnsupportedOperationException("Fetching Temurin JDK for arch " + architecture + " is not supported");
         };
-    }
-
-    @Override
-    public String getDescription()
-    {
-        return "Zulu " + VERSION;
     }
 }

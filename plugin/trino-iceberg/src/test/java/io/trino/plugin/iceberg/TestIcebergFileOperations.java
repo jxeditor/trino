@@ -29,8 +29,11 @@ import io.trino.testing.AbstractTestQueryFramework;
 import io.trino.testing.DistributedQueryRunner;
 import org.apache.iceberg.util.ThreadPools;
 import org.intellij.lang.annotations.Language;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.File;
 import java.util.Optional;
@@ -49,14 +52,14 @@ import static io.trino.plugin.hive.HiveTestUtils.HDFS_FILE_SYSTEM_STATS;
 import static io.trino.plugin.hive.metastore.file.TestingFileHiveMetastore.createTestingFileHiveMetastore;
 import static io.trino.plugin.iceberg.IcebergQueryRunner.ICEBERG_CATALOG;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.COLLECT_EXTENDED_STATISTICS_ON_WRITE;
-import static io.trino.plugin.iceberg.TestIcebergMetadataFileOperations.FileType.DATA;
-import static io.trino.plugin.iceberg.TestIcebergMetadataFileOperations.FileType.MANIFEST;
-import static io.trino.plugin.iceberg.TestIcebergMetadataFileOperations.FileType.METADATA_JSON;
-import static io.trino.plugin.iceberg.TestIcebergMetadataFileOperations.FileType.SNAPSHOT;
-import static io.trino.plugin.iceberg.TestIcebergMetadataFileOperations.FileType.STATS;
-import static io.trino.plugin.iceberg.TestIcebergMetadataFileOperations.FileType.fromFilePath;
-import static io.trino.plugin.iceberg.TestIcebergMetadataFileOperations.Scope.ALL_FILES;
-import static io.trino.plugin.iceberg.TestIcebergMetadataFileOperations.Scope.METADATA_FILES;
+import static io.trino.plugin.iceberg.TestIcebergFileOperations.FileType.DATA;
+import static io.trino.plugin.iceberg.TestIcebergFileOperations.FileType.MANIFEST;
+import static io.trino.plugin.iceberg.TestIcebergFileOperations.FileType.METADATA_JSON;
+import static io.trino.plugin.iceberg.TestIcebergFileOperations.FileType.SNAPSHOT;
+import static io.trino.plugin.iceberg.TestIcebergFileOperations.FileType.STATS;
+import static io.trino.plugin.iceberg.TestIcebergFileOperations.FileType.fromFilePath;
+import static io.trino.plugin.iceberg.TestIcebergFileOperations.Scope.ALL_FILES;
+import static io.trino.plugin.iceberg.TestIcebergFileOperations.Scope.METADATA_FILES;
 import static io.trino.testing.MultisetAssertions.assertMultisetsEqual;
 import static io.trino.testing.TestingNames.randomNameSuffix;
 import static io.trino.testing.TestingSession.testSessionBuilder;
@@ -66,8 +69,8 @@ import static java.util.Collections.nCopies;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toCollection;
 
-@Test(singleThreaded = true) // e.g. trackingFileSystemFactory is shared mutable state
-public class TestIcebergMetadataFileOperations
+@Execution(ExecutionMode.SAME_THREAD) // e.g. trackingFileSystemFactory is shared mutable state
+public class TestIcebergFileOperations
         extends AbstractTestQueryFramework
 {
     private static final int MAX_PREFIXES_COUNT = 10;
@@ -167,7 +170,8 @@ public class TestIcebergMetadataFileOperations
                         .build());
     }
 
-    @Test(dataProvider = "testSelectWithLimitDataProvider")
+    @ParameterizedTest
+    @MethodSource("testSelectWithLimitDataProvider")
     public void testSelectWithLimit(int numberOfFiles)
     {
         assertUpdate("DROP TABLE IF EXISTS test_select_with_limit"); // test is parameterized
@@ -210,7 +214,6 @@ public class TestIcebergMetadataFileOperations
         assertUpdate("DROP TABLE test_select_with_limit");
     }
 
-    @DataProvider
     public Object[][] testSelectWithLimitDataProvider()
     {
         return new Object[][] {
@@ -594,7 +597,8 @@ public class TestIcebergMetadataFileOperations
         assertUpdate("DROP TABLE " + tableName);
     }
 
-    @Test(dataProvider = "metadataQueriesTestTableCountDataProvider")
+    @ParameterizedTest
+    @MethodSource("metadataQueriesTestTableCountDataProvider")
     public void testInformationSchemaColumns(int tables)
     {
         String schemaName = "test_i_s_columns_schema" + randomNameSuffix();
@@ -636,7 +640,8 @@ public class TestIcebergMetadataFileOperations
         }
     }
 
-    @Test(dataProvider = "metadataQueriesTestTableCountDataProvider")
+    @ParameterizedTest
+    @MethodSource("metadataQueriesTestTableCountDataProvider")
     public void testSystemMetadataTableComments(int tables)
     {
         String schemaName = "test_s_m_table_comments" + randomNameSuffix();
@@ -678,7 +683,6 @@ public class TestIcebergMetadataFileOperations
         }
     }
 
-    @DataProvider
     public Object[][] metadataQueriesTestTableCountDataProvider()
     {
         return new Object[][] {
