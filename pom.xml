@@ -146,7 +146,7 @@
         <air.check.skip-jacoco>true</air.check.skip-jacoco>
 
         <project.build.targetJdk>17</project.build.targetJdk>
-        <air.java.version>17.0.4</air.java.version>
+        <air.java.version>17.0.5</air.java.version>
         <air.modernizer.java-version>8</air.modernizer.java-version>
 
         <air.release.preparation-goals>clean verify -DskipTests</air.release.preparation-goals>
@@ -209,7 +209,6 @@
             -XX:+UnlockDiagnosticVMOptions
             <!-- bump from default of 2 -->
             -XX:GCLockerRetryAllocationCount=10
-            -XX:-G1UsePreventiveGC
         </air.test.jvm.additional-arguments>
 
         <air.javadoc.lint>-missing</air.javadoc.lint>
