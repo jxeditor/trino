@@ -23,8 +23,8 @@ import io.airlift.units.DataSize;
 import io.trino.Session;
 import io.trino.cost.StatsAndCosts;
 import io.trino.execution.QueryInfo;
+import io.trino.filesystem.Location;
 import io.trino.metadata.FunctionManager;
-import io.trino.metadata.InsertTableHandle;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.QualifiedObjectName;
 import io.trino.metadata.TableHandle;
@@ -37,7 +37,6 @@ import io.trino.plugin.hive.metastore.Storage;
 import io.trino.plugin.hive.metastore.StorageFormat;
 import io.trino.plugin.hive.metastore.Table;
 import io.trino.spi.connector.CatalogSchemaTableName;
-import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ColumnMetadata;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.security.Identity;
@@ -67,7 +66,6 @@ import io.trino.testing.TestingConnectorBehavior;
 import io.trino.testing.sql.TestTable;
 import io.trino.testing.sql.TrinoSqlExecutor;
 import io.trino.type.TypeDeserializer;
-import org.apache.hadoop.fs.Path;
 import org.assertj.core.api.AbstractLongAssert;
 import org.intellij.lang.annotations.Language;
 import org.testng.SkipException;
@@ -2935,7 +2933,7 @@ public abstract class BaseHiveConnectorTest
         List<MaterializedRow> paths = getQueryRunner().execute(getSession(), "SELECT \"$path\" FROM " + tableName + " ORDER BY \"$path\" ASC").toTestTypes().getMaterializedRows();
         assertEquals(paths.size(), 3);
 
-        String firstPartition = new Path((String) paths.get(0).getField(0)).getParent().toString();
+        String firstPartition = Location.of((String) paths.get(0).getField(0)).parentDirectory().toString();
 
         assertAccessDenied(
                 format("CALL system.unregister_partition('%s', '%s', ARRAY['part'], ARRAY['first'])", TPCH_SCHEMA, tableName),
@@ -4405,8 +4403,7 @@ public abstract class BaseHiveConnectorTest
 
         // Table properties
         StringJoiner propertiesSql = new StringJoiner(",\n   ");
-        propertiesSql.add(
-                format("external_location = '%s'", new Path(tempDir.toUri().toASCIIString())));
+        propertiesSql.add(format("external_location = '%s'", tempDir.toUri().toASCIIString()));
         propertiesSql.add("format = 'TEXTFILE'");
         tableProperties.forEach(propertiesSql::add);
 
@@ -4738,7 +4735,7 @@ public abstract class BaseHiveConnectorTest
             int col0 = (int) row.getField(0);
             int col1 = (int) row.getField(1);
             String pathName = (String) row.getField(2);
-            String parentDirectory = new Path(pathName).getParent().toString();
+            String parentDirectory = Location.of(pathName).parentDirectory().toString();
 
             assertTrue(pathName.length() > 0);
             assertEquals(col0 % 3, col1);
@@ -5614,7 +5611,7 @@ public abstract class BaseHiveConnectorTest
 
     private void testReadWithPartitionSchemaMismatch(Session session, HiveStorageFormat format)
     {
-        if (isMappingByName(session, format)) {
+        if (isMappingByName(format)) {
             testReadWithPartitionSchemaMismatchByName(session, format);
         }
         else {
@@ -5622,7 +5619,7 @@ public abstract class BaseHiveConnectorTest
         }
     }
 
-    private boolean isMappingByName(Session session, HiveStorageFormat format)
+    private boolean isMappingByName(HiveStorageFormat format)
     {
         return switch(format) {
             case PARQUET -> true;
@@ -7969,22 +7966,6 @@ public abstract class BaseHiveConnectorTest
                 "WHERE x < 0 AND cast(p AS int) > 0");
 
         assertUpdate("DROP TABLE test_prune_failure");
-    }
-
-    private HiveInsertTableHandle getHiveInsertTableHandle(Session session, String tableName)
-    {
-        Metadata metadata = getDistributedQueryRunner().getCoordinator().getMetadata();
-        return transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl())
-                .execute(session, transactionSession -> {
-                    QualifiedObjectName objectName = new QualifiedObjectName(catalog, TPCH_SCHEMA, tableName);
-                    Optional<TableHandle> handle = metadata.getTableHandle(transactionSession, objectName);
-                    List<ColumnHandle> columns = ImmutableList.copyOf(metadata.getColumnHandles(transactionSession, handle.get()).values());
-                    InsertTableHandle insertTableHandle = metadata.beginInsert(transactionSession, handle.get(), columns);
-                    HiveInsertTableHandle hiveInsertTableHandle = (HiveInsertTableHandle) insertTableHandle.getConnectorHandle();
-
-                    metadata.finishInsert(transactionSession, insertTableHandle, ImmutableList.of(), ImmutableList.of());
-                    return hiveInsertTableHandle;
-                });
     }
 
     @Test
