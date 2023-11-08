@@ -11,25 +11,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.pinot;
 
-import org.junit.jupiter.api.parallel.Isolated;
+package io.trino.plugin.hive.coercions;
 
-import static io.trino.plugin.pinot.TestingPinotCluster.PINOT_LATEST_IMAGE_NAME;
+import io.trino.spi.block.Block;
+import io.trino.spi.block.BlockBuilder;
+import io.trino.spi.type.DoubleType;
+import io.trino.spi.type.Type;
 
-@Isolated
-public class TestPinotLatestConnectorSmokeTest
-        extends BasePinotConnectorSmokeTest
+import static io.trino.spi.type.DoubleType.DOUBLE;
+
+public class IntegerNumberToDoubleCoercer<F extends Type>
+        extends TypeCoercer<F, DoubleType>
 {
-    @Override
-    protected boolean isSecured()
+    public IntegerNumberToDoubleCoercer(F fromType)
     {
-        return false;
+        super(fromType, DOUBLE);
     }
 
     @Override
-    protected String getPinotImageName()
+    protected void applyCoercedValue(BlockBuilder blockBuilder, Block block, int position)
     {
-        return PINOT_LATEST_IMAGE_NAME;
+        DOUBLE.writeDouble(blockBuilder, fromType.getLong(block, position));
     }
 }
