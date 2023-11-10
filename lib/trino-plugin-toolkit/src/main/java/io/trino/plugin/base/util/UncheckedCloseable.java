@@ -11,20 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.pinot.auth.none;
+package io.trino.plugin.base.util;
 
-import org.junit.jupiter.api.Test;
-
-import java.util.Optional;
-
-import static org.testng.Assert.assertEquals;
-
-public class TestPinotEmptyAuthenticationProvider
+public interface UncheckedCloseable
+        extends AutoCloseable
 {
-    @Test
-    public void testAuthenticationToken()
-    {
-        PinotEmptyAuthenticationProvider underTest = PinotEmptyAuthenticationProvider.instance();
-        assertEquals(underTest.getAuthenticationToken(), Optional.empty());
-    }
+    @Override
+    void close();
 }
