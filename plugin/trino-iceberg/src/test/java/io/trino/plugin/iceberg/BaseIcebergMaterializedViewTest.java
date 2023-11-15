@@ -26,9 +26,10 @@ import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.assertj.core.api.Condition;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.parallel.Execution;
 
 import java.nio.file.Path;
 import java.util.Optional;
@@ -47,8 +48,12 @@ import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.anyOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS;
+import static org.junit.jupiter.api.parallel.ExecutionMode.CONCURRENT;
 import static org.testng.Assert.assertEquals;
 
+@TestInstance(PER_CLASS)
+@Execution(CONCURRENT)
 public abstract class BaseIcebergMaterializedViewTest
         extends AbstractTestQueryFramework
 {
@@ -56,7 +61,7 @@ public abstract class BaseIcebergMaterializedViewTest
 
     protected abstract String getStorageMetadataLocation(String materializedViewName);
 
-    @BeforeClass
+    @BeforeAll
     public void setUp()
     {
         assertUpdate("CREATE TABLE base_table1(_bigint BIGINT, _date DATE) WITH (partitioning = ARRAY['_date'])");
@@ -598,8 +603,23 @@ public abstract class BaseIcebergMaterializedViewTest
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_level2");
     }
 
-    @Test(dataProvider = "testBucketPartitioningDataProvider")
-    public void testBucketPartitioning(String dataType, String exampleValue)
+    @Test
+    public void testBucketPartitioning()
+    {
+        testBucketPartitioning("integer", "20050909");
+        testBucketPartitioning("bigint", "200509091331001234");
+        testBucketPartitioning("decimal(8,5)", "DECIMAL '876.54321'");
+        testBucketPartitioning("decimal(28,21)", "DECIMAL '1234567.890123456789012345678'");
+        testBucketPartitioning("date", "DATE '2005-09-09'");
+        testBucketPartitioning("time(6)", "TIME '13:31:00.123456'");
+        testBucketPartitioning("timestamp(6)", "TIMESTAMP '2005-09-10 13:31:00.123456'");
+        testBucketPartitioning("timestamp(6) with time zone", "TIMESTAMP '2005-09-10 13:00:00.123456 Europe/Warsaw'");
+        testBucketPartitioning("varchar", "VARCHAR 'Greetings from Warsaw!'");
+        testBucketPartitioning("uuid", "UUID '406caec7-68b9-4778-81b2-a12ece70c8b1'");
+        testBucketPartitioning("varbinary", "X'66696E6465706920726F636B7321'");
+    }
+
+    private void testBucketPartitioning(String dataType, String exampleValue)
     {
         // validate the example value type
         assertThat(query("SELECT " + exampleValue))
@@ -622,27 +642,17 @@ public abstract class BaseIcebergMaterializedViewTest
         }
     }
 
-    @DataProvider
-    public Object[][] testBucketPartitioningDataProvider()
+    @Test
+    public void testTruncatePartitioning()
     {
-        // Iceberg supports bucket partitioning on int, long, decimal, date, time, timestamp, timestamptz, string, uuid, fixed, binary
-        return new Object[][] {
-                {"integer", "20050909"},
-                {"bigint", "200509091331001234"},
-                {"decimal(8,5)", "DECIMAL '876.54321'"},
-                {"decimal(28,21)", "DECIMAL '1234567.890123456789012345678'"},
-                {"date", "DATE '2005-09-09'"},
-                {"time(6)", "TIME '13:31:00.123456'"},
-                {"timestamp(6)", "TIMESTAMP '2005-09-10 13:31:00.123456'"},
-                {"timestamp(6) with time zone", "TIMESTAMP '2005-09-10 13:00:00.123456 Europe/Warsaw'"},
-                {"varchar", "VARCHAR 'Greetings from Warsaw!'"},
-                {"uuid", "UUID '406caec7-68b9-4778-81b2-a12ece70c8b1'"},
-                {"varbinary", "X'66696E6465706920726F636B7321'"},
-        };
+        testTruncatePartitioning("integer", "20050909");
+        testTruncatePartitioning("bigint", "200509091331001234");
+        testTruncatePartitioning("decimal(8,5)", "DECIMAL '876.54321'");
+        testTruncatePartitioning("decimal(28,21)", "DECIMAL '1234567.890123456789012345678'");
+        testTruncatePartitioning("varchar", "VARCHAR 'Greetings from Warsaw!'");
     }
 
-    @Test(dataProvider = "testTruncatePartitioningDataProvider")
-    public void testTruncatePartitioning(String dataType, String exampleValue)
+    private void testTruncatePartitioning(String dataType, String exampleValue)
     {
         // validate the example value type
         assertThat(query("SELECT " + exampleValue))
@@ -665,21 +675,23 @@ public abstract class BaseIcebergMaterializedViewTest
         }
     }
 
-    @DataProvider
-    public Object[][] testTruncatePartitioningDataProvider()
+    @Test
+    public void testTemporalPartitioning()
     {
-        // Iceberg supports truncate partitioning on int, long, decimal, string
-        return new Object[][] {
-                {"integer", "20050909"},
-                {"bigint", "200509091331001234"},
-                {"decimal(8,5)", "DECIMAL '876.54321'"},
-                {"decimal(28,21)", "DECIMAL '1234567.890123456789012345678'"},
-                {"varchar", "VARCHAR 'Greetings from Warsaw!'"},
-        };
+        testTemporalPartitioning("year", "date", "DATE '2005-09-09'");
+        testTemporalPartitioning("year", "timestamp(6)", "TIMESTAMP '2005-09-10 13:31:00.123456'");
+        testTemporalPartitioning("year", "timestamp(6) with time zone", "TIMESTAMP '2005-09-10 13:00:00.123456 Europe/Warsaw'");
+        testTemporalPartitioning("month", "date", "DATE '2005-09-09'");
+        testTemporalPartitioning("month", "timestamp(6)", "TIMESTAMP '2005-09-10 13:31:00.123456'");
+        testTemporalPartitioning("month", "timestamp(6) with time zone", "TIMESTAMP '2005-09-10 13:00:00.123456 Europe/Warsaw'");
+        testTemporalPartitioning("day", "date", "DATE '2005-09-09'");
+        testTemporalPartitioning("day", "timestamp(6)", "TIMESTAMP '2005-09-10 13:31:00.123456'");
+        testTemporalPartitioning("day", "timestamp(6) with time zone", "TIMESTAMP '2005-09-10 13:00:00.123456 Europe/Warsaw'");
+        testTemporalPartitioning("hour", "timestamp(6)", "TIMESTAMP '2005-09-10 13:31:00.123456'");
+        testTemporalPartitioning("hour", "timestamp(6) with time zone", "TIMESTAMP '2005-09-10 13:00:00.123456 Europe/Warsaw'");
     }
 
-    @Test(dataProvider = "testTemporalPartitioningDataProvider")
-    public void testTemporalPartitioning(String partitioning, String dataType, String exampleValue)
+    private void testTemporalPartitioning(String partitioning, String dataType, String exampleValue)
     {
         // validate the example value type
         assertThat(query("SELECT " + exampleValue))
@@ -700,24 +712,6 @@ public abstract class BaseIcebergMaterializedViewTest
         finally {
             assertUpdate("DROP MATERIALIZED VIEW test_temporal_partitioning");
         }
-    }
-
-    @DataProvider
-    public Object[][] testTemporalPartitioningDataProvider()
-    {
-        return new Object[][] {
-                {"year", "date", "DATE '2005-09-09'"},
-                {"year", "timestamp(6)", "TIMESTAMP '2005-09-10 13:31:00.123456'"},
-                {"year", "timestamp(6) with time zone", "TIMESTAMP '2005-09-10 13:00:00.123456 Europe/Warsaw'"},
-                {"month", "date", "DATE '2005-09-09'"},
-                {"month", "timestamp(6)", "TIMESTAMP '2005-09-10 13:31:00.123456'"},
-                {"month", "timestamp(6) with time zone", "TIMESTAMP '2005-09-10 13:00:00.123456 Europe/Warsaw'"},
-                {"day", "date", "DATE '2005-09-09'"},
-                {"day", "timestamp(6)", "TIMESTAMP '2005-09-10 13:31:00.123456'"},
-                {"day", "timestamp(6) with time zone", "TIMESTAMP '2005-09-10 13:00:00.123456 Europe/Warsaw'"},
-                {"hour", "timestamp(6)", "TIMESTAMP '2005-09-10 13:31:00.123456'"},
-                {"hour", "timestamp(6) with time zone", "TIMESTAMP '2005-09-10 13:00:00.123456 Europe/Warsaw'"},
-        };
     }
 
     @Test

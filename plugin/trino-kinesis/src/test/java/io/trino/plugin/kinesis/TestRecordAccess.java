@@ -27,10 +27,11 @@ import io.trino.spi.type.Type;
 import io.trino.testing.MaterializedResult;
 import io.trino.testing.MaterializedRow;
 import io.trino.testing.StandaloneQueryRunner;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.parallel.Execution;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -45,6 +46,8 @@ import static io.trino.testing.TestingSession.testSessionBuilder;
 import static io.trino.transaction.TransactionBuilder.transaction;
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS;
+import static org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -55,7 +58,8 @@ import static org.testng.Assert.assertTrue;
  * the plug in without requiring an actual Kinesis connection.  It uses the mock
  * kinesis client so no AWS activity will occur.
  */
-@Test(singleThreaded = true)
+@TestInstance(PER_CLASS)
+@Execution(SAME_THREAD)
 public class TestRecordAccess
 {
     private static final Logger log = Logger.get(TestRecordAccess.class);
@@ -72,7 +76,7 @@ public class TestRecordAccess
     private StandaloneQueryRunner queryRunner;
     private MockKinesisClient mockClient;
 
-    @BeforeClass
+    @BeforeAll
     public void start()
     {
         dummyStreamName = "test123";
@@ -83,7 +87,7 @@ public class TestRecordAccess
         mockClient = TestUtils.installKinesisPlugin(queryRunner);
     }
 
-    @AfterClass(alwaysRun = true)
+    @AfterAll
     public void stop()
     {
         queryRunner.close();
@@ -183,8 +187,15 @@ public class TestRecordAccess
         log.info("Completed second test (select counts)");
     }
 
-    @Test(dataProvider = "testJsonStreamProvider")
-    public void testJsonStream(int uncompressedMessages, int compressedMessages, String streamName)
+    @Test
+    public void testJsonStream()
+    {
+        testJsonStream(4, 0, jsonStreamName);
+        testJsonStream(0, 4, jsonGzipCompressStreamName);
+        testJsonStream(2, 2, jsonAutomaticCompressStreamName);
+    }
+
+    private void testJsonStream(int uncompressedMessages, int compressedMessages, String streamName)
     {
         // Simple case: add a few specific items, query object and internal fields:
         if (uncompressedMessages > 0) {
@@ -209,15 +220,5 @@ public class TestRecordAccess
             assertTrue((long) row.getFields().get(0) >= 100);
             log.info("ROW: %s", row);
         }
-    }
-
-    @DataProvider
-    public Object[][] testJsonStreamProvider()
-    {
-        return new Object[][] {
-                {4, 0, jsonStreamName},
-                {0, 4, jsonGzipCompressStreamName},
-                {2, 2, jsonAutomaticCompressStreamName},
-        };
     }
 }
