@@ -15,9 +15,11 @@ package io.trino.plugin.bigquery;
 
 import com.google.cloud.bigquery.Field;
 import com.google.cloud.bigquery.FieldList;
+import com.google.cloud.bigquery.LegacySQLTypeName;
 import com.google.cloud.bigquery.StandardSQLTypeName;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
+import com.google.inject.Inject;
 import io.airlift.slice.Slice;
 import io.trino.spi.TrinoException;
 import io.trino.spi.type.ArrayType;
@@ -37,6 +39,8 @@ import io.trino.spi.type.TimestampType;
 import io.trino.spi.type.TimestampWithTimeZoneType;
 import io.trino.spi.type.TinyintType;
 import io.trino.spi.type.Type;
+import io.trino.spi.type.TypeManager;
+import io.trino.spi.type.TypeSignature;
 import io.trino.spi.type.VarbinaryType;
 import io.trino.spi.type.VarcharType;
 import jakarta.annotation.Nullable;
@@ -48,16 +52,20 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.google.cloud.bigquery.Field.Mode.REPEATED;
+import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Verify.verify;
 import static io.trino.plugin.bigquery.BigQueryMetadata.DEFAULT_NUMERIC_TYPE_PRECISION;
 import static io.trino.plugin.bigquery.BigQueryMetadata.DEFAULT_NUMERIC_TYPE_SCALE;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.type.DecimalType.createDecimalType;
+import static io.trino.spi.type.StandardTypes.JSON;
 import static io.trino.spi.type.TimeWithTimeZoneType.DEFAULT_PRECISION;
 import static io.trino.spi.type.TimeWithTimeZoneType.createTimeWithTimeZoneType;
 import static io.trino.spi.type.TimeZoneKey.getTimeZoneKey;
@@ -74,12 +82,11 @@ import static java.lang.Math.floorMod;
 import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
 import static java.time.ZoneOffset.UTC;
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
-public final class BigQueryType
+public final class BigQueryTypeManager
 {
-    private BigQueryType() {}
-
     private static final int[] NANO_FACTOR = {
             -1, // 0, no need to multiply
             100_000_000, // 1 digit after the dot
@@ -95,10 +102,18 @@ public final class BigQueryType
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("''HH:mm:ss.SSSSSS''");
     private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss.SSSSSS").withZone(UTC);
 
-    private static RowType.Field toRawTypeField(String name, Field field)
+    private final Type jsonType;
+
+    @Inject
+    public BigQueryTypeManager(TypeManager typeManager)
     {
-        ColumnMapping columnMapping = convertToTrinoType(field).orElseThrow(() -> new IllegalArgumentException("Unsupported column " + field));
-        return RowType.field(name, field.getMode() == REPEATED ? new ArrayType(columnMapping.type()) : columnMapping.type());
+        jsonType = requireNonNull(typeManager, "typeManager is null").getType(new TypeSignature(JSON));
+    }
+
+    private RowType.Field toRawTypeField(String name, Field field)
+    {
+        Type trinoType = convertToTrinoType(field).orElseThrow(() -> new IllegalArgumentException("Unsupported column " + field)).type();
+        return RowType.field(name, field.getMode() == REPEATED ? new ArrayType(trinoType) : trinoType);
     }
 
     @VisibleForTesting
@@ -198,7 +213,7 @@ public final class BigQueryType
         return format("FROM_BASE64('%s')", Base64.getEncoder().encodeToString(slice.getBytes()));
     }
 
-    public static Field toField(String name, Type type, @Nullable String comment)
+    public Field toField(String name, Type type, @Nullable String comment)
     {
         if (type instanceof ArrayType) {
             Type elementType = ((ArrayType) type).getElementType();
@@ -207,7 +222,7 @@ public final class BigQueryType
         return toInnerField(name, type, false, comment);
     }
 
-    private static Field toInnerField(String name, Type type, boolean repeated, @Nullable String comment)
+    private Field toInnerField(String name, Type type, boolean repeated, @Nullable String comment)
     {
         Field.Builder builder;
         if (type instanceof RowType) {
@@ -222,7 +237,7 @@ public final class BigQueryType
         return builder.build();
     }
 
-    private static FieldList toFieldList(RowType rowType)
+    private FieldList toFieldList(RowType rowType)
     {
         ImmutableList.Builder<Field> fields = ImmutableList.builder();
         for (RowType.Field field : rowType.getFields()) {
@@ -233,7 +248,7 @@ public final class BigQueryType
         return FieldList.of(fields.build());
     }
 
-    private static StandardSQLTypeName toStandardSqlTypeName(Type type)
+    private StandardSQLTypeName toStandardSqlTypeName(Type type)
     {
         if (type == BooleanType.BOOLEAN) {
             return StandardSQLTypeName.BOOL;
@@ -308,7 +323,7 @@ public final class BigQueryType
         }
     }
 
-    public static Optional<ColumnMapping> toTrinoType(Field field)
+    public Optional<ColumnMapping> toTrinoType(Field field)
     {
         return convertToTrinoType(field)
                 .map(columnMapping -> field.getMode() == REPEATED ?
@@ -316,7 +331,7 @@ public final class BigQueryType
                         columnMapping);
     }
 
-    private static Optional<ColumnMapping> convertToTrinoType(Field field)
+    private Optional<ColumnMapping> convertToTrinoType(Field field)
     {
         switch (field.getType().getStandardType()) {
             case BOOL:
@@ -351,6 +366,8 @@ public final class BigQueryType
                 return Optional.of(new ColumnMapping(TimestampWithTimeZoneType.TIMESTAMP_TZ_MICROS, true));
             case GEOGRAPHY:
                 return Optional.of(new ColumnMapping(VarcharType.VARCHAR, false));
+            case JSON:
+                return Optional.of(new ColumnMapping(jsonType, false));
             case STRUCT:
                 // create the row
                 FieldList subTypes = field.getSubFields();
@@ -361,5 +378,52 @@ public final class BigQueryType
             default:
                 return Optional.empty();
         }
+    }
+
+    public BigQueryColumnHandle toColumnHandle(Field field)
+    {
+        FieldList subFields = field.getSubFields();
+        List<BigQueryColumnHandle> subColumns = subFields == null ?
+                Collections.emptyList() :
+                subFields.stream()
+                        .filter(this::isSupportedType)
+                        .map(this::toColumnHandle)
+                        .collect(Collectors.toList());
+        ColumnMapping columnMapping = toTrinoType(field).orElseThrow(() -> new IllegalArgumentException("Unsupported type: " + field));
+        return new BigQueryColumnHandle(
+                field.getName(),
+                columnMapping.type(),
+                field.getType().getStandardType(),
+                columnMapping.isPushdownSupported(),
+                getMode(field),
+                subColumns,
+                field.getDescription(),
+                false);
+    }
+
+    public boolean isSupportedType(Field field)
+    {
+        LegacySQLTypeName type = field.getType();
+        if (type == LegacySQLTypeName.BIGNUMERIC) {
+            // Skip BIGNUMERIC without parameters because the precision (77) and scale (38) is too large
+            if (field.getPrecision() == null && field.getScale() == null) {
+                return false;
+            }
+            if (field.getPrecision() != null && field.getPrecision() > Decimals.MAX_PRECISION) {
+                return false;
+            }
+        }
+
+        return toTrinoType(field).isPresent();
+    }
+
+    public boolean isJsonType(Type type)
+    {
+        return type.equals(jsonType);
+    }
+
+    private static Field.Mode getMode(Field field)
+    {
+        return firstNonNull(field.getMode(), Field.Mode.NULLABLE);
     }
 }
