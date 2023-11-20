@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive.aws.athena.projection;
+package io.trino.plugin.hive.projection;
 
 import com.google.common.collect.ImmutableList;
 import io.trino.spi.predicate.Domain;
@@ -22,26 +22,32 @@ import java.util.Optional;
 
 import static io.trino.plugin.hive.metastore.MetastoreUtil.canConvertSqlTypeToStringForParts;
 import static io.trino.plugin.hive.metastore.MetastoreUtil.sqlScalarToString;
+import static java.util.Objects.requireNonNull;
 
-public class InjectedProjection
-        extends Projection
+final class InjectedProjection
+        implements Projection
 {
-    public InjectedProjection(String columnName)
+    private final String columnName;
+
+    public InjectedProjection(String columnName, Type columnType)
     {
-        super(columnName);
+        if (!canConvertSqlTypeToStringForParts(columnType, true)) {
+            throw new InvalidProjectionException(columnName, columnType);
+        }
+        this.columnName = requireNonNull(columnName, "columnName is null");
     }
 
     @Override
     public List<String> getProjectedValues(Optional<Domain> partitionValueFilter)
     {
         Domain domain = partitionValueFilter
-                .orElseThrow(() -> invalidProjectionException(getColumnName(), "Injected projection requires single predicate for it's column in where clause"));
+                .orElseThrow(() -> new InvalidProjectionException(columnName, "Injected projection requires single predicate for it's column in where clause"));
         Type type = domain.getType();
         if (!domain.isNullableSingleValue() || !canConvertSqlTypeToStringForParts(type, true)) {
-            throw invalidProjectionException(getColumnName(), "Injected projection requires single predicate for it's column in where clause. Currently provided can't be converted to single partition.");
+            throw new InvalidProjectionException(columnName, "Injected projection requires single predicate for it's column in where clause. Currently provided can't be converted to single partition.");
         }
         return Optional.ofNullable(sqlScalarToString(type, domain.getNullableSingleValue(), null))
                 .map(ImmutableList::of)
-                .orElseThrow(() -> unsupportedProjectionColumnTypeException(type));
+                .orElseThrow(() -> new InvalidProjectionException(columnName, type));
     }
 }

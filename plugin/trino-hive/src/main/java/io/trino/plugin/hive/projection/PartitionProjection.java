@@ -11,11 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive.aws.athena;
+package io.trino.plugin.hive.projection;
 
 import com.google.common.base.VerifyException;
 import com.google.common.collect.ImmutableMap;
-import io.trino.plugin.hive.aws.athena.projection.Projection;
+import io.trino.plugin.hive.metastore.Column;
 import io.trino.plugin.hive.metastore.Partition;
 import io.trino.plugin.hive.metastore.Table;
 import io.trino.spi.predicate.Domain;
@@ -33,7 +33,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.Sets.cartesianProduct;
-import static io.trino.plugin.hive.aws.athena.projection.Projection.invalidProjectionMessage;
+import static io.trino.plugin.hive.projection.InvalidProjectionException.invalidProjectionMessage;
 import static io.trino.plugin.hive.util.HiveUtil.escapePathName;
 import static io.trino.plugin.hive.util.HiveUtil.toPartitionValues;
 import static java.lang.String.format;
@@ -43,21 +43,13 @@ public final class PartitionProjection
 {
     private static final Pattern PROJECTION_LOCATION_TEMPLATE_PLACEHOLDER_PATTERN = Pattern.compile("(\\$\\{[^}]+\\})");
 
-    private final boolean enabled;
-
     private final Optional<String> storageLocationTemplate;
     private final Map<String, Projection> columnProjections;
 
-    public PartitionProjection(boolean enabled, Optional<String> storageLocationTemplate, Map<String, Projection> columnProjections)
+    public PartitionProjection(Optional<String> storageLocationTemplate, Map<String, Projection> columnProjections)
     {
-        this.enabled = enabled;
         this.storageLocationTemplate = requireNonNull(storageLocationTemplate, "storageLocationTemplate is null");
         this.columnProjections = ImmutableMap.copyOf(requireNonNull(columnProjections, "columnProjections is null"));
-    }
-
-    public boolean isEnabled()
-    {
-        return enabled;
     }
 
     public Optional<List<String>> getProjectedPartitionNamesByFilter(List<String> columnNames, TupleDomain<String> partitionKeysFilter)
@@ -108,7 +100,7 @@ public final class PartitionProjection
                                 .map(template -> expandStorageLocationTemplate(
                                         template,
                                         table.getPartitionColumns().stream()
-                                                .map(column -> column.getName()).collect(Collectors.toList()),
+                                                .map(Column::getName).collect(Collectors.toList()),
                                         partitionValues))
                                 .orElseGet(() -> format("%s/%s/", table.getStorage().getLocation(), partitionName)))
                         .setBucketProperty(table.getStorage().getBucketProperty())
@@ -116,7 +108,7 @@ public final class PartitionProjection
                 .build();
     }
 
-    private String expandStorageLocationTemplate(String template, List<String> partitionColumns, List<String> partitionValues)
+    private static String expandStorageLocationTemplate(String template, List<String> partitionColumns, List<String> partitionValues)
     {
         Matcher matcher = PROJECTION_LOCATION_TEMPLATE_PLACEHOLDER_PATTERN.matcher(template);
         StringBuilder location = new StringBuilder();

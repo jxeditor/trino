@@ -11,30 +11,44 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive.aws.athena.projection;
+package io.trino.plugin.hive.projection;
 
-import com.google.common.collect.ImmutableList;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.VarcharType;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.airlift.slice.Slices.utf8Slice;
+import static io.trino.plugin.hive.projection.PartitionProjectionProperties.COLUMN_PROJECTION_VALUES;
+import static io.trino.plugin.hive.projection.PartitionProjectionProperties.getProjectionPropertyRequiredValue;
 import static io.trino.spi.predicate.Domain.singleValue;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
-public class EnumProjection
-        extends Projection
+final class EnumProjection
+        implements Projection
 {
+    private final String columnName;
     private final List<String> values;
 
-    public EnumProjection(String columnName, List<String> values)
+    public EnumProjection(String columnName, Type columnType, Map<String, Object> columnProperties)
     {
-        super(columnName);
-        this.values = ImmutableList.copyOf(requireNonNull(values, "values is null"));
+        if (!(columnType instanceof VarcharType)) {
+            throw new InvalidProjectionException(columnName, columnType);
+        }
+
+        this.columnName = requireNonNull(columnName, "columnName is null");
+        this.values = getProjectionPropertyRequiredValue(
+                columnName,
+                columnProperties,
+                COLUMN_PROJECTION_VALUES,
+                value -> ((List<?>) value).stream()
+                        .map(String::valueOf)
+                        .collect(toImmutableList()));
     }
 
     @Override
@@ -54,6 +68,6 @@ public class EnumProjection
         if (type instanceof VarcharType) {
             return valueDomain.contains(singleValue(type, utf8Slice(value)));
         }
-        throw unsupportedProjectionColumnTypeException(type);
+        throw new InvalidProjectionException(columnName, type);
     }
 }

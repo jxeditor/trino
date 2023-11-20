@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive.aws.athena.projection;
+package io.trino.plugin.hive.projection;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
@@ -22,27 +22,52 @@ import io.trino.spi.type.Type;
 import io.trino.spi.type.VarcharType;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.airlift.slice.Slices.utf8Slice;
+import static io.trino.plugin.hive.projection.PartitionProjectionProperties.COLUMN_PROJECTION_DIGITS;
+import static io.trino.plugin.hive.projection.PartitionProjectionProperties.COLUMN_PROJECTION_INTERVAL;
+import static io.trino.plugin.hive.projection.PartitionProjectionProperties.COLUMN_PROJECTION_RANGE;
+import static io.trino.plugin.hive.projection.PartitionProjectionProperties.getProjectionPropertyRequiredValue;
+import static io.trino.plugin.hive.projection.PartitionProjectionProperties.getProjectionPropertyValue;
 import static io.trino.spi.predicate.Domain.singleValue;
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
-public class IntegerProjection
-        extends Projection
+final class IntegerProjection
+        implements Projection
 {
+    private final String columnName;
     private final int leftBound;
     private final int rightBound;
     private final int interval;
     private final Optional<Integer> digits;
 
-    public IntegerProjection(String columnName, int leftBound, int rightBound, int interval, Optional<Integer> digits)
+    public IntegerProjection(String columnName, Type columnType, Map<String, Object> columnProperties)
     {
-        super(columnName);
-        this.leftBound = leftBound;
-        this.rightBound = rightBound;
-        this.interval = interval;
-        this.digits = requireNonNull(digits, "digits is null");
+        if (!(columnType instanceof VarcharType) && !(columnType instanceof IntegerType) && !(columnType instanceof BigintType)) {
+            throw new InvalidProjectionException(columnName, columnType);
+        }
+
+        this.columnName = requireNonNull(columnName, "columnName is null");
+
+        List<Integer> range = getProjectionPropertyRequiredValue(
+                columnName,
+                columnProperties,
+                COLUMN_PROJECTION_RANGE,
+                value -> ((List<?>) value).stream()
+                        .map(element -> Integer.valueOf((String) element))
+                        .collect(toImmutableList()));
+        if (range.size() != 2) {
+            throw new InvalidProjectionException(columnName, format("Property: '%s' needs to be list of 2 integers", COLUMN_PROJECTION_RANGE));
+        }
+        this.leftBound = range.get(0);
+        this.rightBound = range.get(1);
+
+        this.interval = getProjectionPropertyValue(columnProperties, COLUMN_PROJECTION_INTERVAL, Integer.class::cast).orElse(1);
+        this.digits = getProjectionPropertyValue(columnProperties, COLUMN_PROJECTION_DIGITS, Integer.class::cast);
     }
 
     @Override
@@ -53,7 +78,7 @@ public class IntegerProjection
         while (current <= rightBound) {
             int currentValue = current;
             String currentValueFormatted = digits
-                    .map(digits -> String.format("%0" + digits + "d", currentValue))
+                    .map(digits -> format("%0" + digits + "d", currentValue))
                     .orElseGet(() -> Integer.toString(currentValue));
             if (isValueInDomain(partitionValueFilter, current, currentValueFormatted)) {
                 builder.add(currentValueFormatted);
@@ -74,8 +99,8 @@ public class IntegerProjection
             return domain.contains(singleValue(type, utf8Slice(formattedValue)));
         }
         if (type instanceof IntegerType || type instanceof BigintType) {
-            return domain.contains(singleValue(type, Long.valueOf(value)));
+            return domain.contains(singleValue(type, (long) value));
         }
-        throw unsupportedProjectionColumnTypeException(type);
+        throw new InvalidProjectionException(columnName, type);
     }
 }
