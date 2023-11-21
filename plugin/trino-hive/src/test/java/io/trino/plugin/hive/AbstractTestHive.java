@@ -1053,7 +1053,7 @@ public abstract class AbstractTestHive
         try (Transaction transaction = newTransaction()) {
             ConnectorMetadata metadata = transaction.getMetadata();
             List<String> databases = metadata.listSchemaNames(newSession());
-            assertThat(databases.contains(database)).isTrue();
+            assertThat(databases).contains(database);
         }
     }
 
@@ -1063,8 +1063,8 @@ public abstract class AbstractTestHive
         try (Transaction transaction = newTransaction()) {
             ConnectorMetadata metadata = transaction.getMetadata();
             List<SchemaTableName> tables = metadata.listTables(newSession(), Optional.of(database));
-            assertThat(tables.contains(tablePartitionFormat)).isTrue();
-            assertThat(tables.contains(tableUnpartitioned)).isTrue();
+            assertThat(tables).contains(tablePartitionFormat);
+            assertThat(tables).contains(tableUnpartitioned);
         }
     }
 
@@ -1074,8 +1074,8 @@ public abstract class AbstractTestHive
         try (Transaction transaction = newTransaction()) {
             ConnectorMetadata metadata = transaction.getMetadata();
             List<SchemaTableName> tables = metadata.listTables(newSession(), Optional.empty());
-            assertThat(tables.contains(tablePartitionFormat)).isTrue();
-            assertThat(tables.contains(tableUnpartitioned)).isTrue();
+            assertThat(tables).contains(tablePartitionFormat);
+            assertThat(tables).contains(tableUnpartitioned);
         }
     }
 
@@ -1085,8 +1085,8 @@ public abstract class AbstractTestHive
         try (Transaction transaction = newTransaction()) {
             ConnectorMetadata metadata = transaction.getMetadata();
             Map<SchemaTableName, List<ColumnMetadata>> allColumns = listTableColumns(metadata, newSession(), new SchemaTablePrefix());
-            assertThat(allColumns.containsKey(tablePartitionFormat)).isTrue();
-            assertThat(allColumns.containsKey(tableUnpartitioned)).isTrue();
+            assertThat(allColumns).containsKey(tablePartitionFormat);
+            assertThat(allColumns).containsKey(tableUnpartitioned);
         }
     }
 
@@ -1096,8 +1096,8 @@ public abstract class AbstractTestHive
         try (Transaction transaction = newTransaction()) {
             ConnectorMetadata metadata = transaction.getMetadata();
             Map<SchemaTableName, List<ColumnMetadata>> allColumns = listTableColumns(metadata, newSession(), new SchemaTablePrefix(database));
-            assertThat(allColumns.containsKey(tablePartitionFormat)).isTrue();
-            assertThat(allColumns.containsKey(tableUnpartitioned)).isTrue();
+            assertThat(allColumns).containsKey(tablePartitionFormat);
+            assertThat(allColumns).containsKey(tableUnpartitioned);
         }
     }
 
@@ -3573,7 +3573,7 @@ public abstract class AbstractTestHive
         try (Transaction transaction = newTransaction()) {
             ConnectorMetadata metadata = transaction.getMetadata();
             Map<SchemaTableName, List<ColumnMetadata>> allColumns = listTableColumns(metadata, newSession(), new SchemaTablePrefix(schemaTableName.getSchemaName()));
-            assertThat(allColumns.containsKey(schemaTableName)).isTrue();
+            assertThat(allColumns).containsKey(schemaTableName);
         }
         finally {
             dropTable(schemaTableName);
@@ -3968,7 +3968,7 @@ public abstract class AbstractTestHive
 
         for (String variable : expectedAssignments.keySet()) {
             Type expectedType = expectedAssignments.get(variable);
-            assertThat(actualAssignments.containsKey(variable)).isTrue();
+            assertThat(actualAssignments).containsKey(variable);
             assertThat(actualAssignments.get(variable).getType()).isEqualTo(expectedType);
             assertThat(((HiveColumnHandle) actualAssignments.get(variable).getColumn()).getType()).isEqualTo(expectedType);
         }
@@ -4165,7 +4165,7 @@ public abstract class AbstractTestHive
             assertThat(views.size()).isEqualTo(1);
             assertThat(views.get(viewName).getOriginalSql()).isEqualTo(definition.getOriginalSql());
 
-            assertThat(metadata.listViews(newSession(), Optional.of(viewName.getSchemaName())).contains(viewName)).isTrue();
+            assertThat(metadata.listViews(newSession(), Optional.of(viewName.getSchemaName()))).contains(viewName);
         }
     }
 
@@ -4218,8 +4218,8 @@ public abstract class AbstractTestHive
 
             // verify the node version and query ID in table
             Table table = getMetastoreClient().getTable(tableName.getSchemaName(), tableName.getTableName()).get();
-            assertThat(table.getParameters().get(PRESTO_VERSION_NAME)).isEqualTo(TEST_SERVER_VERSION);
-            assertThat(table.getParameters().get(PRESTO_QUERY_ID_NAME)).isEqualTo(queryId);
+            assertThat(table.getParameters()).containsEntry(PRESTO_VERSION_NAME, TEST_SERVER_VERSION);
+            assertThat(table.getParameters()).containsEntry(PRESTO_QUERY_ID_NAME, queryId);
 
             // verify basic statistics
             HiveBasicStatistics statistics = getBasicStatisticsForTable(transaction, tableName);
@@ -4282,8 +4282,8 @@ public abstract class AbstractTestHive
             assertThat(table.getStorage().getStorageFormat().getInputFormat()).isEqualTo(storageFormat.getInputFormat());
 
             // verify the node version and query ID
-            assertThat(table.getParameters().get(PRESTO_VERSION_NAME)).isEqualTo(TEST_SERVER_VERSION);
-            assertThat(table.getParameters().get(PRESTO_QUERY_ID_NAME)).isEqualTo(queryId);
+            assertThat(table.getParameters()).containsEntry(PRESTO_VERSION_NAME, TEST_SERVER_VERSION);
+            assertThat(table.getParameters()).containsEntry(PRESTO_QUERY_ID_NAME, queryId);
 
             // verify the table is empty
             List<ColumnHandle> columnHandles = filterNonHiddenColumnHandles(metadata.getColumnHandles(session, tableHandle).values());
@@ -4643,8 +4643,8 @@ public abstract class AbstractTestHive
             assertThat(partitions.size()).isEqualTo(partitionNames.size());
             for (String partitionName : partitionNames) {
                 Partition partition = partitions.get(partitionName).get();
-                assertThat(partition.getParameters().get(PRESTO_VERSION_NAME)).isEqualTo(TEST_SERVER_VERSION);
-                assertThat(partition.getParameters().get(PRESTO_QUERY_ID_NAME)).isEqualTo(queryId);
+                assertThat(partition.getParameters()).containsEntry(PRESTO_VERSION_NAME, TEST_SERVER_VERSION);
+                assertThat(partition.getParameters()).containsEntry(PRESTO_QUERY_ID_NAME, queryId);
             }
 
             // load the new table
@@ -5519,7 +5519,7 @@ public abstract class AbstractTestHive
 
     private static void assertPrimitiveField(Map<String, ColumnMetadata> map, String name, Type type, boolean partitionKey)
     {
-        assertThat(map.containsKey(name)).isTrue();
+        assertThat(map).containsKey(name);
         ColumnMetadata column = map.get(name);
         assertThat(column.getType())
                 .describedAs(name)

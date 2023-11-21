@@ -794,15 +794,16 @@ public class HiveMetadata
         if (optionalSchemaName.isEmpty()) {
             Optional<List<SchemaTableName>> allTables = metastore.getAllTables();
             if (allTables.isPresent()) {
-                return ImmutableList.<SchemaTableName>builder()
+                return ImmutableSet.<SchemaTableName>builder()
                         .addAll(allTables.get().stream()
                                 .filter(table -> !isHiveSystemSchema(table.getSchemaName()))
                                 .collect(toImmutableList()))
                         .addAll(listMaterializedViews(session, optionalSchemaName))
-                        .build();
+                        .build()
+                        .asList();
             }
         }
-        ImmutableList.Builder<SchemaTableName> tableNames = ImmutableList.builder();
+        ImmutableSet.Builder<SchemaTableName> tableNames = ImmutableSet.builder();
         for (String schemaName : listSchemas(session, optionalSchemaName)) {
             for (String tableName : metastore.getAllTables(schemaName)) {
                 tableNames.add(new SchemaTableName(schemaName, tableName));
@@ -810,7 +811,7 @@ public class HiveMetadata
         }
 
         tableNames.addAll(listMaterializedViews(session, optionalSchemaName));
-        return tableNames.build();
+        return tableNames.build().asList();
     }
 
     private List<String> listSchemas(ConnectorSession session, Optional<String> schemaName)
@@ -3776,8 +3777,8 @@ public class HiveMetadata
 
     private static void validateTimestampTypes(Type type, HiveTimestampPrecision precision, ColumnMetadata column)
     {
-        if (type instanceof TimestampType) {
-            if (((TimestampType) type).getPrecision() != precision.getPrecision()) {
+        if (type instanceof TimestampType timestampType) {
+            if (timestampType.getPrecision() != precision.getPrecision()) {
                 throw new TrinoException(NOT_SUPPORTED, format(
                         "Incorrect timestamp precision for %s; the configured precision is %s; column name: %s",
                         type,
@@ -3785,15 +3786,15 @@ public class HiveMetadata
                         column.getName()));
             }
         }
-        else if (type instanceof ArrayType) {
-            validateTimestampTypes(((ArrayType) type).getElementType(), precision, column);
+        else if (type instanceof ArrayType arrayType) {
+            validateTimestampTypes(arrayType.getElementType(), precision, column);
         }
-        else if (type instanceof MapType) {
-            validateTimestampTypes(((MapType) type).getKeyType(), precision, column);
-            validateTimestampTypes(((MapType) type).getValueType(), precision, column);
+        else if (type instanceof MapType mapType) {
+            validateTimestampTypes(mapType.getKeyType(), precision, column);
+            validateTimestampTypes(mapType.getValueType(), precision, column);
         }
         else if (type instanceof RowType) {
-            for (Type fieldType : ((RowType) type).getTypeParameters()) {
+            for (Type fieldType : type.getTypeParameters()) {
                 validateTimestampTypes(fieldType, precision, column);
             }
         }

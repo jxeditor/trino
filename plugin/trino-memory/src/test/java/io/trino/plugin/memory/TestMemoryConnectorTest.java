@@ -139,8 +139,8 @@ public class TestMemoryConnectorTest
     public void testCustomMetricsScanFilter()
     {
         Metrics metrics = collectCustomMetrics("SELECT partkey FROM part WHERE partkey % 1000 > 0");
-        assertThat(metrics.getMetrics().get("rows")).isEqualTo(new LongCount(PART_COUNT));
-        assertThat(metrics.getMetrics().get("started")).isEqualTo(metrics.getMetrics().get("finished"));
+        assertThat(metrics.getMetrics()).containsEntry("rows", new LongCount(PART_COUNT));
+        assertThat(metrics.getMetrics()).containsEntry("started", metrics.getMetrics().get("finished"));
         assertThat(((Count<?>) metrics.getMetrics().get("finished")).getTotal()).isGreaterThan(0);
     }
 
@@ -149,8 +149,8 @@ public class TestMemoryConnectorTest
     public void testCustomMetricsScanOnly()
     {
         Metrics metrics = collectCustomMetrics("SELECT partkey FROM part");
-        assertThat(metrics.getMetrics().get("rows")).isEqualTo(new LongCount(PART_COUNT));
-        assertThat(metrics.getMetrics().get("started")).isEqualTo(metrics.getMetrics().get("finished"));
+        assertThat(metrics.getMetrics()).containsEntry("rows", new LongCount(PART_COUNT));
+        assertThat(metrics.getMetrics()).containsEntry("started", metrics.getMetrics().get("finished"));
         assertThat(((Count<?>) metrics.getMetrics().get("finished")).getTotal()).isGreaterThan(0);
     }
 
@@ -577,7 +577,7 @@ public class TestMemoryConnectorTest
 
         assertQuery("SELECT * FROM test_view", query);
 
-        assertThat(computeActual("SHOW TABLES").getOnlyColumnAsSet().contains("test_view")).isTrue();
+        assertThat(computeActual("SHOW TABLES").getOnlyColumnAsSet()).contains("test_view");
 
         assertUpdate("DROP VIEW test_view");
         assertQueryFails("DROP VIEW test_view", "line 1:1: View 'memory.default.test_view' does not exist");
