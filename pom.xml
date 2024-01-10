@@ -137,12 +137,12 @@
     </scm>
 
     <properties>
-        <project.build.targetJdk>17</project.build.targetJdk>
+        <project.build.targetJdk>21</project.build.targetJdk>
 
         <air.check.skip-spotbugs>true</air.check.skip-spotbugs>
         <air.check.skip-pmd>true</air.check.skip-pmd>
         <air.check.skip-jacoco>true</air.check.skip-jacoco>
-        <air.java.version>17.0.8</air.java.version>
+        <air.java.version>21.0.1</air.java.version>
         <air.javadoc.lint>-missing</air.javadoc.lint>
         <air.main.basedir>${project.basedir}</air.main.basedir>
         <air.modernizer.java-version>8</air.modernizer.java-version>
@@ -174,7 +174,7 @@
         <dep.accumulo.version>1.10.2</dep.accumulo.version>
         <dep.airlift.version>239</dep.airlift.version>
         <dep.antlr.version>4.13.1</dep.antlr.version>
-        <dep.arrow.version>14.0.1</dep.arrow.version>
+        <dep.arrow.version>14.0.2</dep.arrow.version>
         <dep.avro.version>1.11.3</dep.avro.version>
         <dep.aws-sdk.version>1.12.630</dep.aws-sdk.version>
         <dep.cassandra.version>4.17.0</dep.cassandra.version>
@@ -187,6 +187,7 @@
         <dep.google.http.client.version>1.43.3</dep.google.http.client.version>
         <dep.iceberg.version>1.4.3</dep.iceberg.version>
         <dep.jna.version>5.14.0</dep.jna.version>
+        <dep.joda.version>2.12.6</dep.joda.version>
         <dep.jsonwebtoken.version>0.12.3</dep.jsonwebtoken.version>
         <dep.kafka-clients.version>3.6.1</dep.kafka-clients.version>
         <dep.kotlin.version>1.9.20</dep.kotlin.version>
@@ -247,7 +248,7 @@
             <dependency>
                 <groupId>io.grpc</groupId>
                 <artifactId>grpc-bom</artifactId>
-                <version>1.60.0</version>
+                <version>1.60.1</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -500,7 +501,7 @@
             <dependency>
                 <groupId>com.github.oshi</groupId>
                 <artifactId>oshi-core</artifactId>
-                <version>6.4.8</version>
+                <version>6.4.10</version>
             </dependency>
 
             <dependency>
