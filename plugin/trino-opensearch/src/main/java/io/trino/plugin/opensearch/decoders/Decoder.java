@@ -11,18 +11,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.dispatcher;
+package io.trino.plugin.opensearch.decoders;
 
-import com.google.common.util.concurrent.ListeningExecutorService;
-import org.junit.jupiter.api.Test;
+import io.trino.spi.block.BlockBuilder;
+import org.opensearch.search.SearchHit;
 
-import static io.trino.spi.testing.InterfaceTestUtils.assertAllMethodsOverridden;
+import java.util.function.Supplier;
 
-public class TestDecoratingListeningExecutorService
+public interface Decoder
 {
-    @Test
-    public void testAllMethodsOverridden()
-    {
-        assertAllMethodsOverridden(ListeningExecutorService.class, DecoratingListeningExecutorService.class);
-    }
+    void decode(SearchHit hit, Supplier<Object> getter, BlockBuilder output);
 }
