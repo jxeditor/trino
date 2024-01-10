@@ -11,20 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive;
+package io.trino.plugin.hive.metastore.thrift;
 
-import io.trino.testing.AbstractTestAggregations;
-import io.trino.testing.QueryRunner;
-
-public class TestHiveDistributedAggregations
-        extends AbstractTestAggregations
+public interface MetastoreClientAdapterProvider
 {
-    @Override
-    protected QueryRunner createQueryRunner()
-            throws Exception
-    {
-        return HiveQueryRunner.builder()
-                .setInitialTables(REQUIRED_TPCH_TABLES)
-                .build();
-    }
+    ThriftMetastoreClient createThriftMetastoreClientAdapter(ThriftMetastoreClient delegate);
 }
