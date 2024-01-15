@@ -13,6 +13,7 @@
  */
 package io.trino.plugin.mariadb;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
@@ -396,6 +397,7 @@ public class MariaDbClient
                 TimeType timeType = createTimeType(getTimePrecision(typeHandle.getRequiredColumnSize()));
                 return Optional.of(timeColumnMapping(timeType));
             case Types.TIMESTAMP:
+                // This jdbcType maps both MariaDB TIMESTAMP and DATETIME types to Trino TIMESTAMP type
                 TimestampType timestampType = createTimestampType(getTimestampPrecision(typeHandle.getRequiredColumnSize()));
                 return Optional.of(timestampColumnMapping(timestampType));
         }
@@ -549,10 +551,10 @@ public class MariaDbClient
     }
 
     @Override
-    protected String createTableSql(RemoteTableName remoteTableName, List<String> columns, ConnectorTableMetadata tableMetadata)
+    protected List<String> createTableSqls(RemoteTableName remoteTableName, List<String> columns, ConnectorTableMetadata tableMetadata)
     {
         checkArgument(tableMetadata.getProperties().isEmpty(), "Unsupported table properties: %s", tableMetadata.getProperties());
-        return format("CREATE TABLE %s (%s) COMMENT %s", quoted(remoteTableName), join(", ", columns), mariaDbVarcharLiteral(tableMetadata.getComment().orElse(NO_COMMENT)));
+        return ImmutableList.of(format("CREATE TABLE %s (%s) COMMENT %s", quoted(remoteTableName), join(", ", columns), mariaDbVarcharLiteral(tableMetadata.getComment().orElse(NO_COMMENT))));
     }
 
     private static String mariaDbVarcharLiteral(String value)
