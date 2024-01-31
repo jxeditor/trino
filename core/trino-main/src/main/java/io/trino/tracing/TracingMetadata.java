@@ -516,6 +516,15 @@ public class TracingMetadata
     }
 
     @Override
+    public void dropNotNullConstraint(Session session, TableHandle tableHandle, ColumnHandle column)
+    {
+        Span span = startSpan("dropNotNullConstraint", tableHandle);
+        try (var ignored = scopedSpan(span)) {
+            delegate.dropNotNullConstraint(session, tableHandle, column);
+        }
+    }
+
+    @Override
     public void setTableAuthorization(Session session, CatalogSchemaTableName table, TrinoPrincipal principal)
     {
         Span span = startSpan("setTableAuthorization", table);
@@ -723,11 +732,25 @@ public class TracingMetadata
     }
 
     @Override
-    public Optional<ConnectorOutputMetadata> finishRefreshMaterializedView(Session session, TableHandle tableHandle, InsertTableHandle insertTableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics, List<TableHandle> sourceTableHandles)
+    public Optional<ConnectorOutputMetadata> finishRefreshMaterializedView(
+            Session session,
+            TableHandle tableHandle,
+            InsertTableHandle insertTableHandle,
+            Collection<Slice> fragments,
+            Collection<ComputedStatistics> computedStatistics,
+            List<TableHandle> sourceTableHandles,
+            List<String> sourceTableFunctions)
     {
         Span span = startSpan("finishRefreshMaterializedView", tableHandle);
         try (var ignored = scopedSpan(span)) {
-            return delegate.finishRefreshMaterializedView(session, tableHandle, insertTableHandle, fragments, computedStatistics, sourceTableHandles);
+            return delegate.finishRefreshMaterializedView(
+                    session,
+                    tableHandle,
+                    insertTableHandle,
+                    fragments,
+                    computedStatistics,
+                    sourceTableHandles,
+                    sourceTableFunctions);
         }
     }
 

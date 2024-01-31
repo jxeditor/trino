@@ -150,6 +150,7 @@ import io.trino.sql.tree.DereferenceExpression;
 import io.trino.sql.tree.DropCatalog;
 import io.trino.sql.tree.DropColumn;
 import io.trino.sql.tree.DropMaterializedView;
+import io.trino.sql.tree.DropNotNullConstraint;
 import io.trino.sql.tree.DropSchema;
 import io.trino.sql.tree.DropTable;
 import io.trino.sql.tree.DropView;
@@ -1097,6 +1098,12 @@ class StatementAnalyzer
 
         @Override
         protected Scope visitSetColumnType(SetColumnType node, Optional<Scope> scope)
+        {
+            return createAndAssignScope(node, scope);
+        }
+
+        @Override
+        protected Scope visitDropNotNullConstraint(DropNotNullConstraint node, Optional<Scope> scope)
         {
             return createAndAssignScope(node, scope);
         }
@@ -4045,7 +4052,6 @@ class StatementAnalyzer
         {
             return new JsonPathAnalyzer(
                     plannerContext.getMetadata(),
-                    session,
                     createConstantAnalyzer(plannerContext, accessControl, session, analysis.getParameters(), WarningCollector.NOOP, analysis.isDescribe()))
                     .analyzeJsonPath(path, ImmutableMap.of());
         }
@@ -4054,7 +4060,6 @@ class StatementAnalyzer
         {
             return new JsonPathAnalyzer(
                     plannerContext.getMetadata(),
-                    session,
                     createConstantAnalyzer(plannerContext, accessControl, session, analysis.getParameters(), WarningCollector.NOOP, analysis.isDescribe()))
                     .analyzeImplicitJsonPath(path, columnLocation.orElseThrow(() -> new IllegalStateException("missing NodeLocation for JSON_TABLE column")));
         }
@@ -4299,7 +4304,7 @@ class StatementAnalyzer
         private List<FunctionCall> analyzeWindowFunctions(QuerySpecification node, List<Expression> expressions)
         {
             for (Expression expression : expressions) {
-                new WindowFunctionValidator(session, metadata).process(expression, analysis);
+                new WindowFunctionValidator().process(expression, analysis);
             }
 
             List<FunctionCall> windowFunctions = extractWindowFunctions(expressions);

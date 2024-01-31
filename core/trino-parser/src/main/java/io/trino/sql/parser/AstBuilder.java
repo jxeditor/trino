@@ -82,6 +82,7 @@ import io.trino.sql.tree.DropCatalog;
 import io.trino.sql.tree.DropColumn;
 import io.trino.sql.tree.DropFunction;
 import io.trino.sql.tree.DropMaterializedView;
+import io.trino.sql.tree.DropNotNullConstraint;
 import io.trino.sql.tree.DropRole;
 import io.trino.sql.tree.DropSchema;
 import io.trino.sql.tree.DropTable;
@@ -360,7 +361,6 @@ import static io.trino.sql.tree.SkipTo.skipToLast;
 import static io.trino.sql.tree.SkipTo.skipToNextRow;
 import static io.trino.sql.tree.TableFunctionDescriptorArgument.descriptorArgument;
 import static io.trino.sql.tree.TableFunctionDescriptorArgument.nullDescriptorArgument;
-import static java.lang.String.format;
 import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
@@ -831,6 +831,16 @@ class AstBuilder
                 getQualifiedName(context.tableName),
                 getQualifiedName(context.columnName),
                 (DataType) visit(context.type()),
+                context.EXISTS() != null);
+    }
+
+    @Override
+    public Node visitDropNotNullConstraint(SqlBaseParser.DropNotNullConstraintContext context)
+    {
+        return new DropNotNullConstraint(
+                getLocation(context),
+                getQualifiedName(context.tableName),
+                (Identifier) visit(context.columnName),
                 context.EXISTS() != null);
     }
 
@@ -4019,7 +4029,7 @@ class AstBuilder
                         else {
                             char currentCodePoint = (char) codePoint;
                             if (Character.isSurrogate(currentCodePoint)) {
-                                throw parseError(format("Invalid escaped character: %s. Escaped character is a surrogate. Use '\\+123456' instead.", currentEscapedCode), context);
+                                throw parseError("Invalid escaped character: %s. Escaped character is a surrogate. Use '\\+123456' instead.".formatted(currentEscapedCode), context);
                             }
                             unicodeStringBuilder.append(currentCodePoint);
                         }

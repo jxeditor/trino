@@ -21,6 +21,7 @@ import io.airlift.units.DataSize;
 import io.trino.Session;
 import io.trino.execution.QueryInfo;
 import io.trino.plugin.deltalake.transactionlog.DeltaLakeSchemaSupport.ColumnMappingMode;
+import io.trino.plugin.hive.HiveCompressionCodec;
 import io.trino.plugin.hive.metastore.HiveMetastore;
 import io.trino.plugin.hive.metastore.HiveMetastoreFactory;
 import io.trino.plugin.tpch.TpchPlugin;
@@ -141,6 +142,7 @@ public class TestDeltaLakeConnectorTest
                     SUPPORTS_AGGREGATION_PUSHDOWN,
                     SUPPORTS_CREATE_MATERIALIZED_VIEW,
                     SUPPORTS_DROP_FIELD,
+                    SUPPORTS_DROP_NOT_NULL_CONSTRAINT,
                     SUPPORTS_LIMIT_PUSHDOWN,
                     SUPPORTS_PREDICATE_PUSHDOWN,
                     SUPPORTS_RENAME_FIELD,
@@ -508,6 +510,32 @@ public class TestDeltaLakeConnectorTest
         // Delta Lake doesn't have a char type
         assertThatThrownBy(super::testCharVarcharComparison)
                 .hasStackTraceContaining("Unsupported type: char(3)");
+    }
+
+    @Test
+    public void testCreateTableWithCompressionCodec()
+    {
+        for (HiveCompressionCodec compressionCodec : HiveCompressionCodec.values()) {
+            testCreateTableWithCompressionCodec(compressionCodec);
+        }
+    }
+
+    private void testCreateTableWithCompressionCodec(HiveCompressionCodec compressionCodec)
+    {
+        Session session = Session.builder(getSession())
+                .setCatalogSessionProperty(getSession().getCatalog().orElseThrow(), "compression_codec", compressionCodec.name())
+                .build();
+        String tableName = "test_table_with_compression_" + compressionCodec;
+        String createTableSql = format("CREATE TABLE %s AS TABLE tpch.tiny.nation", tableName);
+        if (compressionCodec == HiveCompressionCodec.LZ4) {
+            // TODO (https://github.com/trinodb/trino/issues/9142) Support LZ4 compression with native Parquet writer
+            assertQueryFails(session, createTableSql, "Unsupported codec: " + compressionCodec);
+            return;
+        }
+        assertUpdate(session, createTableSql, 25);
+        assertQuery("SELECT * FROM " + tableName, "SELECT * FROM nation");
+        assertQuery("SELECT count(*) FROM " + tableName, "VALUES 25");
+        assertUpdate("DROP TABLE " + tableName);
     }
 
     @Test

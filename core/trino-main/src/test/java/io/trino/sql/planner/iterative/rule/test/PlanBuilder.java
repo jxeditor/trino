@@ -165,6 +165,11 @@ public class PlanBuilder
         functionResolver = plannerContext.getFunctionResolver();
     }
 
+    public Session getSession()
+    {
+        return session;
+    }
+
     public OutputNode output(List<String> columnNames, List<Symbol> outputs, PlanNode source)
     {
         return new OutputNode(
@@ -411,7 +416,7 @@ public class PlanBuilder
     public class AggregationBuilder
     {
         private PlanNode source;
-        private Map<Symbol, Aggregation> assignments = new HashMap<>();
+        private final Map<Symbol, Aggregation> assignments = new HashMap<>();
         private AggregationNode.GroupingSetDescriptor groupingSets;
         private List<Symbol> preGroupedSymbols = new ArrayList<>();
         private Step step = Step.SINGLE;
@@ -893,8 +898,8 @@ public class PlanBuilder
         private ExchangeNode.Scope scope = ExchangeNode.Scope.REMOTE;
         private PartitioningScheme partitioningScheme;
         private OrderingScheme orderingScheme;
-        private List<PlanNode> sources = new ArrayList<>();
-        private List<List<Symbol>> inputs = new ArrayList<>();
+        private final List<PlanNode> sources = new ArrayList<>();
+        private final List<List<Symbol>> inputs = new ArrayList<>();
 
         public ExchangeBuilder type(ExchangeNode.Type type)
         {

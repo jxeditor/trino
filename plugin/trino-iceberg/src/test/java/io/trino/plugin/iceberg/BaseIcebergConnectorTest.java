@@ -29,6 +29,7 @@ import io.trino.metadata.Metadata;
 import io.trino.metadata.QualifiedObjectName;
 import io.trino.metadata.TableHandle;
 import io.trino.operator.OperatorStats;
+import io.trino.plugin.hive.HiveCompressionCodec;
 import io.trino.plugin.hive.TestingHivePlugin;
 import io.trino.plugin.iceberg.fileio.ForwardingFileIo;
 import io.trino.server.DynamicFilterService;
@@ -135,6 +136,7 @@ import static io.trino.testing.TestingNames.randomNameSuffix;
 import static io.trino.testing.TestingSession.testSessionBuilder;
 import static io.trino.testing.TransactionBuilder.transaction;
 import static io.trino.testing.assertions.Assert.assertEventually;
+import static io.trino.testing.assertions.TrinoExceptionAssert.assertTrinoExceptionThrownBy;
 import static java.lang.String.format;
 import static java.lang.String.join;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -3892,7 +3894,7 @@ public abstract class BaseIcebergConnectorTest
             Map<String, Domain> expectedEnforcedPredicate,
             Map<String, Domain> expectedUnenforcedPredicate)
     {
-        Metadata metadata = getQueryRunner().getMetadata();
+        Metadata metadata = getQueryRunner().getPlannerContext().getMetadata();
 
         newTransaction().execute(getSession(), session -> {
             TableHandle table = metadata.getTableHandle(session, tableName)
@@ -4079,7 +4081,7 @@ public abstract class BaseIcebergConnectorTest
 
     private void withTransaction(Consumer<Session> consumer)
     {
-        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl())
+        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getPlannerContext().getMetadata(), getQueryRunner().getAccessControl())
                 .readCommitted()
                 .execute(getSession(), consumer);
     }
@@ -7433,6 +7435,33 @@ public abstract class BaseIcebergConnectorTest
     }
 
     @Test
+    public void testCreateTableWithCompressionCodec()
+    {
+        for (HiveCompressionCodec compressionCodec : HiveCompressionCodec.values()) {
+            testCreateTableWithCompressionCodec(compressionCodec);
+        }
+    }
+
+    private void testCreateTableWithCompressionCodec(HiveCompressionCodec compressionCodec)
+    {
+        Session session = Session.builder(getSession())
+                .setCatalogSessionProperty(getSession().getCatalog().orElseThrow(), "compression_codec", compressionCodec.name())
+                .build();
+        String tableName = "test_table_with_compression_" + compressionCodec;
+        String createTableSql = format("CREATE TABLE %s AS TABLE tpch.tiny.nation", tableName);
+        // TODO (https://github.com/trinodb/trino/issues/9142) Support LZ4 compression with native Parquet writer
+        if ((format == IcebergFileFormat.PARQUET || format == AVRO) && compressionCodec == HiveCompressionCodec.LZ4) {
+            assertTrinoExceptionThrownBy(() -> computeActual(session, createTableSql))
+                    .hasMessage("Compression codec LZ4 not supported for " + capitalize(format.name().toLowerCase(ENGLISH)));
+            return;
+        }
+        assertUpdate(session, createTableSql, 25);
+        assertQuery("SELECT * FROM " + tableName, "SELECT * FROM nation");
+        assertQuery("SELECT count(*) FROM " + tableName, "VALUES 25");
+        assertUpdate("DROP TABLE " + tableName);
+    }
+
+    @Test
     public void testTimestampPrecisionOnCreateTableAsSelect()
     {
         for (TimestampPrecisionTestSetup setup : timestampPrecisionOnCreateTableAsSelectProvider()) {
@@ -7831,5 +7860,10 @@ public abstract class BaseIcebergConnectorTest
     {
         assertThat(getFieldFromLatestSnapshotSummary(tableName, TRINO_QUERY_ID_NAME))
                 .isEqualTo(queryId.toString());
+    }
+
+    private static String capitalize(String value)
+    {
+        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
     }
 }

@@ -2637,7 +2637,7 @@ public abstract class BaseHiveConnectorTest
             assertUpdate(session, createSourceTable, "SELECT count(*) FROM orders");
             assertUpdate(session, createTargetTable, "SELECT count(*) FROM orders");
 
-            transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl()).execute(
+            transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getPlannerContext().getMetadata(), getQueryRunner().getAccessControl()).execute(
                     session,
                     transactionalSession -> {
                         assertUpdate(
@@ -3788,7 +3788,7 @@ public abstract class BaseHiveConnectorTest
     private TableMetadata getTableMetadata(String catalog, String schema, String tableName)
     {
         Session session = getSession();
-        Metadata metadata = getDistributedQueryRunner().getCoordinator().getMetadata();
+        Metadata metadata = getDistributedQueryRunner().getPlannerContext().getMetadata();
 
         return transaction(getQueryRunner().getTransactionManager(), metadata, getQueryRunner().getAccessControl())
                 .readOnly()
@@ -3802,7 +3802,7 @@ public abstract class BaseHiveConnectorTest
     private Object getHiveTableProperty(String tableName, Function<HiveTableHandle, Object> propertyGetter)
     {
         Session session = getSession();
-        Metadata metadata = getDistributedQueryRunner().getCoordinator().getMetadata();
+        Metadata metadata = getDistributedQueryRunner().getPlannerContext().getMetadata();
 
         return transaction(getQueryRunner().getTransactionManager(), metadata, getQueryRunner().getAccessControl())
                 .readOnly()
@@ -4291,20 +4291,6 @@ public abstract class BaseHiveConnectorTest
         finally {
             assertUpdate("DROP TABLE IF EXISTS " + tableName);
         }
-    }
-
-    @Test
-    public void testTableCommentsTable()
-    {
-        assertUpdate("CREATE TABLE test_comment (c1 bigint) COMMENT 'foo'");
-        String selectTableComment = format("" +
-                        "SELECT comment FROM system.metadata.table_comments " +
-                        "WHERE catalog_name = '%s' AND schema_name = '%s' AND table_name = 'test_comment'",
-                getSession().getCatalog().get(),
-                getSession().getSchema().get());
-        assertQuery(selectTableComment, "SELECT 'foo'");
-
-        assertUpdate("DROP TABLE IF EXISTS test_comment");
     }
 
     @Test
@@ -5021,7 +5007,7 @@ public abstract class BaseHiveConnectorTest
                 .getMaterializedRows();
 
         try {
-            transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl())
+            transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getPlannerContext().getMetadata(), getQueryRunner().getAccessControl())
                     .execute(session, transactionSession -> {
                         assertUpdate(transactionSession, "DELETE FROM tmp_delete_insert WHERE z >= 2");
                         assertUpdate(transactionSession, "INSERT INTO tmp_delete_insert VALUES (203, 2), (204, 2), (205, 2), (301, 2), (302, 3)", 5);
@@ -5039,7 +5025,7 @@ public abstract class BaseHiveConnectorTest
         MaterializedResult actualAfterRollback = computeActual(session, "SELECT * FROM tmp_delete_insert");
         assertEqualsIgnoreOrder(actualAfterRollback, expectedBefore);
 
-        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl())
+        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getPlannerContext().getMetadata(), getQueryRunner().getAccessControl())
                 .execute(session, transactionSession -> {
                     assertUpdate(transactionSession, "DELETE FROM tmp_delete_insert WHERE z >= 2");
                     assertUpdate(transactionSession, "INSERT INTO tmp_delete_insert VALUES (203, 2), (204, 2), (205, 2), (301, 2), (302, 3)", 5);
@@ -5067,7 +5053,7 @@ public abstract class BaseHiveConnectorTest
                 .build()
                 .getMaterializedRows();
 
-        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getMetadata(), getQueryRunner().getAccessControl())
+        transaction(getQueryRunner().getTransactionManager(), getQueryRunner().getPlannerContext().getMetadata(), getQueryRunner().getAccessControl())
                 .execute(session, transactionSession -> {
                     assertUpdate(
                             transactionSession,
@@ -6297,8 +6283,8 @@ public abstract class BaseHiveConnectorTest
                     .findAll()
                     .size();
             if (actualRemoteExchangesCount != expectedRemoteExchangesCount) {
-                Metadata metadata = getDistributedQueryRunner().getCoordinator().getMetadata();
-                FunctionManager functionManager = getDistributedQueryRunner().getCoordinator().getFunctionManager();
+                Metadata metadata = getDistributedQueryRunner().getPlannerContext().getMetadata();
+                FunctionManager functionManager = getDistributedQueryRunner().getPlannerContext().getFunctionManager();
                 String formattedPlan = textLogicalPlan(plan.getRoot(), plan.getTypes(), metadata, functionManager, StatsAndCosts.empty(), session, 0, false);
                 throw new AssertionError(format(
                         "Expected [\n%s\n] remote exchanges but found [\n%s\n] remote exchanges. Actual plan is [\n\n%s\n]",
@@ -6324,8 +6310,8 @@ public abstract class BaseHiveConnectorTest
                     .size();
             if (actualLocalExchangesCount != expectedLocalExchangesCount) {
                 Session session = getSession();
-                Metadata metadata = getDistributedQueryRunner().getMetadata();
-                FunctionManager functionManager = getDistributedQueryRunner().getFunctionManager();
+                Metadata metadata = getDistributedQueryRunner().getPlannerContext().getMetadata();
+                FunctionManager functionManager = getDistributedQueryRunner().getPlannerContext().getFunctionManager();
                 String formattedPlan = textLogicalPlan(plan.getRoot(), plan.getTypes(), metadata, functionManager, StatsAndCosts.empty(), session, 0, false);
                 throw new AssertionError(format(
                         "Expected [\n%s\n] local repartitioned exchanges but found [\n%s\n] local repartitioned exchanges. Actual plan is [\n\n%s\n]",
@@ -8080,39 +8066,54 @@ public abstract class BaseHiveConnectorTest
     public void testCreateTableWithCompressionCodec()
     {
         for (HiveCompressionCodec compressionCodec : HiveCompressionCodec.values()) {
-            testWithAllStorageFormats((session, hiveStorageFormat) -> {
-                if (hiveStorageFormat == HiveStorageFormat.PARQUET && compressionCodec == HiveCompressionCodec.LZ4) {
-                    // TODO (https://github.com/trinodb/trino/issues/9142) Support LZ4 compression with native Parquet writer
-                    assertThatThrownBy(() -> testCreateTableWithCompressionCodec(session, hiveStorageFormat, compressionCodec))
-                            .hasMessage("Unsupported codec: LZ4");
-                    return;
-                }
-
-                if (!isSupportedCodec(hiveStorageFormat, compressionCodec)) {
-                    assertThatThrownBy(() -> testCreateTableWithCompressionCodec(session, hiveStorageFormat, compressionCodec))
-                            .hasMessage("Compression codec " + compressionCodec + " not supported for " + hiveStorageFormat);
-                    return;
-                }
-                testCreateTableWithCompressionCodec(session, hiveStorageFormat, compressionCodec);
-            });
+            testWithAllStorageFormats((session, hiveStorageFormat) -> testCreateTableWithCompressionCodec(session, hiveStorageFormat, compressionCodec));
         }
     }
 
-    private boolean isSupportedCodec(HiveStorageFormat storageFormat, HiveCompressionCodec codec)
+    private void testCreateTableWithCompressionCodec(Session baseSession, HiveStorageFormat storageFormat, HiveCompressionCodec compressionCodec)
     {
-        if (storageFormat == HiveStorageFormat.AVRO && codec == HiveCompressionCodec.LZ4) {
-            return false;
-        }
-        return true;
-    }
-
-    private void testCreateTableWithCompressionCodec(Session session, HiveStorageFormat storageFormat, HiveCompressionCodec compressionCodec)
-    {
-        session = Session.builder(session)
-                .setCatalogSessionProperty(session.getCatalog().orElseThrow(), "compression_codec", compressionCodec.name())
+        Session session = Session.builder(baseSession)
+                .setCatalogSessionProperty(baseSession.getCatalog().orElseThrow(), "compression_codec", compressionCodec.name())
                 .build();
         String tableName = "test_table_with_compression_" + compressionCodec;
-        assertUpdate(session, format("CREATE TABLE %s WITH (format = '%s') AS TABLE tpch.tiny.nation", tableName, storageFormat), 25);
+        String createTableSql = format("CREATE TABLE %s WITH (format = '%s') AS TABLE tpch.tiny.nation", tableName, storageFormat);
+        // TODO (https://github.com/trinodb/trino/issues/9142) Support LZ4 compression with native Parquet writer
+        boolean unsupported = (storageFormat == HiveStorageFormat.PARQUET || storageFormat == HiveStorageFormat.AVRO) && compressionCodec == HiveCompressionCodec.LZ4;
+        if (unsupported) {
+            assertQueryFails(session, createTableSql, "Compression codec " + compressionCodec + " not supported for " + storageFormat);
+            return;
+        }
+        assertUpdate(session, createTableSql, 25);
+        assertQuery("SELECT * FROM " + tableName, "SELECT * FROM nation");
+        assertQuery("SELECT count(*) FROM " + tableName, "VALUES 25");
+        assertUpdate("DROP TABLE " + tableName);
+    }
+
+    /**
+     * Like {@link #testCreateTableWithCompressionCodec}, but for table with empty buckets. Empty buckets have separate write code path.
+     */
+    @Test
+    public void testCreateTableWithEmptyBucketsAndCompressionCodec()
+    {
+        for (HiveCompressionCodec compressionCodec : HiveCompressionCodec.values()) {
+            testWithAllStorageFormats((session, hiveStorageFormat) -> testCreateTableWithEmptyBucketsAndCompressionCodec(session, hiveStorageFormat, compressionCodec));
+        }
+    }
+
+    private void testCreateTableWithEmptyBucketsAndCompressionCodec(Session baseSession, HiveStorageFormat storageFormat, HiveCompressionCodec compressionCodec)
+    {
+        Session session = Session.builder(baseSession)
+                .setCatalogSessionProperty(baseSession.getCatalog().orElseThrow(), "compression_codec", compressionCodec.name())
+                .build();
+        String tableName = "test_table_with_compression_" + compressionCodec;
+        String createTableSql = format("CREATE TABLE %s WITH (format = '%s', bucketed_by = ARRAY['regionkey'], bucket_count = 7) AS TABLE tpch.tiny.nation", tableName, storageFormat);
+        // TODO (https://github.com/trinodb/trino/issues/9142) Support LZ4 compression with native Parquet writer
+        boolean unsupported = (storageFormat == HiveStorageFormat.PARQUET || storageFormat == HiveStorageFormat.AVRO) && compressionCodec == HiveCompressionCodec.LZ4;
+        if (unsupported) {
+            assertQueryFails(session, createTableSql, "Compression codec " + compressionCodec + " not supported for " + storageFormat);
+            return;
+        }
+        assertUpdate(session, createTableSql, 25);
         assertQuery("SELECT * FROM " + tableName, "SELECT * FROM nation");
         assertQuery("SELECT count(*) FROM " + tableName, "VALUES 25");
         assertUpdate("DROP TABLE " + tableName);
@@ -9147,7 +9148,7 @@ public abstract class BaseHiveConnectorTest
     private JsonCodec<IoPlan> getIoPlanCodec()
     {
         ObjectMapperProvider objectMapperProvider = new ObjectMapperProvider();
-        objectMapperProvider.setJsonDeserializers(ImmutableMap.of(Type.class, new TypeDeserializer(getQueryRunner().getTypeManager())));
+        objectMapperProvider.setJsonDeserializers(ImmutableMap.of(Type.class, new TypeDeserializer(getQueryRunner().getPlannerContext().getTypeManager())));
         return new JsonCodecFactory(objectMapperProvider).jsonCodec(IoPlan.class);
     }
 

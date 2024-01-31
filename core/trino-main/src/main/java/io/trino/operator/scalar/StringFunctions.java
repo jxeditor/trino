@@ -203,6 +203,15 @@ public final class StringFunctions
         return SliceUtf8.reverse(slice);
     }
 
+    @Description("Reverse all code points in a given string")
+    @ScalarFunction(value = "reverse")
+    @LiteralParameters("x")
+    @SqlType("char(x)")
+    public static Slice charReverse(@LiteralParameter("x") long x, @SqlType("char(x)") Slice slice)
+    {
+        return SliceUtf8.reverse(padSpaces(slice, (int) x));
+    }
+
     @Description("Returns index of first occurrence of a substring (or 0 if not found)")
     @ScalarFunction("strpos")
     @LiteralParameters({"x", "y"})
@@ -708,6 +717,16 @@ public final class StringFunctions
         // handle the tail: at most we assign padStringLength - 1 code points
         buffer.setBytes(byteIndex, padString.getBytes(0, paddingOffset + countBytes - byteIndex));
         return buffer;
+    }
+
+    @Description("Pads a string on the left")
+    @ScalarFunction("lpad")
+    @LiteralParameters({"x", "y"})
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice leftPad(@LiteralParameter("x") long x, @SqlType("char(x)") Slice text, @SqlType(StandardTypes.BIGINT) long targetLength, @SqlType("varchar(y)") Slice padString)
+    {
+        text = padSpaces(text, toIntExact(x));
+        return leftPad(text, targetLength, padString);
     }
 
     @Description("Pads a string on the left")

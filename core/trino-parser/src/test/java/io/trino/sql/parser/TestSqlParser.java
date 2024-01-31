@@ -59,6 +59,7 @@ import io.trino.sql.tree.DoubleLiteral;
 import io.trino.sql.tree.DropCatalog;
 import io.trino.sql.tree.DropColumn;
 import io.trino.sql.tree.DropMaterializedView;
+import io.trino.sql.tree.DropNotNullConstraint;
 import io.trino.sql.tree.DropRole;
 import io.trino.sql.tree.DropSchema;
 import io.trino.sql.tree.DropTable;
@@ -294,7 +295,6 @@ import static io.trino.sql.tree.Trim.Specification.BOTH;
 import static io.trino.sql.tree.Trim.Specification.LEADING;
 import static io.trino.sql.tree.Trim.Specification.TRAILING;
 import static io.trino.sql.tree.WindowFrame.Type.ROWS;
-import static java.lang.String.format;
 import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -1441,11 +1441,11 @@ public class TestSqlParser
     public void testSubstringBuiltInFunction()
     {
         String givenString = "ABCDEF";
-        assertStatement(format("SELECT substring('%s' FROM 2)", givenString),
+        assertStatement("SELECT substring('%s' FROM 2)".formatted(givenString),
                 simpleQuery(selectList(
                         new FunctionCall(QualifiedName.of("substr"), Lists.newArrayList(new StringLiteral(givenString), new LongLiteral("2"))))));
 
-        assertStatement(format("SELECT substring('%s' FROM 2 FOR 3)", givenString),
+        assertStatement("SELECT substring('%s' FROM 2 FOR 3)".formatted(givenString),
                 simpleQuery(selectList(
                         new FunctionCall(QualifiedName.of("substr"), Lists.newArrayList(new StringLiteral(givenString), new LongLiteral("2"), new LongLiteral("3"))))));
     }
@@ -1454,11 +1454,11 @@ public class TestSqlParser
     public void testSubstringRegisteredFunction()
     {
         String givenString = "ABCDEF";
-        assertStatement(format("SELECT substring('%s', 2)", givenString),
+        assertStatement("SELECT substring('%s', 2)".formatted(givenString),
                 simpleQuery(selectList(
                         new FunctionCall(QualifiedName.of("substring"), Lists.newArrayList(new StringLiteral(givenString), new LongLiteral("2"))))));
 
-        assertStatement(format("SELECT substring('%s', 2, 3)", givenString),
+        assertStatement("SELECT substring('%s', 2, 3)".formatted(givenString),
                 simpleQuery(selectList(
                         new FunctionCall(QualifiedName.of("substring"), Lists.newArrayList(new StringLiteral(givenString), new LongLiteral("2"), new LongLiteral("3"))))));
     }
@@ -3294,6 +3294,28 @@ public class TestSqlParser
     }
 
     @Test
+    public void testAlterColumnDropNotNullConstraint()
+    {
+        assertThat(statement("ALTER TABLE foo.t ALTER COLUMN a DROP NOT NULL"))
+                .isEqualTo(new DropNotNullConstraint(
+                        location(1, 1),
+                        QualifiedName.of(ImmutableList.of(
+                                new Identifier(location(1, 13), "foo", false),
+                                new Identifier(location(1, 17), "t", false))),
+                        new Identifier(location(1, 32), "a", false),
+                        false));
+
+        assertThat(statement("ALTER TABLE IF EXISTS foo.t ALTER COLUMN a DROP NOT NULL"))
+                .isEqualTo(new DropNotNullConstraint(
+                        location(1, 1),
+                        QualifiedName.of(ImmutableList.of(
+                                new Identifier(location(1, 23), "foo", false),
+                                new Identifier(location(1, 27), "t", false))),
+                        new Identifier(location(1, 42), "a", false),
+                        true));
+    }
+
+    @Test
     public void testAlterTableSetAuthorization()
     {
         assertStatement(
@@ -4092,7 +4114,7 @@ public class TestSqlParser
 
         for (String fullName : tableNames) {
             QualifiedName qualifiedName = makeQualifiedName(fullName);
-            assertStatement(format("SHOW STATS FOR %s", qualifiedName), new ShowStats(new Table(qualifiedName)));
+            assertStatement("SHOW STATS FOR %s".formatted(qualifiedName), new ShowStats(new Table(qualifiedName)));
         }
     }
 
@@ -4105,11 +4127,11 @@ public class TestSqlParser
             QualifiedName qualifiedName = makeQualifiedName(fullName);
 
             // Simple SELECT
-            assertStatement(format("SHOW STATS FOR (SELECT * FROM %s)", qualifiedName),
+            assertStatement("SHOW STATS FOR (SELECT * FROM %s)".formatted(qualifiedName),
                     createShowStats(qualifiedName, ImmutableList.of(new AllColumns()), Optional.empty()));
 
             // SELECT with predicate
-            assertStatement(format("SHOW STATS FOR (SELECT * FROM %s WHERE field > 0)", qualifiedName),
+            assertStatement("SHOW STATS FOR (SELECT * FROM %s WHERE field > 0)".formatted(qualifiedName),
                     createShowStats(qualifiedName,
                             ImmutableList.of(new AllColumns()),
                             Optional.of(
@@ -4118,7 +4140,7 @@ public class TestSqlParser
                                             new LongLiteral("0")))));
 
             // SELECT with more complex predicate
-            assertStatement(format("SHOW STATS FOR (SELECT * FROM %s WHERE field > 0 or field < 0)", qualifiedName),
+            assertStatement("SHOW STATS FOR (SELECT * FROM %s WHERE field > 0 or field < 0)".formatted(qualifiedName),
                     createShowStats(qualifiedName,
                             ImmutableList.of(new AllColumns()),
                             Optional.of(
@@ -6081,7 +6103,7 @@ public class TestSqlParser
     private static void assertParsed(String input, Node expected, Node parsed)
     {
         if (!parsed.equals(expected)) {
-            fail(format("expected\n\n%s\n\nto parse as\n\n%s\n\nbut was\n\n%s\n",
+            fail("expected\n\n%s\n\nto parse as\n\n%s\n\nbut was\n\n%s\n".formatted(
                     indent(input),
                     indent(formatSql(expected)),
                     indent(formatSql(parsed))));

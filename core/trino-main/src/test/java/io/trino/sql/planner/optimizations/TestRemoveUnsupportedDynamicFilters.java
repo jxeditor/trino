@@ -481,14 +481,16 @@ public class TestRemoveUnsupportedDynamicFilters
         return getQueryRunner().inTransaction(session -> {
             // metadata.getCatalogHandle() registers the catalog for the transaction
             session.getCatalog().ifPresent(catalog -> metadata.getCatalogHandle(session, catalog));
-            PlanNode rewrittenPlan = new RemoveUnsupportedDynamicFilters(plannerContext).optimize(root,
-                    session,
-                    builder.getTypes(),
-                    new SymbolAllocator(),
-                    new PlanNodeIdAllocator(),
-                    WarningCollector.NOOP,
-                    createPlanOptimizersStatsCollector(),
-                    new CachingTableStatsProvider(metadata, session));
+            PlanNode rewrittenPlan = new RemoveUnsupportedDynamicFilters(plannerContext).optimize(
+                    root,
+                    new PlanOptimizer.Context(
+                            session,
+                            builder.getTypes(),
+                            new SymbolAllocator(),
+                            new PlanNodeIdAllocator(),
+                            WarningCollector.NOOP,
+                            createPlanOptimizersStatsCollector(),
+                            new CachingTableStatsProvider(metadata, session)));
             new DynamicFiltersChecker().validate(rewrittenPlan,
                     session,
                     plannerContext, createTestingTypeAnalyzer(plannerContext),
@@ -506,7 +508,7 @@ public class TestRemoveUnsupportedDynamicFilters
             PlanAssert.assertPlan(
                     session,
                     metadata,
-                    getQueryRunner().getFunctionManager(),
+                    getQueryRunner().getPlannerContext().getFunctionManager(),
                     getQueryRunner().getStatsCalculator(),
                     new Plan(actual, builder.getTypes(), StatsAndCosts.empty()),
                     pattern);

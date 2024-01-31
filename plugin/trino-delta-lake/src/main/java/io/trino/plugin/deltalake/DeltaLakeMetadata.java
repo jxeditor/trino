@@ -1165,7 +1165,7 @@ public class DeltaLakeMetadata
         }
 
         if (!invalidPartitionNames.isEmpty()) {
-            throw new TrinoException(DELTA_LAKE_INVALID_SCHEMA, "Table property 'partition_by' contained column names which do not exist: " + invalidPartitionNames);
+            throw new TrinoException(DELTA_LAKE_INVALID_SCHEMA, "Table property 'partitioned_by' contained column names which do not exist: " + invalidPartitionNames);
         }
         if (columns.size() == partitionColumnNames.size()) {
             throw new TrinoException(DELTA_LAKE_INVALID_SCHEMA, "Using all columns for partition columns is unsupported");
@@ -2862,11 +2862,11 @@ public class DeltaLakeMetadata
     }
 
     /**
-     * Returns the assignment key corresponding to the column represented by {@param projectedColumn} in the {@param assignments}, if one exists.
-     * The variable in the {@param projectedColumn} can itself be a representation of another projected column. For example,
+     * Returns the assignment key corresponding to the column represented by projectedColumn in the assignments, if one exists.
+     * The variable in the projectedColumn can itself be a representation of another projected column. For example,
      * say a projected column representation has variable "x" and a dereferenceIndices=[0]. "x" can in-turn map to a projected
      * column handle with base="a" and [1, 2] as dereference indices. Then the method searches for a column handle in
-     * {@param assignments} with base="a" and dereferenceIndices=[1, 2, 0].
+     * assignments with base="a" and dereferenceIndices=[1, 2, 0].
      */
     private static Optional<String> find(Map<String, ColumnHandle> assignments, ProjectedColumnRepresentation projectedColumn)
     {
