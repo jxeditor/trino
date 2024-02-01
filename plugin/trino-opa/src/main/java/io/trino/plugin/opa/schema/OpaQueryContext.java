@@ -11,30 +11,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.testing;
-
-import io.trino.spi.QueryId;
+package io.trino.plugin.opa.schema;
 
 import static java.util.Objects.requireNonNull;
 
-public class MaterializedResultWithQueryId
+public record OpaQueryContext(TrinoIdentity identity, OpaPluginContext softwareStack)
 {
-    private final QueryId queryId;
-    private final MaterializedResult result;
-
-    public MaterializedResultWithQueryId(QueryId queryId, MaterializedResult result)
+    public OpaQueryContext
     {
-        this.queryId = requireNonNull(queryId, "queryId is null");
-        this.result = requireNonNull(result, "result is null");
-    }
-
-    public QueryId getQueryId()
-    {
-        return queryId;
-    }
-
-    public MaterializedResult getResult()
-    {
-        return result;
+        requireNonNull(identity, "identity is null");
+        requireNonNull(softwareStack, "softwareStack is null");
     }
 }

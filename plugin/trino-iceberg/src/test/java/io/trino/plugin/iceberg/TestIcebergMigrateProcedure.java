@@ -17,7 +17,6 @@ package io.trino.plugin.iceberg;
 import com.google.common.collect.ImmutableMap;
 import io.trino.plugin.hive.TestingHivePlugin;
 import io.trino.testing.AbstractTestQueryFramework;
-import io.trino.testing.DistributedQueryRunner;
 import io.trino.testing.QueryRunner;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,7 +31,6 @@ import static io.trino.plugin.iceberg.IcebergFileFormat.AVRO;
 import static io.trino.testing.TestingNames.randomNameSuffix;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class TestIcebergMigrateProcedure
         extends AbstractTestQueryFramework
@@ -44,7 +42,7 @@ public class TestIcebergMigrateProcedure
             throws Exception
     {
         dataDirectory = Files.createTempDirectory("_test_hidden");
-        DistributedQueryRunner queryRunner = IcebergQueryRunner.builder().setMetastoreDirectory(dataDirectory.toFile()).build();
+        QueryRunner queryRunner = IcebergQueryRunner.builder().setMetastoreDirectory(dataDirectory.toFile()).build();
         queryRunner.installPlugin(new TestingHivePlugin(dataDirectory));
         queryRunner.createCatalog("hive", "hive", ImmutableMap.<String, String>builder()
                 .put("hive.security", "allow-all")
@@ -437,8 +435,8 @@ public class TestIcebergMigrateProcedure
 
         assertUpdate("CREATE TABLE " + hiveTableName + " WITH (format = 'RCBINARY') AS SELECT 1 x", 1);
 
-        assertThatThrownBy(() -> query("CALL iceberg.system.migrate('tpch', '" + tableName + "')"))
-                .hasStackTraceContaining("Unsupported storage format: RCBINARY");
+        assertThat(query("CALL iceberg.system.migrate('tpch', '" + tableName + "')"))
+                .failure().hasStackTraceContaining("Unsupported storage format: RCBINARY");
 
         assertQuery("SELECT * FROM " + hiveTableName, "VALUES 1");
         assertQueryFails("SELECT * FROM " + icebergTableName, "Not an Iceberg table: .*");

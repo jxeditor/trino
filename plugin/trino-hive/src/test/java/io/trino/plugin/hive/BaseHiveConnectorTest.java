@@ -59,12 +59,11 @@ import io.trino.sql.planner.planprinter.IoPlanPrinter.FormattedRange;
 import io.trino.sql.planner.planprinter.IoPlanPrinter.IoPlan;
 import io.trino.sql.planner.planprinter.IoPlanPrinter.IoPlan.TableColumnInfo;
 import io.trino.testing.BaseConnectorTest;
-import io.trino.testing.DistributedQueryRunner;
 import io.trino.testing.MaterializedResult;
-import io.trino.testing.MaterializedResultWithQueryId;
 import io.trino.testing.MaterializedRow;
 import io.trino.testing.QueryFailedException;
 import io.trino.testing.QueryRunner;
+import io.trino.testing.QueryRunner.MaterializedResultWithPlan;
 import io.trino.testing.TestingConnectorBehavior;
 import io.trino.testing.sql.TestTable;
 import io.trino.testing.sql.TrinoSqlExecutor;
@@ -217,7 +216,7 @@ public abstract class BaseHiveConnectorTest
         verify(new HiveConfig().getHiveCompressionCodec() == HiveCompressionOption.GZIP);
         String hiveCompressionCodec = HiveCompressionCodec.ZSTD.name();
 
-        DistributedQueryRunner queryRunner = builder
+        QueryRunner queryRunner = builder
                 .addHiveProperty("hive.compression-codec", hiveCompressionCodec)
                 .addHiveProperty("hive.allow-register-partition-procedure", "true")
                 // Reduce writer sort buffer size to ensure SortingFileWriter gets used
@@ -3587,10 +3586,10 @@ public abstract class BaseHiveConnectorTest
                 .matches("VALUES BIGINT '1000'");
 
         // verify cannot query more than 1000 partitions
-        assertThatThrownBy(() -> query("SELECT count(*) FROM " + tableName + " WHERE part1 IS NULL AND part2 <= 1001"))
-                .hasMessage("Query over table 'tpch.%s' can potentially read more than 1000 partitions", tableName);
-        assertThatThrownBy(() -> query("SELECT count(*) FROM " + tableName))
-                .hasMessage("Query over table 'tpch.%s' can potentially read more than 1000 partitions", tableName);
+        assertThat(query("SELECT count(*) FROM " + tableName + " WHERE part1 IS NULL AND part2 <= 1001"))
+                .failure().hasMessage("Query over table 'tpch.%s' can potentially read more than 1000 partitions", tableName);
+        assertThat(query("SELECT count(*) FROM " + tableName))
+                .failure().hasMessage("Query over table 'tpch.%s' can potentially read more than 1000 partitions", tableName);
 
         // verify we can query with a predicate that is not representable as a TupleDomain
         assertThat(query("SELECT * FROM " + tableName + " WHERE part1 % 400 = 3")) // may be translated to Domain.all
@@ -5307,13 +5306,13 @@ public abstract class BaseHiveConnectorTest
         assertUpdate(session, format("INSERT INTO %s VALUES (%s)", tableName, formatTimestamp(value)), 1);
         assertQuery(session, "SELECT * FROM " + tableName, format("VALUES (%s)", formatTimestamp(value)));
 
-        DistributedQueryRunner queryRunner = (DistributedQueryRunner) getQueryRunner();
-        MaterializedResultWithQueryId queryResult = queryRunner.executeWithQueryId(
+        QueryRunner queryRunner = getQueryRunner();
+        MaterializedResultWithPlan queryResult = queryRunner.executeWithPlan(
                 session,
                 format("SELECT * FROM %s WHERE t < %s", tableName, formatTimestamp(value)));
         assertThat(getQueryInfo(queryRunner, queryResult).getQueryStats().getProcessedInputDataSize().toBytes()).isEqualTo(0);
 
-        queryResult = queryRunner.executeWithQueryId(
+        queryResult = queryRunner.executeWithPlan(
                 session,
                 format("SELECT * FROM %s WHERE t > %s", tableName, formatTimestamp(value)));
         assertThat(getQueryInfo(queryRunner, queryResult).getQueryStats().getProcessedInputDataSize().toBytes()).isEqualTo(0);
@@ -5352,13 +5351,13 @@ public abstract class BaseHiveConnectorTest
 
         // to account for the fact that ORC stats are stored at millisecond precision and Trino rounds timestamps,
         // we filter by timestamps that differ from the actual value by at least 1ms, to observe pruning
-        DistributedQueryRunner queryRunner = getDistributedQueryRunner();
-        MaterializedResultWithQueryId queryResult = queryRunner.executeWithQueryId(
+        QueryRunner queryRunner = getDistributedQueryRunner();
+        MaterializedResultWithPlan queryResult = queryRunner.executeWithPlan(
                 session,
                 format("SELECT * FROM test_orc_timestamp_predicate_pushdown WHERE t < %s", formatTimestamp(value.minusNanos(MILLISECONDS.toNanos(1)))));
         assertThat(getQueryInfo(queryRunner, queryResult).getQueryStats().getProcessedInputDataSize().toBytes()).isEqualTo(0);
 
-        queryResult = queryRunner.executeWithQueryId(
+        queryResult = queryRunner.executeWithPlan(
                 session,
                 format("SELECT * FROM test_orc_timestamp_predicate_pushdown WHERE t > %s", formatTimestamp(value.plusNanos(MILLISECONDS.toNanos(1)))));
         assertThat(getQueryInfo(queryRunner, queryResult).getQueryStats().getProcessedInputDataSize().toBytes()).isEqualTo(0);
@@ -5419,9 +5418,9 @@ public abstract class BaseHiveConnectorTest
         assertNoDataRead("SELECT * FROM " + tableName + " WHERE n = 3");
     }
 
-    private QueryInfo getQueryInfo(DistributedQueryRunner queryRunner, MaterializedResultWithQueryId queryResult)
+    private QueryInfo getQueryInfo(QueryRunner queryRunner, MaterializedResultWithPlan queryResult)
     {
-        return queryRunner.getCoordinator().getQueryManager().getFullQueryInfo(queryResult.getQueryId());
+        return queryRunner.getCoordinator().getQueryManager().getFullQueryInfo(queryResult.queryId());
     }
 
     @Test
@@ -8764,8 +8763,8 @@ public abstract class BaseHiveConnectorTest
                 getQueryRunner()::execute,
                 "test_hidden_column_name_conflict",
                 format("(\"%s\" int, _bucket int, _partition int) WITH (partitioned_by = ARRAY['_partition'], bucketed_by = ARRAY['_bucket'], bucket_count = 10)", columnName))) {
-            assertThatThrownBy(() -> query("SELECT * FROM " + table.getName()))
-                    .hasMessageContaining("Multiple entries with same key: " + columnName);
+            assertThat(query("SELECT * FROM " + table.getName()))
+                    .nonTrinoExceptionFailure().hasMessageContaining("Multiple entries with same key: " + columnName);
         }
     }
 
@@ -9004,9 +9003,8 @@ public abstract class BaseHiveConnectorTest
 
         assertUpdate("CREATE TABLE %s (c1 integer) WITH (extra_properties = MAP(ARRAY['one', 'ONE'], ARRAY['one', 'ONE']))".formatted(tableName));
         // TODO: (https://github.com/trinodb/trino/issues/17) This should run successfully
-        assertThatThrownBy(() -> query("SELECT * FROM \"%s$properties\"".formatted(tableName)))
-                .isInstanceOf(QueryFailedException.class)
-                .hasMessageContaining("Multiple entries with same key: one=one and one=one");
+        assertThat(query("SELECT * FROM \"%s$properties\"".formatted(tableName)))
+                .nonTrinoExceptionFailure().hasMessageContaining("Multiple entries with same key: one=one and one=one");
 
         assertUpdate("DROP TABLE %s".formatted(tableName));
     }
@@ -9029,7 +9027,8 @@ public abstract class BaseHiveConnectorTest
                 getQueryRunner()::execute,
                 "test_select_with_short_zone_id_",
                 "(id INT, firstName VARCHAR, lastName VARCHAR) WITH (external_location = '%s')".formatted(tempDir))) {
-            assertThatThrownBy(() -> query("SELECT * FROM %s".formatted(testTable.getName())))
+            assertThat(query("SELECT * FROM %s".formatted(testTable.getName())))
+                    .failure()
                     .hasMessageMatching(".*Failed to read ORC file: .*")
                     .hasStackTraceContaining("Unknown time-zone ID: EST");
 
