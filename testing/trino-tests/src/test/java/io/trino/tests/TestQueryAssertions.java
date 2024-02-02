@@ -22,7 +22,7 @@ import io.trino.sql.planner.plan.AggregationNode;
 import io.trino.sql.planner.plan.FilterNode;
 import io.trino.sql.query.QueryAssertions.QueryAssert;
 import io.trino.testing.AbstractTestQueryFramework;
-import io.trino.testing.PlanTester;
+import io.trino.testing.DistributedQueryRunner;
 import io.trino.testing.QueryRunner;
 import org.junit.jupiter.api.Test;
 
@@ -33,6 +33,7 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 
+import static io.airlift.testing.Closeables.closeAllSuppress;
 import static io.trino.plugin.jdbc.JdbcMetadataSessionProperties.AGGREGATION_PUSHDOWN_ENABLED;
 import static io.trino.plugin.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 import static io.trino.testing.QueryAssertions.copyTpchTables;
@@ -44,15 +45,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Test {@link io.trino.sql.query.QueryAssertions}.
  */
-public abstract class BaseQueryAssertionsTest
+public class TestQueryAssertions
         extends AbstractTestQueryFramework
 {
-    protected static Session createSession()
+    @Override
+    protected QueryRunner createQueryRunner()
+            throws Exception
     {
-        return testSessionBuilder()
-                .setCatalog("jdbc")
-                .setSchema("public")
+        QueryRunner queryRunner = DistributedQueryRunner.builder(testSessionBuilder()
+                        .setCatalog("jdbc")
+                        .setSchema("public")
+                        .build())
                 .build();
+        try {
+            configureCatalog(queryRunner);
+        }
+        catch (Throwable e) {
+            closeAllSuppress(e, queryRunner);
+            throw e;
+        }
+
+        return queryRunner;
     }
 
     protected void configureCatalog(QueryRunner queryRunner)
@@ -134,30 +147,17 @@ public abstract class BaseQueryAssertionsTest
         QueryAssert queryAssert = assertThat(query("SELECT X'001234'"));
         assertThatThrownBy(() -> queryAssert.matches("VALUES X'001299'"))
                 .hasMessageMatching(
-                        // TODO the representation and thus messages should be the same regardless of query runner in use
-                        getQueryRunner() instanceof PlanTester
-                                ? "(?s).*" +
-                                "\\Q" +
-                                "Expecting actual:\n" +
-                                "  (00 12 34)\n" +
-                                "to contain exactly in any order:\n" +
-                                "  [(00 12 99)]\n" +
-                                "elements not found:\n" +
-                                "  (00 12 99)\n" +
-                                "and elements not expected:\n" +
-                                "  (00 12 34)" +
-                                "\\E.*"
-                                : "(?s).*" +
-                                "\\Q" +
-                                "Expecting actual:\n" +
-                                "  ([0, 18, 52])\n" +
-                                "to contain exactly in any order:\n" +
-                                "  [([0, 18, -103])]\n" +
-                                "elements not found:\n" +
-                                "  ([0, 18, -103])\n" +
-                                "and elements not expected:\n" +
-                                "  ([0, 18, 52])" +
-                                "\\E.*");
+                        "(?s).*" +
+                        "\\Q" +
+                        "Expecting actual:\n" +
+                        "  ([0, 18, 52])\n" +
+                        "to contain exactly in any order:\n" +
+                        "  [([0, 18, -103])]\n" +
+                        "elements not found:\n" +
+                        "  ([0, 18, -103])\n" +
+                        "and elements not expected:\n" +
+                        "  ([0, 18, 52])" +
+                        "\\E.*");
     }
 
     @Test
@@ -169,30 +169,17 @@ public abstract class BaseQueryAssertionsTest
         QueryAssert queryAssert = assertThat(query("SELECT CAST(ROW(X'001234') AS ROW(foo varbinary))"));
         assertThatThrownBy(() -> queryAssert.matches("SELECT CAST(ROW(X'001299') AS ROW(foo varbinary))"))
                 .hasMessageMatching(
-                        // TODO the representation and thus messages should be the same regardless of query runner in use
-                        getQueryRunner() instanceof PlanTester
-                                ? "(?s).*" +
-                                "\\Q" +
-                                "Expecting actual:\n" +
-                                "  ([00 12 34])\n" +
-                                "to contain exactly in any order:\n" +
-                                "  [([00 12 99])]\n" +
-                                "elements not found:\n" +
-                                "  ([00 12 99])\n" +
-                                "and elements not expected:\n" +
-                                "  ([00 12 34])" +
-                                "\\E.*"
-                                : "(?s).*" +
-                                "\\Q" +
-                                "Expecting actual:\n" +
-                                "  ([X'00 12 34'])\n" +
-                                "to contain exactly in any order:\n" +
-                                "  [([X'00 12 99'])]\n" +
-                                "elements not found:\n" +
-                                "  ([X'00 12 99'])\n" +
-                                "and elements not expected:\n" +
-                                "  ([X'00 12 34'])" +
-                                "\\E.*");
+                        "(?s).*" +
+                        "\\Q" +
+                        "Expecting actual:\n" +
+                        "  ([X'00 12 34'])\n" +
+                        "to contain exactly in any order:\n" +
+                        "  [([X'00 12 99'])]\n" +
+                        "elements not found:\n" +
+                        "  ([X'00 12 99'])\n" +
+                        "and elements not expected:\n" +
+                        "  ([X'00 12 34'])" +
+                        "\\E.*");
     }
 
     /**
