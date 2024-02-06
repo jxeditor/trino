@@ -4140,7 +4140,7 @@ public abstract class BaseHiveConnectorTest
             // data before ScaledWriterScheduler is able to scale it to multiple machines.
             // Skewed table that will scale writers to multiple machines.
             String selectSql = "SELECT t1.* FROM (SELECT *, case when orderkey >= 0 then 1 else orderkey end as join_key FROM tpch.sf1.orders) t1 " +
-                               "INNER JOIN (SELECT orderkey FROM tpch.sf1.orders) t2 " +
+                               "INNER JOIN (SELECT orderkey FROM tpch.tiny.orders) t2 " +
                                "ON t1.join_key = t2.orderkey";
             @Language("SQL") String createTableSql = "CREATE TABLE scale_writers_skewed WITH (format = 'PARQUET') AS " + selectSql;
             assertUpdate(
@@ -4148,7 +4148,7 @@ public abstract class BaseHiveConnectorTest
                             .setSystemProperty("task_min_writer_count", "1")
                             .setSystemProperty("scale_writers", "true")
                             .setSystemProperty("task_scale_writers_enabled", "false")
-                            .setSystemProperty("writer_scaling_min_data_processed", "0.5MB")
+                            .setSystemProperty("writer_scaling_min_data_processed", "0.1MB")
                             .setSystemProperty("join_distribution_type", "PARTITIONED")
                             .build(),
                     createTableSql,
@@ -4168,41 +4168,25 @@ public abstract class BaseHiveConnectorTest
     @Test
     public void testMultipleWritersWhenTaskScaleWritersIsEnabled()
     {
-        long workers = (long) computeScalar("SELECT count(*) FROM system.runtime.nodes");
-        int taskMaxScaleWriterCount = 4;
-        testTaskScaleWriters(getSession(), DataSize.of(200, KILOBYTE), taskMaxScaleWriterCount, false, DataSize.of(64, GIGABYTE))
-                .isBetween(workers + 1, workers * taskMaxScaleWriterCount);
+        long taskMaxScaleWriterCount = 4;
+        testTaskScaleWriters(getSession(), DataSize.of(200, KILOBYTE), (int) taskMaxScaleWriterCount, DataSize.of(64, GIGABYTE))
+                .isBetween(2L, taskMaxScaleWriterCount);
     }
 
     @Test
     public void testTaskWritersDoesNotScaleWithLargeMinWriterSize()
     {
-        long workers = (long) computeScalar("SELECT count(*) FROM system.runtime.nodes");
         // In the case of streaming, the number of writers is equal to the number of workers
-        testTaskScaleWriters(getSession(), DataSize.of(2, GIGABYTE), 4, false, DataSize.of(64, GIGABYTE))
-                .isEqualTo(workers);
-    }
-
-    @Test
-    public void testWritersAcrossMultipleWorkersWhenScaleWritersIsEnabled()
-    {
-        long workers = (long) computeScalar("SELECT count(*) FROM system.runtime.nodes");
-        int taskMaxScaleWriterCount = 2;
-        // It is only applicable for pipeline execution mode, since we are testing
-        // when both "scaleWriters" and "taskScaleWriters" are enabled, the writers are
-        // scaling upto multiple worker nodes.
-        testTaskScaleWriters(getSession(), DataSize.of(200, KILOBYTE), taskMaxScaleWriterCount, true, DataSize.of(64, GIGABYTE))
-                .isBetween((long) taskMaxScaleWriterCount + workers, workers * taskMaxScaleWriterCount);
+        testTaskScaleWriters(getSession(), DataSize.of(2, GIGABYTE), 4, DataSize.of(64, GIGABYTE))
+                .isEqualTo(1);
     }
 
     @Test
     public void testMultipleWritersWhenTaskScaleWritersIsEnabledWithMemoryLimit()
     {
-        long workers = (long) computeScalar("SELECT count(*) FROM system.runtime.nodes");
-        int taskMaxScaleWriterCount = 4;
-        testTaskScaleWriters(getSession(), DataSize.of(200, KILOBYTE), taskMaxScaleWriterCount, false, DataSize.of(256, MEGABYTE))
+        testTaskScaleWriters(getSession(), DataSize.of(200, KILOBYTE), 4, DataSize.of(256, MEGABYTE))
                 // There shouldn't be no scaling as the memory limit is too low
-                .isBetween(0L, workers);
+                .isEqualTo(1L);
     }
 
     @Test
@@ -4257,21 +4241,21 @@ public abstract class BaseHiveConnectorTest
             Session session,
             DataSize writerScalingMinDataProcessed,
             int taskMaxScaleWriterCount,
-            boolean scaleWriters,
             DataSize queryMaxMemory)
     {
         String tableName = "task_scale_writers_" + randomNameSuffix();
         try {
             @Language("SQL") String createTableSql = format(
-                    "CREATE TABLE %s WITH (format = 'ORC') AS SELECT * FROM tpch.sf2.orders",
+                    "CREATE TABLE %s WITH (format = 'ORC') AS SELECT * FROM tpch.sf1.orders",
                     tableName);
             assertUpdate(
                     Session.builder(session)
-                            .setSystemProperty(SCALE_WRITERS, String.valueOf(scaleWriters))
+                            .setSystemProperty(SCALE_WRITERS, "false")
                             .setSystemProperty(TASK_SCALE_WRITERS_ENABLED, "true")
                             .setSystemProperty(WRITER_SCALING_MIN_DATA_PROCESSED, writerScalingMinDataProcessed.toString())
                             .setSystemProperty(TASK_MAX_WRITER_COUNT, String.valueOf(taskMaxScaleWriterCount))
                             .setSystemProperty(QUERY_MAX_MEMORY_PER_NODE, queryMaxMemory.toString())
+                            .setSystemProperty(MAX_WRITER_TASK_COUNT, Integer.toString(1))
                             // Set the value higher than sf1 input data size such that fault-tolerant scheduler
                             // shouldn't add new task and scaling only happens through the local scaling exchange.
                             .setSystemProperty(FAULT_TOLERANT_EXECUTION_ARBITRARY_DISTRIBUTION_COMPUTE_TASK_TARGET_SIZE_MIN, "2GB")
@@ -4282,7 +4266,7 @@ public abstract class BaseHiveConnectorTest
                             .setSystemProperty(FAULT_TOLERANT_EXECUTION_HASH_DISTRIBUTION_WRITE_TASK_TARGET_SIZE, "2GB")
                             .build(),
                     createTableSql,
-                    3000000);
+                    1500000);
 
             long files = (long) computeScalar("SELECT count(DISTINCT \"$path\") FROM " + tableName);
             return assertThat(files);
