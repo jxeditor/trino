@@ -13,11 +13,16 @@
  */
 package io.trino.filesystem.alluxio;
 
-import io.trino.filesystem.Location;
+import alluxio.client.file.cache.CacheManager;
+import org.junit.jupiter.api.Test;
 
-public interface CacheStats
+import static io.trino.spi.testing.InterfaceTestUtils.assertAllMethodsOverridden;
+
+public class TestTracingCacheManager
 {
-    void recordCacheRead(Location location, int length);
-
-    void recordExternalRead(Location location, int length);
+    @Test
+    public void testAllMethodsImplemented()
+    {
+        assertAllMethodsOverridden(CacheManager.class, TracingCacheManager.class);
+    }
 }
