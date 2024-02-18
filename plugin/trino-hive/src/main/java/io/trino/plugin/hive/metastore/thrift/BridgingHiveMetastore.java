@@ -13,6 +13,7 @@
  */
 package io.trino.plugin.hive.metastore.thrift;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.trino.hive.thrift.metastore.DataOperationType;
 import io.trino.hive.thrift.metastore.FieldSchema;
@@ -118,17 +119,17 @@ public class BridgingHiveMetastore
     }
 
     @Override
-    public Map<String, HiveColumnStatistics> getTableColumnStatistics(String databaseName, String tableName, Set<String> columnNames, OptionalLong rowCount)
+    public Map<String, HiveColumnStatistics> getTableColumnStatistics(String databaseName, String tableName, Set<String> columnNames)
     {
         checkArgument(!columnNames.isEmpty(), "columnNames is empty");
-        return delegate.getTableColumnStatistics(databaseName, tableName, columnNames, rowCount);
+        return delegate.getTableColumnStatistics(databaseName, tableName, columnNames);
     }
 
     @Override
-    public Map<String, Map<String, HiveColumnStatistics>> getPartitionColumnStatistics(String databaseName, String tableName, Map<String, OptionalLong> partitionNamesWithRowCount, Set<String> columnNames)
+    public Map<String, Map<String, HiveColumnStatistics>> getPartitionColumnStatistics(String databaseName, String tableName, Set<String> partitionNames, Set<String> columnNames)
     {
         checkArgument(!columnNames.isEmpty(), "columnNames is empty");
-        return delegate.getPartitionColumnStatistics(databaseName, tableName, partitionNamesWithRowCount, columnNames);
+        return delegate.getPartitionColumnStatistics(databaseName, tableName, partitionNames, columnNames);
     }
 
     @Override
@@ -342,7 +343,12 @@ public class BridgingHiveMetastore
         io.trino.hive.thrift.metastore.Table table = delegate.getTable(databaseName, tableName)
                 .orElseThrow(() -> new TableNotFoundException(new SchemaTableName(databaseName, tableName)));
 
-        for (FieldSchema fieldSchema : table.getSd().getCols()) {
+        List<FieldSchema> fieldSchemas = ImmutableList.<FieldSchema>builder()
+                .addAll(table.getSd().getCols())
+                .addAll(table.getPartitionKeys())
+                .build();
+
+        for (FieldSchema fieldSchema : fieldSchemas) {
             if (fieldSchema.getName().equals(columnName)) {
                 if (comment.isPresent()) {
                     fieldSchema.setComment(comment.get());

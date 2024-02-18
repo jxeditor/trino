@@ -9091,6 +9091,50 @@ public abstract class BaseHiveConnectorTest
     }
 
     @Test
+    public void testCommentWithPartitionedTable()
+    {
+        String table = "test_comment_with_partitioned_table_" + randomNameSuffix();
+
+        assertUpdate("""
+                CREATE TABLE hive.tpch.%s (
+                   regular_column date COMMENT 'regular column comment',
+                   partition_column date COMMENT 'partition column comment'
+                )
+                COMMENT 'table comment'
+                WITH (
+                   partitioned_by = ARRAY['partition_column']
+                )
+                """.formatted(table));
+
+        assertThat(getColumnComment(table, "regular_column")).isEqualTo("regular column comment");
+        assertThat(getColumnComment(table, "partition_column")).isEqualTo("partition column comment");
+        assertThat(getTableComment("hive", "tpch", table)).isEqualTo("table comment");
+
+        assertUpdate("COMMENT ON COLUMN %s.regular_column IS 'new regular column comment'".formatted(table));
+        assertThat(getColumnComment(table, "regular_column")).isEqualTo("new regular column comment");
+        assertUpdate("COMMENT ON COLUMN %s.partition_column IS 'new partition column comment'".formatted(table));
+        assertThat(getColumnComment(table, "partition_column")).isEqualTo("new partition column comment");
+        assertUpdate("COMMENT ON TABLE %s IS 'new table comment'".formatted(table));
+        assertThat(getTableComment("hive", "tpch", table)).isEqualTo("new table comment");
+
+        assertUpdate("COMMENT ON COLUMN %s.regular_column IS ''".formatted(table));
+        assertThat(getColumnComment(table, "regular_column")).isEmpty();
+        assertUpdate("COMMENT ON COLUMN %s.partition_column IS ''".formatted(table));
+        assertThat(getColumnComment(table, "partition_column")).isEmpty();
+        assertUpdate("COMMENT ON TABLE %s IS ''".formatted(table));
+        assertThat(getTableComment("hive", "tpch", table)).isEmpty();
+
+        assertUpdate("COMMENT ON COLUMN %s.regular_column IS NULL".formatted(table));
+        assertThat(getColumnComment(table, "regular_column")).isNull();
+        assertUpdate("COMMENT ON COLUMN %s.partition_column IS NULL".formatted(table));
+        assertThat(getColumnComment(table, "partition_column")).isNull();
+        assertUpdate("COMMENT ON TABLE %s IS NULL".formatted(table));
+        assertThat(getTableComment("hive", "tpch", table)).isNull();
+
+        assertUpdate("DROP TABLE " + table);
+    }
+
+    @Test
     public void testSelectWithShortZoneId()
             throws IOException
     {
@@ -9198,12 +9242,12 @@ public abstract class BaseHiveConnectorTest
     {
         requireNonNull(storageFormat, "storageFormat is null");
         requireNonNull(test, "test is null");
-        Session session = storageFormat.getSession();
+        Session session = storageFormat.session();
         try {
-            test.accept(session, storageFormat.getFormat());
+            test.accept(session, storageFormat.format());
         }
         catch (Exception | AssertionError e) {
-            throw new AssertionError(format("Failure for format %s with properties %s", storageFormat.getFormat(), session.getCatalogProperties()), e);
+            throw new AssertionError(format("Failure for format %s with properties %s", storageFormat.format(), session.getCatalogProperties()), e);
         }
     }
 
@@ -9232,37 +9276,21 @@ public abstract class BaseHiveConnectorTest
         return new JsonCodecFactory(objectMapperProvider).jsonCodec(IoPlan.class);
     }
 
-    private static class TestingHiveStorageFormat
+    private record TestingHiveStorageFormat(Session session, HiveStorageFormat format)
     {
-        private final Session session;
-        private final HiveStorageFormat format;
-
-        TestingHiveStorageFormat(Session session, HiveStorageFormat format)
+        private TestingHiveStorageFormat
         {
-            this.session = requireNonNull(session, "session is null");
-            this.format = requireNonNull(format, "format is null");
-        }
-
-        public Session getSession()
-        {
-            return session;
-        }
-
-        public HiveStorageFormat getFormat()
-        {
-            return format;
+            requireNonNull(session, "session is null");
+            requireNonNull(format, "format is null");
         }
     }
 
-    private static class TypeAndEstimate
+    private record TypeAndEstimate(Type type, EstimatedStatsAndCost estimate)
     {
-        public final Type type;
-        public final EstimatedStatsAndCost estimate;
-
-        public TypeAndEstimate(Type type, EstimatedStatsAndCost estimate)
+        private TypeAndEstimate
         {
-            this.type = requireNonNull(type, "type is null");
-            this.estimate = requireNonNull(estimate, "estimate is null");
+            requireNonNull(type, "type is null");
+            requireNonNull(estimate, "estimate is null");
         }
     }
 
@@ -9348,53 +9376,5 @@ public abstract class BaseHiveConnectorTest
                 .setCatalogSessionProperty(getSession().getCatalog().orElseThrow(), "parquet_small_file_threshold", "0B")
                 .setCatalogSessionProperty(getSession().getCatalog().orElseThrow(), "orc_tiny_stripe_threshold", "0B")
                 .build();
-    }
-
-    private static final class BucketedFilterTestSetup
-    {
-        private final String typeName;
-        private final List<String> values;
-        private final String filterValue;
-        private final long expectedPhysicalInputRows;
-        private final long expectedResult;
-
-        private BucketedFilterTestSetup(
-                String typeName,
-                List<String> values,
-                String filterValue,
-                long expectedPhysicalInputRows,
-                long expectedResult)
-        {
-            this.typeName = requireNonNull(typeName, "typeName is null");
-            this.values = requireNonNull(values, "values is null");
-            this.filterValue = requireNonNull(filterValue, "filterValue is null");
-            this.expectedPhysicalInputRows = expectedPhysicalInputRows;
-            this.expectedResult = expectedResult;
-        }
-
-        private String getTypeName()
-        {
-            return typeName;
-        }
-
-        private List<String> getValues()
-        {
-            return values;
-        }
-
-        private String getFilterValue()
-        {
-            return filterValue;
-        }
-
-        private long getExpectedPhysicalInputRows()
-        {
-            return expectedPhysicalInputRows;
-        }
-
-        private long getExpectedResult()
-        {
-            return expectedResult;
-        }
     }
 }

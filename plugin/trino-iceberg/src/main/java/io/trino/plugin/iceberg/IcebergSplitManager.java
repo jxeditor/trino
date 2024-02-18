@@ -16,6 +16,7 @@ package io.trino.plugin.iceberg;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import io.airlift.units.Duration;
+import io.trino.filesystem.cache.CachingHostAddressProvider;
 import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorSplitSource;
 import io.trino.plugin.iceberg.functions.tablechanges.TableChangesFunctionHandle;
 import io.trino.plugin.iceberg.functions.tablechanges.TableChangesSplitSource;
@@ -32,7 +33,8 @@ import io.trino.spi.type.TypeManager;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableScan;
 
-import static com.google.common.util.concurrent.MoreExecutors.newDirectExecutorService;
+import java.util.concurrent.ExecutorService;
+
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getDynamicFilteringWaitTimeout;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.getMinimumAssignedSplitWeight;
 import static io.trino.spi.connector.FixedSplitSource.emptySplitSource;
@@ -46,19 +48,22 @@ public class IcebergSplitManager
     private final IcebergTransactionManager transactionManager;
     private final TypeManager typeManager;
     private final IcebergFileSystemFactory fileSystemFactory;
-    private final boolean asyncIcebergSplitProducer;
+    private final ExecutorService executor;
+    private final CachingHostAddressProvider cachingHostAddressProvider;
 
     @Inject
     public IcebergSplitManager(
             IcebergTransactionManager transactionManager,
             TypeManager typeManager,
             IcebergFileSystemFactory fileSystemFactory,
-            @AsyncIcebergSplitProducer boolean asyncIcebergSplitProducer)
+            @ForIcebergSplitManager ExecutorService executor,
+            CachingHostAddressProvider cachingHostAddressProvider)
     {
         this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
-        this.asyncIcebergSplitProducer = asyncIcebergSplitProducer;
+        this.executor = requireNonNull(executor, "executor is null");
+        this.cachingHostAddressProvider = requireNonNull(cachingHostAddressProvider, "cachingHostAddressProvider is null");
     }
 
     @Override
@@ -82,10 +87,9 @@ public class IcebergSplitManager
         Duration dynamicFilteringWaitTimeout = getDynamicFilteringWaitTimeout(session);
 
         TableScan tableScan = icebergTable.newScan()
-                .useSnapshot(table.getSnapshotId().get());
-        if (!asyncIcebergSplitProducer) {
-            tableScan = tableScan.planWith(newDirectExecutorService());
-        }
+                .useSnapshot(table.getSnapshotId().get())
+                .planWith(executor);
+
         IcebergSplitSource splitSource = new IcebergSplitSource(
                 fileSystemFactory,
                 session,
@@ -98,7 +102,8 @@ public class IcebergSplitManager
                 constraint,
                 typeManager,
                 table.isRecordScannedFiles(),
-                getMinimumAssignedSplitWeight(session));
+                getMinimumAssignedSplitWeight(session),
+                cachingHostAddressProvider);
 
         return new ClassLoaderSafeConnectorSplitSource(splitSource, IcebergSplitManager.class.getClassLoader());
     }
