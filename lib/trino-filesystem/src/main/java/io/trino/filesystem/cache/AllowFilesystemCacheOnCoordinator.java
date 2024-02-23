@@ -11,21 +11,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive.fs;
+package io.trino.filesystem.cache;
 
-import io.trino.filesystem.Location;
-import io.trino.filesystem.TrinoFileSystem;
-import io.trino.plugin.hive.metastore.Table;
+import com.google.inject.BindingAnnotation;
 
-import java.io.IOException;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
 
-public class FileSystemDirectoryLister
-        implements DirectoryLister
+import static java.lang.annotation.ElementType.FIELD;
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.PARAMETER;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+@Retention(RUNTIME)
+@Target({FIELD, PARAMETER, METHOD})
+@BindingAnnotation
+public @interface AllowFilesystemCacheOnCoordinator
 {
-    @Override
-    public RemoteIterator<TrinoFileStatus> listFilesRecursively(TrinoFileSystem fs, Table table, Location location)
-            throws IOException
-    {
-        return new TrinoFileStatusRemoteIterator(fs.listFiles(location));
-    }
 }

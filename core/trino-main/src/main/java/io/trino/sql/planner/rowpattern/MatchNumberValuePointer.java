@@ -11,21 +11,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive.fs;
+package io.trino.sql.planner.rowpattern;
 
-import io.trino.filesystem.Location;
-import io.trino.filesystem.TrinoFileSystem;
-import io.trino.plugin.hive.metastore.Table;
-
-import java.io.IOException;
-
-public class FileSystemDirectoryLister
-        implements DirectoryLister
+public final class MatchNumberValuePointer
+        implements ValuePointer
 {
     @Override
-    public RemoteIterator<TrinoFileStatus> listFilesRecursively(TrinoFileSystem fs, Table table, Location location)
-            throws IOException
+    public int hashCode()
     {
-        return new TrinoFileStatusRemoteIterator(fs.listFiles(location));
+        return MatchNumberValuePointer.class.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        return obj instanceof MatchNumberValuePointer;
     }
 }
