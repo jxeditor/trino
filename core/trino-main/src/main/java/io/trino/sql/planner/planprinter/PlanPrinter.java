@@ -985,7 +985,7 @@ public class PlanPrinter
 
             NodeRepresentation nodeOutput = addNode(
                     node,
-                    "PatterRecognition",
+                    "PatternRecognition",
                     descriptor.put("hash", formatHash(node.getHashSymbol())).buildOrThrow(),
                     context);
 
@@ -1106,8 +1106,8 @@ public class PlanPrinter
             return switch (position) {
                 case PAST_LAST -> "AFTER MATCH SKIP PAST LAST ROW";
                 case NEXT -> "AFTER MATCH SKIP TO NEXT ROW";
-                case FIRST -> "AFTER MATCH SKIP TO FIRST " + labels; // TODO: ir
-                case LAST -> "AFTER MATCH SKIP TO LAST " + labels; // TODO: ir
+                case FIRST -> "AFTER MATCH SKIP TO FIRST " + labels;
+                case LAST -> "AFTER MATCH SKIP TO LAST " + labels;
             };
         }
 

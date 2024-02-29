@@ -113,7 +113,6 @@ import io.trino.sql.tree.VariableDefinition;
 import io.trino.sql.tree.WhenClause;
 import io.trino.sql.tree.WindowFrame;
 import io.trino.sql.tree.WindowOperation;
-import io.trino.type.TypeCoercion;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -188,7 +187,6 @@ class QueryPlanner
     private final PlanNodeIdAllocator idAllocator;
     private final Map<NodeRef<LambdaArgumentDeclaration>, Symbol> lambdaDeclarationToSymbolMap;
     private final PlannerContext plannerContext;
-    private final TypeCoercion typeCoercion;
     private final Session session;
     private final SubqueryPlanner subqueryPlanner;
     private final Optional<TranslationMap> outerContext;
@@ -218,7 +216,6 @@ class QueryPlanner
         this.idAllocator = idAllocator;
         this.lambdaDeclarationToSymbolMap = lambdaDeclarationToSymbolMap;
         this.plannerContext = plannerContext;
-        this.typeCoercion = new TypeCoercion(plannerContext.getTypeManager()::getType);
         this.session = session;
         this.outerContext = outerContext;
         this.subqueryPlanner = new SubqueryPlanner(analysis, symbolAllocator, idAllocator, lambdaDeclarationToSymbolMap, plannerContext, outerContext, session, recursiveSubqueries);
@@ -1134,7 +1131,7 @@ class QueryPlanner
         //    avg(v)
         // Needs to be rewritten as
         //    avg(CAST(v AS double))
-        PlanAndMappings coercions = coerce(subPlan, inputs, analysis, idAllocator, symbolAllocator, typeCoercion);
+        PlanAndMappings coercions = coerce(subPlan, inputs, analysis, idAllocator, symbolAllocator);
         subPlan = coercions.getSubPlan();
 
         GroupingSetsPlan groupingSets = planGroupingSets(subPlan, node, groupingSetAnalysis);
@@ -1455,7 +1452,7 @@ class QueryPlanner
             //    avg(v) OVER (ORDER BY v)
             // Needs to be rewritten as
             //    avg(CAST(v AS double)) OVER (ORDER BY v)
-            PlanAndMappings coercions = coerce(subPlan, inputs, analysis, idAllocator, symbolAllocator, typeCoercion);
+            PlanAndMappings coercions = coerce(subPlan, inputs, analysis, idAllocator, symbolAllocator);
             subPlan = coercions.getSubPlan();
 
             // For frame of type RANGE, append casts and functions necessary for frame bound calculations
@@ -1856,7 +1853,7 @@ class QueryPlanner
 
         PatternRecognitionComponents components = new RelationPlanner(analysis, symbolAllocator, idAllocator, lambdaDeclarationToSymbolMap, plannerContext, outerContext, session, recursiveSubqueries)
                 .planPatternRecognitionComponents(
-                        subPlan::rewrite,
+                        subPlan.getTranslations(),
                         frame.getSubsets(),
                         ImmutableList.of(),
                         frame.getAfterMatchSkipTo(),
@@ -1928,15 +1925,28 @@ class QueryPlanner
                             .iterator());
             WindowFrame frame = window.getFrame().orElseThrow();
             Optional<Expression> endValue = frame.getEnd().orElseThrow().getValue();
-            endValue.ifPresent(inputsBuilder::add);
 
             List<Expression> inputs = inputsBuilder.build();
 
             subPlan = subqueryPlanner.handleSubqueries(subPlan, inputs, analysis.getSubqueries(node));
             subPlan = subPlan.appendProjections(inputs, symbolAllocator, idAllocator);
 
+            // Add projection for frame end, since WindowNode expects a symbol and does not support literals
+            // We don't use appendProjects because we don't want a mapping to be added for the literal
+            Optional<Symbol> endValueSymbol = Optional.empty();
+            if (endValue.isPresent()) {
+                Expression expression = endValue.get();
+                Assignments.Builder assignments = Assignments.builder();
+                assignments.putIdentities(subPlan.getRoot().getOutputSymbols());
+                Symbol symbol = symbolAllocator.newSymbol(expression, analysis.getType(expression));
+                assignments.put(symbol, subPlan.rewrite(expression));
+
+                endValueSymbol = Optional.of(symbol);
+                subPlan = subPlan.withNewRoot(new ProjectNode(idAllocator.getNextId(), subPlan.getRoot(), assignments.build()));
+            }
+
             // process frame end
-            FrameOffsetPlanAndSymbol plan = planFrameOffset(subPlan, endValue.map(subPlan::translate));
+            FrameOffsetPlanAndSymbol plan = planFrameOffset(subPlan, endValueSymbol);
             subPlan = plan.getSubPlan();
             Optional<Symbol> frameEnd = plan.getFrameOffsetSymbol();
 
@@ -1986,7 +1996,7 @@ class QueryPlanner
 
         PatternRecognitionComponents components = new RelationPlanner(analysis, symbolAllocator, idAllocator, lambdaDeclarationToSymbolMap, plannerContext, outerContext, session, recursiveSubqueries)
                 .planPatternRecognitionComponents(
-                        subPlan::rewrite,
+                        subPlan.getTranslations(),
                         frame.getSubsets(),
                         ImmutableList.of(analysis.getMeasureDefinition(windowMeasure)),
                         frame.getAfterMatchSkipTo(),
@@ -2023,7 +2033,7 @@ class QueryPlanner
      *
      * @return the new subplan and a mapping of each expression to the symbol representing the coercion or an existing symbol if a coercion wasn't needed
      */
-    public static PlanAndMappings coerce(PlanBuilder subPlan, List<Expression> expressions, Analysis analysis, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, TypeCoercion typeCoercion)
+    public static PlanAndMappings coerce(PlanBuilder subPlan, List<Expression> expressions, Analysis analysis, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator)
     {
         Assignments.Builder assignments = Assignments.builder();
         assignments.putIdentities(subPlan.getRoot().getOutputSymbols());
