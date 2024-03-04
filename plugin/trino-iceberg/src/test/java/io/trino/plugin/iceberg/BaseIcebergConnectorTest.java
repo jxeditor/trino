@@ -3250,8 +3250,9 @@ public abstract class BaseIcebergConnectorTest
         }
 
         assertThat(query("SHOW STATS FOR " + tableName))
-                .skippingTypesCheck()
+                .result()
                 .exceptColumns("data_size", "low_value", "high_value") // these may vary between types
+                .skippingTypesCheck()
                 .matches("VALUES " +
                         "  ('d', 3e0, " + (format == AVRO ? "0.1e0" : "0.25e0") + ", NULL), " +
                         "  (NULL, NULL, NULL, 4e0)");
@@ -4718,7 +4719,6 @@ public abstract class BaseIcebergConnectorTest
 
     @Test
     public void testGetIcebergTableWithLegacyOrcBloomFilterProperties()
-            throws Exception
     {
         String tableName = "test_get_table_with_legacy_orc_bloom_filter_" + randomNameSuffix();
         assertUpdate("CREATE TABLE " + tableName + " AS SELECT 1 x, 'INDIA' y", 1);
@@ -4740,10 +4740,8 @@ public abstract class BaseIcebergConnectorTest
                 newProperties);
         TableMetadataParser.overwrite(newTableMetadata, new ForwardingOutputFile(fileSystem, Location.of(metadataLocation)));
 
-        MaterializedResult actualCreateTable = computeActual("SHOW CREATE TABLE " + tableName);
-        assertThat(actualCreateTable).isNotNull();
-        assertThat(actualCreateTable.getMaterializedRows().getFirst().toString())
-                .contains(ImmutableList.of("orc_bloom_filter_columns", "orc_bloom_filter_fpp"));
+        assertThat((String) computeScalar("SHOW CREATE TABLE " + tableName))
+                .contains("orc_bloom_filter_columns", "orc_bloom_filter_fpp");
     }
 
     protected abstract boolean supportsIcebergFileStatistics(String typeName);
@@ -6118,44 +6116,54 @@ public abstract class BaseIcebergConnectorTest
         assertQuerySucceeds("CREATE TABLE " + tableName + "(col1 varchar)");
         long v1SnapshotId = getCurrentSnapshotId(tableName);
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v1SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR))
-                .returnsEmptyResult();
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR))
+                .isEmpty();
 
         assertUpdate("ALTER TABLE " + tableName + " ADD COLUMN  col2 integer");
         assertThat(query("SELECT * FROM " + tableName))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER))
-                .returnsEmptyResult();
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER))
+                .isEmpty();
 
         assertUpdate("INSERT INTO " + tableName + " VALUES ('a', 11)", 1);
         long v2SnapshotId = getCurrentSnapshotId(tableName);
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v2SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER))
                 .matches("VALUES (VARCHAR 'a', 11)");
         assertThat(query("SELECT * FROM " + tableName))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER))
                 .matches("VALUES (VARCHAR 'a', 11)");
 
         assertUpdate("ALTER TABLE " + tableName + " ADD COLUMN  col3 bigint");
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v2SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER))
                 .matches("VALUES (VARCHAR 'a', 11)");
         assertThat(query("SELECT * FROM " + tableName))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER, BIGINT))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER, BIGINT))
                 .matches("VALUES (VARCHAR 'a', 11, CAST(NULL AS bigint))");
 
         assertUpdate("INSERT INTO " + tableName + " VALUES ('b', 22, 32)", 1);
         long v3SnapshotId = getCurrentSnapshotId(tableName);
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v1SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR))
-                .returnsEmptyResult();
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR))
+                .isEmpty();
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v2SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER))
                 .matches("VALUES (VARCHAR 'a', 11)");
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v3SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER, BIGINT))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER, BIGINT))
                 .matches("VALUES (VARCHAR 'a', 11, NULL), (VARCHAR 'b', 22, BIGINT '32')");
         assertThat(query("SELECT * FROM " + tableName))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER, BIGINT))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER, BIGINT))
                 .matches("VALUES (VARCHAR 'a', 11, NULL), (VARCHAR 'b', 22, BIGINT '32')");
     }
 
@@ -6167,42 +6175,51 @@ public abstract class BaseIcebergConnectorTest
         assertQuerySucceeds("CREATE TABLE " + tableName + "(col1 varchar, col2 integer, col3 boolean)");
         long v1SnapshotId = getCurrentSnapshotId(tableName);
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v1SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER, BOOLEAN))
-                .returnsEmptyResult();
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER, BOOLEAN))
+                .isEmpty();
 
         assertUpdate("INSERT INTO " + tableName + " VALUES ('a', 1, true)", 1);
         long v2SnapshotId = getCurrentSnapshotId(tableName);
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v2SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER, BOOLEAN))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER, BOOLEAN))
                 .matches("VALUES (VARCHAR 'a', 1, true)");
 
         assertUpdate("ALTER TABLE " + tableName + " DROP COLUMN  col3");
         assertUpdate("INSERT INTO " + tableName + " VALUES ('b', 2)", 1);
         long v3SnapshotId = getCurrentSnapshotId(tableName);
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v3SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER))
                 .matches("VALUES (VARCHAR 'a', 1), (VARCHAR 'b', 2)");
         assertThat(query("SELECT * FROM " + tableName))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER))
                 .matches("VALUES (VARCHAR 'a', 1), (VARCHAR 'b', 2)");
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v2SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER, BOOLEAN))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER, BOOLEAN))
                 .matches("VALUES (VARCHAR 'a', 1, true)");
 
         assertUpdate("ALTER TABLE " + tableName + " DROP COLUMN  col2");
         assertUpdate("INSERT INTO " + tableName + " VALUES ('c')", 1);
         long v4SnapshotId = getCurrentSnapshotId(tableName);
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v4SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR))
                 .matches("VALUES (VARCHAR 'a'), (VARCHAR 'b'), (VARCHAR 'c')");
         assertThat(query("SELECT * FROM " + tableName))
-                .hasOutputTypes(ImmutableList.of(VARCHAR))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR))
                 .matches("VALUES (VARCHAR 'a'), (VARCHAR 'b'), (VARCHAR 'c')");
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v3SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER))
                 .matches("VALUES (VARCHAR 'a', 1), (VARCHAR 'b', 2)");
         assertThat(query("SELECT * FROM " + tableName + " FOR VERSION AS OF " + v2SnapshotId))
-                .hasOutputTypes(ImmutableList.of(VARCHAR, INTEGER, BOOLEAN))
+                .result()
+                .hasTypes(ImmutableList.of(VARCHAR, INTEGER, BOOLEAN))
                 .matches("VALUES (VARCHAR 'a', 1, true)");
 
         assertUpdate("DROP TABLE " + tableName);
