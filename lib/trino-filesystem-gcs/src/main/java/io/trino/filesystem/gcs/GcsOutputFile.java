@@ -14,34 +14,28 @@
 package io.trino.filesystem.gcs;
 
 import com.google.cloud.WriteChannel;
-import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.Storage.BlobTargetOption;
 import com.google.cloud.storage.Storage.BlobWriteOption;
 import com.google.cloud.storage.StorageException;
-import io.airlift.slice.Slice;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoOutputFile;
 import io.trino.memory.context.AggregatedMemoryContext;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.nio.file.FileAlreadyExistsException;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.trino.filesystem.gcs.GcsUtils.getBlob;
 import static io.trino.filesystem.gcs.GcsUtils.handleGcsException;
+import static java.net.HttpURLConnection.HTTP_PRECON_FAILED;
 import static java.util.Objects.requireNonNull;
 
 public class GcsOutputFile
         implements TrinoOutputFile
 {
-    private static final BlobTargetOption[] DOES_NOT_EXIST_TARGET_OPTION = {BlobTargetOption.doesNotExist()};
-    private static final BlobWriteOption[] DOES_NOT_EXIST_WRITE_OPTION = {BlobWriteOption.doesNotExist()};
-    private static final BlobWriteOption[] EMPTY_WRITE_OPTIONS = {};
-
     private final GcsLocation location;
     private final Storage storage;
     private final long writeBlockSizeBytes;
@@ -55,75 +49,46 @@ public class GcsOutputFile
     }
 
     @Override
-    public OutputStream create(AggregatedMemoryContext memoryContext)
+    public void createOrOverwrite(byte[] data)
             throws IOException
     {
-        return createOutputStream(memoryContext, false);
+        try {
+            storage.create(blobInfo(), data);
+        }
+        catch (RuntimeException e) {
+            throw handleGcsException(e, "writing file", location);
+        }
     }
 
     @Override
-    public OutputStream createOrOverwrite(AggregatedMemoryContext memoryContext)
-            throws IOException
-    {
-        return createOutputStream(memoryContext, true);
-    }
-
-    @Override
-    public void createExclusive(Slice content, AggregatedMemoryContext memoryContext)
+    public void createExclusive(byte[] data)
             throws IOException
     {
         try {
             if (getBlob(storage, location).isPresent()) {
                 throw new FileAlreadyExistsException("File %s already exists".formatted(location));
             }
-            storage.create(
-                    BlobInfo.newBuilder(BlobId.of(location.bucket(), location.path())).build(),
-                    content.getBytes(),
-                    DOES_NOT_EXIST_TARGET_OPTION);
-        }
-        catch (FileAlreadyExistsException e) {
-            throw e;
-        }
-        catch (StorageException e) {
-            // When the file corresponding to `location` already exists, the operation will fail with the exception message `412 Precondition Failed`
-            if (e.getCode() == HttpURLConnection.HTTP_PRECON_FAILED) {
-                throw new FileAlreadyExistsException(location.toString());
-            }
-            throw handleGcsException(e, "writing file", location);
+            storage.create(blobInfo(), data, BlobTargetOption.doesNotExist());
         }
         catch (RuntimeException e) {
+            throwIfAlreadyExists(e);
             throw handleGcsException(e, "writing file", location);
         }
     }
 
-    private OutputStream createOutputStream(AggregatedMemoryContext memoryContext, boolean overwrite)
+    @Override
+    public OutputStream create(AggregatedMemoryContext memoryContext)
             throws IOException
     {
         try {
-            BlobWriteOption[] blobWriteOptions = EMPTY_WRITE_OPTIONS;
-            if (!overwrite) {
-                if (getBlob(storage, location).isPresent()) {
-                    throw new FileAlreadyExistsException("File %s already exists".formatted(location));
-                }
-                blobWriteOptions = DOES_NOT_EXIST_WRITE_OPTION;
+            if (getBlob(storage, location).isPresent()) {
+                throw new FileAlreadyExistsException("File %s already exists".formatted(location));
             }
-            WriteChannel writeChannel = storage.writer(
-                    BlobInfo.newBuilder(BlobId.of(location.bucket(), location.path())).build(),
-                    blobWriteOptions);
-
+            WriteChannel writeChannel = storage.writer(blobInfo(), BlobWriteOption.doesNotExist());
             return new GcsOutputStream(location, writeChannel, memoryContext, writeBlockSizeBytes);
         }
-        catch (FileAlreadyExistsException e) {
-            throw e;
-        }
-        catch (StorageException e) {
-            // When the file corresponding to `location` already exists, the operation will fail with the exception message `412 Precondition Failed`
-            if (e.getCode() == HttpURLConnection.HTTP_PRECON_FAILED) {
-                throw new FileAlreadyExistsException(location.toString());
-            }
-            throw handleGcsException(e, "writing file", location);
-        }
         catch (RuntimeException e) {
+            throwIfAlreadyExists(e);
             throw handleGcsException(e, "writing file", location);
         }
     }
@@ -132,5 +97,19 @@ public class GcsOutputFile
     public Location location()
     {
         return location.location();
+    }
+
+    private BlobInfo blobInfo()
+    {
+        return BlobInfo.newBuilder(location.bucket(), location.path()).build();
+    }
+
+    private void throwIfAlreadyExists(RuntimeException e)
+            throws FileAlreadyExistsException
+    {
+        // when `location` already exists, the operation will fail with `412 Precondition Failed`
+        if ((e instanceof StorageException se) && (se.getCode() == HTTP_PRECON_FAILED)) {
+            throw new FileAlreadyExistsException(location.toString());
+        }
     }
 }
