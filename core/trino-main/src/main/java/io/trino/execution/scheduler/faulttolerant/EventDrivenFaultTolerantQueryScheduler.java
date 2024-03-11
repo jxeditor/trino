@@ -177,6 +177,7 @@ import static io.trino.spi.ErrorType.USER_ERROR;
 import static io.trino.spi.StandardErrorCode.EXCEEDED_TIME_LIMIT;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.REMOTE_HOST_GONE;
+import static io.trino.spi.StandardErrorCode.USER_CANCELED;
 import static io.trino.spi.exchange.Exchange.SourceHandlesDeliveryMode.EAGER;
 import static io.trino.sql.planner.RuntimeAdaptivePartitioningRewriter.consumesHashPartitionedInput;
 import static io.trino.sql.planner.RuntimeAdaptivePartitioningRewriter.getMaxPlanFragmentId;
@@ -665,6 +666,7 @@ public class EventDrivenFaultTolerantQueryScheduler
         private static final long SCHEDULER_STALLED_DURATION_THRESHOLD_MILLIS = MINUTES.toMillis(10);
         private static final long SCHEDULER_MAX_DEBUG_INFO_FREQUENCY_MILLIS = MINUTES.toMillis(10);
         private static final long SCHEDULER_STALLED_DURATION_ON_TIME_EXCEEDED_THRESHOLD_MILLIS = SECONDS.toMillis(30);
+        private static final long SCHEDULER_STALLED_DURATION_ON_USER_CANCELED_THRESHOLD_MILLIS = SECONDS.toMillis(60);
         private static final int EVENTS_DEBUG_INFOS_PER_BUCKET = 10;
         private static final int TASK_FAILURES_LOG_SIZE = 5;
 
@@ -813,17 +815,6 @@ public class EventDrivenFaultTolerantQueryScheduler
                 }
             });
 
-            queryStateMachine.addQueryInfoStateChangeListener(queryInfo -> {
-                if (!queryInfo.isFinalQueryInfo()) {
-                    return;
-                }
-                if (queryInfo.getState() == QueryState.FAILED
-                        && queryInfo.getErrorCode() == EXCEEDED_TIME_LIMIT.toErrorCode()
-                        && noEventsStopwatch.elapsed().toMillis() > SCHEDULER_STALLED_DURATION_ON_TIME_EXCEEDED_THRESHOLD_MILLIS) {
-                    logDebugInfoSafe(format("Scheduler stalled for %s on EXCEEDED_TIME_LIMIT", noEventsStopwatch.elapsed()));
-                }
-            });
-
             Optional<Throwable> failure = Optional.empty();
             try {
                 // schedule() is the main logic, but expensive, so we do not want to call it after every event.
@@ -914,6 +905,18 @@ public class EventDrivenFaultTolerantQueryScheduler
 
                 eventBuffer.clear();
             }
+
+            // handle diagnostics logging on query failure
+            queryStateMachine.getFailureInfo().ifPresent(failureInfo -> {
+                if (failureInfo.getErrorCode() == EXCEEDED_TIME_LIMIT.toErrorCode()
+                        && noEventsStopwatch.elapsed().toMillis() > SCHEDULER_STALLED_DURATION_ON_TIME_EXCEEDED_THRESHOLD_MILLIS) {
+                    logDebugInfoSafe(format("Scheduler stalled for %s on EXCEEDED_TIME_LIMIT", noEventsStopwatch.elapsed()));
+                }
+                else if (failureInfo.getErrorCode() == USER_CANCELED.toErrorCode()
+                        && noEventsStopwatch.elapsed().toMillis() > SCHEDULER_STALLED_DURATION_ON_USER_CANCELED_THRESHOLD_MILLIS) {
+                    logDebugInfoSafe(format("Scheduler stalled for %s on USER_CANCLED", noEventsStopwatch.elapsed()));
+                }
+            });
 
             if (eventDebugInfoRecorded) {
                 // mark that we processed some events; we filter out some no-op events.
