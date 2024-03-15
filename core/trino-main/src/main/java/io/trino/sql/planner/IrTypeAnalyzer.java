@@ -13,8 +13,6 @@
  */
 package io.trino.sql.planner;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
@@ -27,7 +25,6 @@ import io.trino.security.AllowAllAccessControl;
 import io.trino.spi.function.BoundSignature;
 import io.trino.spi.function.OperatorType;
 import io.trino.spi.type.ArrayType;
-import io.trino.spi.type.CharType;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.MapType;
 import io.trino.spi.type.RowType;
@@ -50,7 +47,6 @@ import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
-import io.trino.sql.ir.InListExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IntervalLiteral;
 import io.trino.sql.ir.IrVisitor;
@@ -80,21 +76,11 @@ import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static io.trino.cache.CacheUtils.uncheckedCacheGet;
-import static io.trino.cache.SafeCaches.buildNonEvictableCache;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.IntegerType.INTEGER;
-import static io.trino.spi.type.TimeType.createTimeType;
-import static io.trino.spi.type.TimeWithTimeZoneType.createTimeWithTimeZoneType;
-import static io.trino.spi.type.TimestampType.createTimestampType;
-import static io.trino.spi.type.TimestampWithTimeZoneType.createTimestampWithTimeZoneType;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
-import static io.trino.type.DateTimes.extractTimePrecision;
-import static io.trino.type.DateTimes.extractTimestampPrecision;
-import static io.trino.type.DateTimes.timeHasTimeZone;
-import static io.trino.type.DateTimes.timestampHasTimeZone;
 import static io.trino.type.IntervalDayTimeType.INTERVAL_DAY_TIME;
 import static io.trino.type.IntervalYearMonthType.INTERVAL_YEAR_MONTH;
 import static io.trino.type.UnknownType.UNKNOWN;
@@ -146,9 +132,6 @@ public class IrTypeAnalyzer
         private final Session session;
         private final TypeProvider symbolTypes;
         private final FunctionResolver functionResolver;
-
-        // Cache from SQL type name to Type; every Type in the cache has a CAST defined from VARCHAR
-        private final Cache<String, Type> varcharCastableTypeCache = buildNonEvictableCache(CacheBuilder.newBuilder().maximumSize(1000));
 
         private final Map<NodeRef<Expression>, Type> expressionTypes = new LinkedHashMap<>();
 
@@ -358,7 +341,7 @@ public class IrTypeAnalyzer
             return setExpressionType(
                     node,
                     switch (baseType) {
-                        case RowType rowType -> rowType.getFields().get(toIntExact(((LongLiteral) node.getIndex()).getParsedValue()) - 1).getType();
+                        case RowType rowType -> rowType.getFields().get(toIntExact(((LongLiteral) node.getIndex()).getValue()) - 1).getType();
                         case ArrayType arrayType -> arrayType.getElementType();
                         case MapType mapType -> mapType.getValueType();
                         default -> throw new IllegalStateException("Unexpected type: " + baseType);
@@ -395,7 +378,7 @@ public class IrTypeAnalyzer
         @Override
         protected Type visitLongLiteral(LongLiteral node, Context context)
         {
-            if (node.getParsedValue() >= Integer.MIN_VALUE && node.getParsedValue() <= Integer.MAX_VALUE) {
+            if (node.getValue() >= Integer.MIN_VALUE && node.getValue() <= Integer.MAX_VALUE) {
                 return setExpressionType(node, INTEGER);
             }
 
@@ -423,16 +406,7 @@ public class IrTypeAnalyzer
         @Override
         protected Type visitGenericLiteral(GenericLiteral node, Context context)
         {
-            return setExpressionType(
-                    node,
-                    switch (node.getType()) {
-                        case String name when name.equalsIgnoreCase("CHAR") -> CharType.createCharType(node.getValue().length());
-                        case String name when name.equalsIgnoreCase("TIMESTAMP") && timestampHasTimeZone(node.getValue()) -> createTimestampWithTimeZoneType(extractTimestampPrecision(node.getValue()));
-                        case String name when name.equalsIgnoreCase("TIMESTAMP") -> createTimestampType(extractTimestampPrecision(node.getValue()));
-                        case String name when name.equalsIgnoreCase("TIME") && timeHasTimeZone(node.getValue()) -> createTimeWithTimeZoneType(extractTimePrecision(node.getValue()));
-                        case String name when name.equalsIgnoreCase("TIME") -> createTimeType(extractTimePrecision(node.getValue()));
-                        default -> uncheckedCacheGet(varcharCastableTypeCache, node.getType(), () -> plannerContext.getTypeManager().fromSqlType(node.getType()));
-                    });
+            return setExpressionType(node, node.getType());
         }
 
         @Override
@@ -502,7 +476,7 @@ public class IrTypeAnalyzer
             ImmutableMap.Builder<Symbol, Type> typeBindings = ImmutableMap.builder();
             for (int i = 0; i < argumentTypes.size(); i++) {
                 typeBindings.put(
-                        new Symbol(lambda.getArguments().get(i).getName()),
+                        new Symbol(lambda.getArguments().get(i)),
                         argumentTypes.get(i));
             }
 
@@ -531,15 +505,12 @@ public class IrTypeAnalyzer
         protected Type visitInPredicate(InPredicate node, Context context)
         {
             Expression value = node.getValue();
-            InListExpression valueList = (InListExpression) node.getValueList();
 
             Type type = process(value, context);
-            for (Expression item : valueList.getValues()) {
+            for (Expression item : node.getValueList()) {
                 Type itemType = process(item, context);
                 checkArgument(itemType.equals(type), "Types must be equal: %s vs %s", itemType, type);
             }
-
-            setExpressionType(valueList, type);
 
             return setExpressionType(node, BOOLEAN);
         }

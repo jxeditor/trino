@@ -127,7 +127,7 @@ public class TestMongoProjectionPushdownPlans
                 session,
                 any(
                         project(
-                                ImmutableMap.of("expr_1", expression(new SubscriptExpression(new SymbolReference("col0"), new LongLiteral("1"))), "expr_2", expression(new SubscriptExpression(new SymbolReference("col0"), new LongLiteral("2")))),
+                                ImmutableMap.of("expr_1", expression(new SubscriptExpression(new SymbolReference("col0"), new LongLiteral(1))), "expr_2", expression(new SubscriptExpression(new SymbolReference("col0"), new LongLiteral(2)))),
                                 tableScan(tableName, ImmutableMap.of("col0", "col0")))));
     }
 
@@ -168,7 +168,7 @@ public class TestMongoProjectionPushdownPlans
                 "SELECT col0.x FROM " + tableName + " WHERE col0.x = col1 + 3 and col0.y = 2",
                 anyTree(
                         filter(
-                                new ComparisonExpression(EQUAL, new SymbolReference("x"), new ArithmeticBinaryExpression(ADD, new SymbolReference("col1"), new GenericLiteral("BIGINT", "3"))),
+                                new ComparisonExpression(EQUAL, new SymbolReference("x"), new ArithmeticBinaryExpression(ADD, new SymbolReference("col1"), new GenericLiteral(BIGINT, "3"))),
                                 tableScan(
                                         table -> {
                                             MongoTableHandle actualTableHandle = (MongoTableHandle) table;
@@ -199,9 +199,9 @@ public class TestMongoProjectionPushdownPlans
                 anyTree(
                         project(
                                 ImmutableMap.of(
-                                        "expr_0_x", expression(new SubscriptExpression(new SymbolReference("expr_0"), new LongLiteral("1"))),
+                                        "expr_0_x", expression(new SubscriptExpression(new SymbolReference("expr_0"), new LongLiteral(1))),
                                         "expr_0", expression(new SymbolReference("expr_0")),
-                                        "expr_0_y", expression(new SubscriptExpression(new SymbolReference("expr_0"), new LongLiteral("2")))),
+                                        "expr_0_y", expression(new SubscriptExpression(new SymbolReference("expr_0"), new LongLiteral(2)))),
                                 PlanMatchPattern.join(INNER, builder -> builder
                                         .equiCriteria("t_expr_1", "s_expr_1")
                                         .left(

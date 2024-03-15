@@ -37,12 +37,10 @@ import java.util.List;
         @JsonSubTypes.Type(value = FunctionCall.class, name = "call"),
         @JsonSubTypes.Type(value = GenericLiteral.class, name = "constant"),
         @JsonSubTypes.Type(value = IfExpression.class, name = "if"),
-        @JsonSubTypes.Type(value = InListExpression.class, name = "list"),
         @JsonSubTypes.Type(value = InPredicate.class, name = "in"),
         @JsonSubTypes.Type(value = IntervalLiteral.class, name = "interval"),
         @JsonSubTypes.Type(value = IsNotNullPredicate.class, name = "isNotNull"),
         @JsonSubTypes.Type(value = IsNullPredicate.class, name = "isNull"),
-        @JsonSubTypes.Type(value = LambdaArgumentDeclaration.class, name = "lambdaArgument"),
         @JsonSubTypes.Type(value = LambdaExpression.class, name = "lambda"),
         @JsonSubTypes.Type(value = LogicalExpression.class, name = "logicalBinary"),
         @JsonSubTypes.Type(value = LongLiteral.class, name = "long"),
@@ -57,7 +55,13 @@ import java.util.List;
         @JsonSubTypes.Type(value = SymbolReference.class, name = "symbol"),
         @JsonSubTypes.Type(value = WhenClause.class, name = "when"),
 })
-public abstract class Expression
+public abstract sealed class Expression
+        permits ArithmeticBinaryExpression, ArithmeticUnaryExpression, Array, BetweenPredicate,
+        BindExpression, Cast, CoalesceExpression, ComparisonExpression, FunctionCall,
+        IfExpression, InPredicate, IsNotNullPredicate, IsNullPredicate,
+        LambdaExpression, Literal, LogicalExpression,
+        NotExpression, NullIfExpression, Row, SearchedCaseExpression, SimpleCaseExpression,
+        SubscriptExpression, SymbolReference, WhenClause
 {
     /**
      * Accessible for {@link IrVisitor}, use {@link IrVisitor#process(Expression, Object)} instead.

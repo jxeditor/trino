@@ -113,11 +113,13 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.spi.StandardErrorCode.TOO_MANY_ARGUMENTS;
 import static io.trino.spi.type.TimeWithTimeZoneType.createTimeWithTimeZoneType;
 import static io.trino.spi.type.TimestampWithTimeZoneType.createTimestampWithTimeZoneType;
+import static io.trino.spi.type.TinyintType.TINYINT;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.sql.analyzer.ExpressionAnalyzer.JSON_NO_PARAMETERS_ROW_TYPE;
 import static io.trino.sql.ir.BooleanLiteral.FALSE_LITERAL;
 import static io.trino.sql.ir.BooleanLiteral.TRUE_LITERAL;
 import static io.trino.sql.planner.ScopeAware.scopeAwareKey;
+import static io.trino.sql.tree.JsonQuery.EmptyOrErrorBehavior.ERROR;
 import static io.trino.sql.tree.JsonQuery.QuotesBehavior.KEEP;
 import static io.trino.sql.tree.JsonQuery.QuotesBehavior.OMIT;
 import static io.trino.type.LikeFunctions.LIKE_FUNCTION_NAME;
@@ -324,7 +326,6 @@ public class TranslationMap
                 case BetweenPredicate expression -> translate(expression);
                 case IfExpression expression -> translate(expression);
                 case InPredicate expression -> translate(expression);
-                case InListExpression expression -> translate(expression);
                 case SimpleCaseExpression expression -> translate(expression);
                 case SearchedCaseExpression expression -> translate(expression);
                 case WhenClause expression -> translate(expression);
@@ -415,18 +416,13 @@ public class TranslationMap
                 expression.getDefaultValue().map(this::translateExpression));
     }
 
-    private io.trino.sql.ir.Expression translate(InListExpression expression)
-    {
-        return new io.trino.sql.ir.InListExpression(expression.getValues().stream()
-                .map(this::translateExpression)
-                .collect(toImmutableList()));
-    }
-
     private io.trino.sql.ir.Expression translate(InPredicate expression)
     {
         return new io.trino.sql.ir.InPredicate(
                 translateExpression(expression.getValue()),
-                translateExpression(expression.getValueList()));
+                ((InListExpression) expression.getValueList()).getValues().stream()
+                        .map(this::translateExpression)
+                        .collect(toImmutableList()));
     }
 
     private io.trino.sql.ir.Expression translate(IfExpression expression)
@@ -469,7 +465,7 @@ public class TranslationMap
 
     private io.trino.sql.ir.Expression translate(GenericLiteral expression)
     {
-        return new io.trino.sql.ir.GenericLiteral(expression.getType(), expression.getValue());
+        return new io.trino.sql.ir.GenericLiteral(analysis.getType(expression), expression.getValue());
     }
 
     private io.trino.sql.ir.Expression translate(DecimalLiteral expression)
@@ -564,7 +560,7 @@ public class TranslationMap
 
     private io.trino.sql.ir.Expression translate(LongLiteral expression)
     {
-        return new io.trino.sql.ir.LongLiteral(expression.getValue());
+        return new io.trino.sql.ir.LongLiteral(expression.getParsedValue());
     }
 
     private io.trino.sql.ir.Expression translate(FieldReference expression)
@@ -628,7 +624,7 @@ public class TranslationMap
 
         return new io.trino.sql.ir.SubscriptExpression(
                 translateExpression(expression.getBase()),
-                new io.trino.sql.ir.LongLiteral(Long.toString(index + 1)));
+                new io.trino.sql.ir.LongLiteral(index + 1));
     }
 
     private io.trino.sql.ir.Expression translate(Array expression)
@@ -917,7 +913,7 @@ public class TranslationMap
             // Do not rewrite subscript index into symbol. Row subscript index is required to be a literal.
             io.trino.sql.ir.Expression rewrittenBase = translateExpression(node.getBase());
             LongLiteral index = (LongLiteral) node.getIndex();
-            return new io.trino.sql.ir.SubscriptExpression(rewrittenBase, new io.trino.sql.ir.LongLiteral(index.getValue()));
+            return new io.trino.sql.ir.SubscriptExpression(rewrittenBase, new io.trino.sql.ir.LongLiteral(index.getParsedValue()));
         }
 
         return new io.trino.sql.ir.SubscriptExpression(
@@ -929,10 +925,10 @@ public class TranslationMap
     {
         checkState(analysis.getCoercion(node) == null, "cannot coerce a lambda expression");
 
-        ImmutableList.Builder<io.trino.sql.ir.LambdaArgumentDeclaration> newArguments = ImmutableList.builder();
+        ImmutableList.Builder<String> newArguments = ImmutableList.builder();
         for (LambdaArgumentDeclaration argument : node.getArguments()) {
             Symbol symbol = lambdaArguments.get(NodeRef.of(argument));
-            newArguments.add(new io.trino.sql.ir.LambdaArgumentDeclaration(symbol.getName()));
+            newArguments.add(symbol.getName());
         }
         io.trino.sql.ir.Expression rewrittenBody = translateExpression(node.getBody());
         return new io.trino.sql.ir.LambdaExpression(newArguments.build(), rewrittenBody);
@@ -950,7 +946,7 @@ public class TranslationMap
         checkArgument(resolvedFunction != null, "Function has not been analyzed: %s", node);
 
         //  apply the input function to the input expression
-        io.trino.sql.ir.BooleanLiteral failOnError = new io.trino.sql.ir.BooleanLiteral(node.getErrorBehavior() == JsonExists.ErrorBehavior.ERROR ? "true" : "false");
+        io.trino.sql.ir.BooleanLiteral failOnError = new io.trino.sql.ir.BooleanLiteral(node.getErrorBehavior() == JsonExists.ErrorBehavior.ERROR);
         ResolvedFunction inputToJson = analysis.getJsonInputFunction(node.getJsonPathInvocation().getInputExpression());
         io.trino.sql.ir.Expression input = new io.trino.sql.ir.FunctionCall(inputToJson.toQualifiedName(), ImmutableList.of(
                 translateExpression(node.getJsonPathInvocation().getInputExpression()),
@@ -973,7 +969,7 @@ public class TranslationMap
                 .add(input)
                 .add(pathExpression)
                 .add(orderedParameters.getParametersRow())
-                .add(new io.trino.sql.ir.GenericLiteral("tinyint", String.valueOf(node.getErrorBehavior().ordinal())));
+                .add(new io.trino.sql.ir.GenericLiteral(TINYINT, String.valueOf(node.getErrorBehavior().ordinal())));
 
         return new io.trino.sql.ir.FunctionCall(resolvedFunction.toQualifiedName(), arguments.build());
     }
@@ -984,7 +980,7 @@ public class TranslationMap
         checkArgument(resolvedFunction != null, "Function has not been analyzed: %s", node);
 
         //  apply the input function to the input expression
-        io.trino.sql.ir.BooleanLiteral failOnError = new io.trino.sql.ir.BooleanLiteral(node.getErrorBehavior() == JsonValue.EmptyOrErrorBehavior.ERROR ? "true" : "false");
+        io.trino.sql.ir.BooleanLiteral failOnError = new io.trino.sql.ir.BooleanLiteral(node.getErrorBehavior() == JsonValue.EmptyOrErrorBehavior.ERROR);
         ResolvedFunction inputToJson = analysis.getJsonInputFunction(node.getJsonPathInvocation().getInputExpression());
         io.trino.sql.ir.Expression input = new io.trino.sql.ir.FunctionCall(inputToJson.toQualifiedName(), ImmutableList.of(
                 translateExpression(node.getJsonPathInvocation().getInputExpression()),
@@ -1007,11 +1003,11 @@ public class TranslationMap
                 .add(input)
                 .add(pathExpression)
                 .add(orderedParameters.getParametersRow())
-                .add(new io.trino.sql.ir.GenericLiteral("tinyint", String.valueOf(node.getEmptyBehavior().ordinal())))
+                .add(new io.trino.sql.ir.GenericLiteral(TINYINT, String.valueOf(node.getEmptyBehavior().ordinal())))
                 .add(node.getEmptyDefault()
                         .map(this::translateExpression)
                         .orElseGet(() -> new io.trino.sql.ir.Cast(new io.trino.sql.ir.NullLiteral(), resolvedFunction.getSignature().getReturnType())))
-                .add(new io.trino.sql.ir.GenericLiteral("tinyint", String.valueOf(node.getErrorBehavior().ordinal())))
+                .add(new io.trino.sql.ir.GenericLiteral(TINYINT, String.valueOf(node.getErrorBehavior().ordinal())))
                 .add(node.getErrorDefault()
                         .map(this::translateExpression)
                         .orElseGet(() -> new io.trino.sql.ir.Cast(new io.trino.sql.ir.NullLiteral(), resolvedFunction.getSignature().getReturnType())));
@@ -1025,7 +1021,7 @@ public class TranslationMap
         checkArgument(resolvedFunction != null, "Function has not been analyzed: %s", node);
 
         //  apply the input function to the input expression
-        io.trino.sql.ir.BooleanLiteral failOnError = new io.trino.sql.ir.BooleanLiteral(node.getErrorBehavior() == JsonQuery.EmptyOrErrorBehavior.ERROR ? "true" : "false");
+        io.trino.sql.ir.BooleanLiteral failOnError = new io.trino.sql.ir.BooleanLiteral(node.getErrorBehavior() == JsonQuery.EmptyOrErrorBehavior.ERROR);
         ResolvedFunction inputToJson = analysis.getJsonInputFunction(node.getJsonPathInvocation().getInputExpression());
         io.trino.sql.ir.Expression input = new io.trino.sql.ir.FunctionCall(inputToJson.toQualifiedName(), ImmutableList.of(
                 translateExpression(node.getJsonPathInvocation().getInputExpression()),
@@ -1048,15 +1044,15 @@ public class TranslationMap
                 .add(input)
                 .add(pathExpression)
                 .add(orderedParameters.getParametersRow())
-                .add(new io.trino.sql.ir.GenericLiteral("tinyint", String.valueOf(node.getWrapperBehavior().ordinal())))
-                .add(new io.trino.sql.ir.GenericLiteral("tinyint", String.valueOf(node.getEmptyBehavior().ordinal())))
-                .add(new io.trino.sql.ir.GenericLiteral("tinyint", String.valueOf(node.getErrorBehavior().ordinal())));
+                .add(new io.trino.sql.ir.GenericLiteral(TINYINT, String.valueOf(node.getWrapperBehavior().ordinal())))
+                .add(new io.trino.sql.ir.GenericLiteral(TINYINT, String.valueOf(node.getEmptyBehavior().ordinal())))
+                .add(new io.trino.sql.ir.GenericLiteral(TINYINT, String.valueOf(node.getErrorBehavior().ordinal())));
 
         io.trino.sql.ir.Expression function = new io.trino.sql.ir.FunctionCall(resolvedFunction.toQualifiedName(), arguments.build());
 
         // apply function to format output
-        io.trino.sql.ir.GenericLiteral errorBehavior = new io.trino.sql.ir.GenericLiteral("tinyint", String.valueOf(node.getErrorBehavior().ordinal()));
-        io.trino.sql.ir.BooleanLiteral omitQuotes = new io.trino.sql.ir.BooleanLiteral(node.getQuotesBehavior().orElse(KEEP) == OMIT ? "true" : "false");
+        io.trino.sql.ir.GenericLiteral errorBehavior = new io.trino.sql.ir.GenericLiteral(TINYINT, String.valueOf(node.getErrorBehavior().ordinal()));
+        io.trino.sql.ir.BooleanLiteral omitQuotes = new io.trino.sql.ir.BooleanLiteral(node.getQuotesBehavior().orElse(KEEP) == OMIT);
         ResolvedFunction outputFunction = analysis.getJsonOutputFunction(node);
         io.trino.sql.ir.Expression result = new io.trino.sql.ir.FunctionCall(outputFunction.toQualifiedName(), ImmutableList.of(function, errorBehavior, omitQuotes));
 
@@ -1124,7 +1120,7 @@ public class TranslationMap
         ResolvedFunction outputFunction = analysis.getJsonOutputFunction(node);
         io.trino.sql.ir.Expression result = new io.trino.sql.ir.FunctionCall(outputFunction.toQualifiedName(), ImmutableList.of(
                 function,
-                new io.trino.sql.ir.GenericLiteral("tinyint", String.valueOf(JsonQuery.EmptyOrErrorBehavior.ERROR.ordinal())),
+                new io.trino.sql.ir.GenericLiteral(TINYINT, String.valueOf(ERROR.ordinal())),
                 FALSE_LITERAL));
 
         // cast to requested returned type
@@ -1180,7 +1176,7 @@ public class TranslationMap
         ResolvedFunction outputFunction = analysis.getJsonOutputFunction(node);
         io.trino.sql.ir.Expression result = new io.trino.sql.ir.FunctionCall(outputFunction.toQualifiedName(), ImmutableList.of(
                 function,
-                new io.trino.sql.ir.GenericLiteral("tinyint", String.valueOf(JsonQuery.EmptyOrErrorBehavior.ERROR.ordinal())),
+                new io.trino.sql.ir.GenericLiteral(TINYINT, String.valueOf(ERROR.ordinal())),
                 FALSE_LITERAL));
 
         // cast to requested returned type

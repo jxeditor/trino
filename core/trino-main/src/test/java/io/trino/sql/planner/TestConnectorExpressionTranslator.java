@@ -38,7 +38,6 @@ import io.trino.sql.ir.DoubleLiteral;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.GenericLiteral;
-import io.trino.sql.ir.InListExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
@@ -81,6 +80,7 @@ import static io.trino.spi.type.RowType.field;
 import static io.trino.spi.type.RowType.rowType;
 import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TinyintType.TINYINT;
+import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.spi.type.VarcharType.createUnboundedVarcharType;
 import static io.trino.spi.type.VarcharType.createVarcharType;
 import static io.trino.sql.planner.ConnectorExpressionTranslator.translate;
@@ -152,7 +152,7 @@ public class TestConnectorExpressionTranslator
         assertTranslationRoundTrips(
                 new SubscriptExpression(
                         new SymbolReference("row_symbol_1"),
-                        new LongLiteral("1")),
+                        new LongLiteral(1)),
                 new FieldDereference(
                         INTEGER,
                         new Variable("row_symbol_1", ROW_TYPE),
@@ -234,7 +234,7 @@ public class TestConnectorExpressionTranslator
                 TEST_SESSION,
                 new BetweenPredicate(
                         new SymbolReference("double_symbol_1"),
-                        new DoubleLiteral("1.2"),
+                        new DoubleLiteral(1.2),
                         new SymbolReference("double_symbol_2")),
                 new Call(
                         BOOLEAN,
@@ -468,8 +468,8 @@ public class TestConnectorExpressionTranslator
         String value = "value_1";
         assertTranslationRoundTrips(
                 new InPredicate(
-                    new SymbolReference("varchar_symbol_1"),
-                    new InListExpression(List.of(new SymbolReference("varchar_symbol_1"), new GenericLiteral("VARCHAR", value)))),
+                        new SymbolReference("varchar_symbol_1"),
+                        List.of(new SymbolReference("varchar_symbol_1"), new GenericLiteral(VARCHAR, value))),
                 new Call(
                     BOOLEAN,
                     StandardFunctions.IN_PREDICATE_FUNCTION_NAME,

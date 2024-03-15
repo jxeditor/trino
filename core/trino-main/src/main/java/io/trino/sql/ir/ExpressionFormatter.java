@@ -15,6 +15,7 @@ package io.trino.sql.ir;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.io.BaseEncoding;
 
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
@@ -88,7 +89,7 @@ public final class ExpressionFormatter
         {
             return literalFormatter
                     .map(formatter -> formatter.apply(node))
-                    .orElseGet(() -> "X'" + node.toHexString() + "'");
+                    .orElseGet(() -> "X'" + BaseEncoding.base16().encode(node.getValue()) + "'");
         }
 
         @Override
@@ -110,7 +111,7 @@ public final class ExpressionFormatter
         {
             return literalFormatter
                     .map(formatter -> formatter.apply(node))
-                    .orElseGet(node::getValue);
+                    .orElseGet(() -> Long.toString(node.getValue()));
         }
 
         @Override
@@ -175,7 +176,7 @@ public final class ExpressionFormatter
         protected String visitLambdaExpression(LambdaExpression node, Void context)
         {
             return "(" +
-                    Joiner.on(", ").join(node.getArguments().stream().map(LambdaArgumentDeclaration::getName).toList()) +
+                    String.join(", ", node.getArguments()) +
                     ") -> " +
                     process(node.getBody(), context);
         }
@@ -345,13 +346,7 @@ public final class ExpressionFormatter
         @Override
         protected String visitInPredicate(InPredicate node, Void context)
         {
-            return "(" + process(node.getValue(), context) + " IN " + process(node.getValueList(), context) + ")";
-        }
-
-        @Override
-        protected String visitInListExpression(InListExpression node, Void context)
-        {
-            return "(" + joinExpressions(node.getValues()) + ")";
+            return "(" + process(node.getValue(), context) + " IN " + joinExpressions(node.getValueList()) + ")";
         }
 
         private String formatBinaryExpression(String operator, Expression left, Expression right)

@@ -47,6 +47,9 @@ import static io.trino.SessionTestUtils.TEST_SESSION;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.IntegerType.INTEGER;
+import static io.trino.spi.type.TimeWithTimeZoneType.createTimeWithTimeZoneType;
+import static io.trino.spi.type.TimestampType.createTimestampType;
+import static io.trino.spi.type.TimestampWithTimeZoneType.createTimestampWithTimeZoneType;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static io.trino.sql.ir.BooleanLiteral.FALSE_LITERAL;
@@ -96,8 +99,8 @@ public class TestExpressionEquivalence
                 TRUE_LITERAL,
                 TRUE_LITERAL);
         assertEquivalent(
-                new LongLiteral("4"),
-                new LongLiteral("4"));
+                new LongLiteral(4),
+                new LongLiteral(4));
         assertEquivalent(
                 new DecimalLiteral("4.4"),
                 new DecimalLiteral("4.4"));
@@ -106,8 +109,8 @@ public class TestExpressionEquivalence
                 new StringLiteral("foo"));
 
         assertEquivalent(
-                new ComparisonExpression(EQUAL, new LongLiteral("4"), new LongLiteral("5")),
-                new ComparisonExpression(EQUAL, new LongLiteral("5"), new LongLiteral("4")));
+                new ComparisonExpression(EQUAL, new LongLiteral(4), new LongLiteral(5)),
+                new ComparisonExpression(EQUAL, new LongLiteral(5), new LongLiteral(4)));
         assertEquivalent(
                 new ComparisonExpression(EQUAL, new DecimalLiteral("4.4"), new DecimalLiteral("5.5")),
                 new ComparisonExpression(EQUAL, new DecimalLiteral("5.5"), new DecimalLiteral("4.4")));
@@ -115,27 +118,27 @@ public class TestExpressionEquivalence
                 new ComparisonExpression(EQUAL, new StringLiteral("foo"), new StringLiteral("bar")),
                 new ComparisonExpression(EQUAL, new StringLiteral("bar"), new StringLiteral("foo")));
         assertEquivalent(
-                new ComparisonExpression(NOT_EQUAL, new LongLiteral("4"), new LongLiteral("5")),
-                new ComparisonExpression(NOT_EQUAL, new LongLiteral("5"), new LongLiteral("4")));
+                new ComparisonExpression(NOT_EQUAL, new LongLiteral(4), new LongLiteral(5)),
+                new ComparisonExpression(NOT_EQUAL, new LongLiteral(5), new LongLiteral(4)));
         assertEquivalent(
-                new ComparisonExpression(IS_DISTINCT_FROM, new LongLiteral("4"), new LongLiteral("5")),
-                new ComparisonExpression(IS_DISTINCT_FROM, new LongLiteral("5"), new LongLiteral("4")));
+                new ComparisonExpression(IS_DISTINCT_FROM, new LongLiteral(4), new LongLiteral(5)),
+                new ComparisonExpression(IS_DISTINCT_FROM, new LongLiteral(5), new LongLiteral(4)));
         assertEquivalent(
-                new ComparisonExpression(LESS_THAN, new LongLiteral("4"), new LongLiteral("5")),
-                new ComparisonExpression(GREATER_THAN, new LongLiteral("5"), new LongLiteral("4")));
+                new ComparisonExpression(LESS_THAN, new LongLiteral(4), new LongLiteral(5)),
+                new ComparisonExpression(GREATER_THAN, new LongLiteral(5), new LongLiteral(4)));
         assertEquivalent(
-                new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")),
-                new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("4")));
+                new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)),
+                new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(4)));
         assertEquivalent(
-                new ComparisonExpression(EQUAL, new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123456789"), new GenericLiteral("TIMESTAMP", "2021-05-10 12:34:56.123456789")),
-                new ComparisonExpression(EQUAL, new GenericLiteral("TIMESTAMP", "2021-05-10 12:34:56.123456789"), new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123456789")));
+                new ComparisonExpression(EQUAL, new GenericLiteral(createTimestampType(9), "2020-05-10 12:34:56.123456789"), new GenericLiteral(createTimestampType(9), "2021-05-10 12:34:56.123456789")),
+                new ComparisonExpression(EQUAL, new GenericLiteral(createTimestampType(9), "2021-05-10 12:34:56.123456789"), new GenericLiteral(createTimestampType(9), "2020-05-10 12:34:56.123456789")));
         assertEquivalent(
-                new ComparisonExpression(EQUAL, new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123456789 +8"), new GenericLiteral("TIMESTAMP", "2021-05-10 12:34:56.123456789 +8")),
-                new ComparisonExpression(EQUAL, new GenericLiteral("TIMESTAMP", "2021-05-10 12:34:56.123456789 +8"), new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123456789 +8")));
+                new ComparisonExpression(EQUAL, new GenericLiteral(createTimestampWithTimeZoneType(9), "2020-05-10 12:34:56.123456789 +8"), new GenericLiteral(createTimestampWithTimeZoneType(9), "2021-05-10 12:34:56.123456789 +8")),
+                new ComparisonExpression(EQUAL, new GenericLiteral(createTimestampWithTimeZoneType(9), "2021-05-10 12:34:56.123456789 +8"), new GenericLiteral(createTimestampWithTimeZoneType(9), "2020-05-10 12:34:56.123456789 +8")));
 
         assertEquivalent(
-                new FunctionCall(MOD.toQualifiedName(), ImmutableList.of(new LongLiteral("4"), new LongLiteral("5"))),
-                new FunctionCall(MOD.toQualifiedName(), ImmutableList.of(new LongLiteral("4"), new LongLiteral("5"))));
+                new FunctionCall(MOD.toQualifiedName(), ImmutableList.of(new LongLiteral(4), new LongLiteral(5))),
+                new FunctionCall(MOD.toQualifiedName(), ImmutableList.of(new LongLiteral(4), new LongLiteral(5))));
 
         assertEquivalent(
                 new SymbolReference("a_bigint"),
@@ -155,11 +158,11 @@ public class TestExpressionEquivalence
                 new LogicalExpression(AND, ImmutableList.of(TRUE_LITERAL, FALSE_LITERAL)),
                 new LogicalExpression(AND, ImmutableList.of(FALSE_LITERAL, TRUE_LITERAL)));
         assertEquivalent(
-                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")), new ComparisonExpression(LESS_THAN, new LongLiteral("6"), new LongLiteral("7")))),
-                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral("7"), new LongLiteral("6")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("4")))));
+                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)), new ComparisonExpression(LESS_THAN, new LongLiteral(6), new LongLiteral(7)))),
+                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral(7), new LongLiteral(6)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(4)))));
         assertEquivalent(
-                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")), new ComparisonExpression(LESS_THAN, new LongLiteral("6"), new LongLiteral("7")))),
-                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral("7"), new LongLiteral("6")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("4")))));
+                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)), new ComparisonExpression(LESS_THAN, new LongLiteral(6), new LongLiteral(7)))),
+                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral(7), new LongLiteral(6)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(4)))));
         assertEquivalent(
                 new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new SymbolReference("a_bigint"), new SymbolReference("b_bigint")), new ComparisonExpression(LESS_THAN, new SymbolReference("c_bigint"), new SymbolReference("d_bigint")))),
                 new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new SymbolReference("d_bigint"), new SymbolReference("c_bigint")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("b_bigint"), new SymbolReference("a_bigint")))));
@@ -168,24 +171,24 @@ public class TestExpressionEquivalence
                 new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new SymbolReference("d_bigint"), new SymbolReference("c_bigint")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("b_bigint"), new SymbolReference("a_bigint")))));
 
         assertEquivalent(
-                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")), new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")))),
-                new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")));
+                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)), new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)))),
+                new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)));
         assertEquivalent(
-                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")), new ComparisonExpression(LESS_THAN, new LongLiteral("6"), new LongLiteral("7")))),
-                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral("7"), new LongLiteral("6")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("4")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("4")))));
+                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)), new ComparisonExpression(LESS_THAN, new LongLiteral(6), new LongLiteral(7)))),
+                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral(7), new LongLiteral(6)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(4)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(4)))));
         assertEquivalent(
-                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("2"), new LongLiteral("3")), new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")), new ComparisonExpression(LESS_THAN, new LongLiteral("6"), new LongLiteral("7")))),
-                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral("7"), new LongLiteral("6")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("4")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("3"), new LongLiteral("2")))));
+                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(2), new LongLiteral(3)), new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)), new ComparisonExpression(LESS_THAN, new LongLiteral(6), new LongLiteral(7)))),
+                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral(7), new LongLiteral(6)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(4)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(3), new LongLiteral(2)))));
 
         assertEquivalent(
-                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")), new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")))),
-                new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")));
+                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)), new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)))),
+                new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)));
         assertEquivalent(
-                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")), new ComparisonExpression(LESS_THAN, new LongLiteral("6"), new LongLiteral("7")))),
-                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral("7"), new LongLiteral("6")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("4")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("4")))));
+                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)), new ComparisonExpression(LESS_THAN, new LongLiteral(6), new LongLiteral(7)))),
+                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral(7), new LongLiteral(6)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(4)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(4)))));
         assertEquivalent(
-                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("2"), new LongLiteral("3")), new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")), new ComparisonExpression(LESS_THAN, new LongLiteral("6"), new LongLiteral("7")))),
-                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral("7"), new LongLiteral("6")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("4")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("3"), new LongLiteral("2")))));
+                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(2), new LongLiteral(3)), new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)), new ComparisonExpression(LESS_THAN, new LongLiteral(6), new LongLiteral(7)))),
+                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral(7), new LongLiteral(6)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(4)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(3), new LongLiteral(2)))));
 
         assertEquivalent(
                 new LogicalExpression(AND, ImmutableList.of(new SymbolReference("a_boolean"), new SymbolReference("b_boolean"), new SymbolReference("c_boolean"))),
@@ -233,8 +236,8 @@ public class TestExpressionEquivalence
                 TRUE_LITERAL,
                 FALSE_LITERAL);
         assertNotEquivalent(
-                new LongLiteral("4"),
-                new LongLiteral("5"));
+                new LongLiteral(4),
+                new LongLiteral(5));
         assertNotEquivalent(
                 new DecimalLiteral("4.4"),
                 new DecimalLiteral("5.5"));
@@ -243,24 +246,24 @@ public class TestExpressionEquivalence
                 new StringLiteral("'bar'"));
 
         assertNotEquivalent(
-                new ComparisonExpression(EQUAL, new LongLiteral("4"), new LongLiteral("5")),
-                new ComparisonExpression(EQUAL, new LongLiteral("5"), new LongLiteral("6")));
+                new ComparisonExpression(EQUAL, new LongLiteral(4), new LongLiteral(5)),
+                new ComparisonExpression(EQUAL, new LongLiteral(5), new LongLiteral(6)));
         assertNotEquivalent(
-                new ComparisonExpression(NOT_EQUAL, new LongLiteral("4"), new LongLiteral("5")),
-                new ComparisonExpression(NOT_EQUAL, new LongLiteral("5"), new LongLiteral("6")));
+                new ComparisonExpression(NOT_EQUAL, new LongLiteral(4), new LongLiteral(5)),
+                new ComparisonExpression(NOT_EQUAL, new LongLiteral(5), new LongLiteral(6)));
         assertNotEquivalent(
-                new ComparisonExpression(IS_DISTINCT_FROM, new LongLiteral("4"), new LongLiteral("5")),
-                new ComparisonExpression(IS_DISTINCT_FROM, new LongLiteral("5"), new LongLiteral("6")));
+                new ComparisonExpression(IS_DISTINCT_FROM, new LongLiteral(4), new LongLiteral(5)),
+                new ComparisonExpression(IS_DISTINCT_FROM, new LongLiteral(5), new LongLiteral(6)));
         assertNotEquivalent(
-                new ComparisonExpression(LESS_THAN, new LongLiteral("4"), new LongLiteral("5")),
-                new ComparisonExpression(GREATER_THAN, new LongLiteral("5"), new LongLiteral("6")));
+                new ComparisonExpression(LESS_THAN, new LongLiteral(4), new LongLiteral(5)),
+                new ComparisonExpression(GREATER_THAN, new LongLiteral(5), new LongLiteral(6)));
         assertNotEquivalent(
-                new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")),
-                new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("6")));
+                new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)),
+                new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(6)));
 
         assertNotEquivalent(
-                new FunctionCall(MOD.toQualifiedName(), ImmutableList.of(new LongLiteral("4"), new LongLiteral("5"))),
-                new FunctionCall(MOD.toQualifiedName(), ImmutableList.of(new LongLiteral("5"), new LongLiteral("4"))));
+                new FunctionCall(MOD.toQualifiedName(), ImmutableList.of(new LongLiteral(4), new LongLiteral(5))),
+                new FunctionCall(MOD.toQualifiedName(), ImmutableList.of(new LongLiteral(5), new LongLiteral(4))));
 
         assertNotEquivalent(
                 new SymbolReference("a_bigint"),
@@ -277,11 +280,11 @@ public class TestExpressionEquivalence
                 new ComparisonExpression(GREATER_THAN, new SymbolReference("b_double"), new SymbolReference("c_bigint")));
 
         assertNotEquivalent(
-                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")), new ComparisonExpression(LESS_THAN, new LongLiteral("6"), new LongLiteral("7")))),
-                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral("7"), new LongLiteral("6")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("6")))));
+                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)), new ComparisonExpression(LESS_THAN, new LongLiteral(6), new LongLiteral(7)))),
+                new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral(7), new LongLiteral(6)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(6)))));
         assertNotEquivalent(
-                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral("4"), new LongLiteral("5")), new ComparisonExpression(LESS_THAN, new LongLiteral("6"), new LongLiteral("7")))),
-                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral("7"), new LongLiteral("6")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral("5"), new LongLiteral("6")))));
+                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new LongLiteral(4), new LongLiteral(5)), new ComparisonExpression(LESS_THAN, new LongLiteral(6), new LongLiteral(7)))),
+                new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new LongLiteral(7), new LongLiteral(6)), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new LongLiteral(5), new LongLiteral(6)))));
         assertNotEquivalent(
                 new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN_OR_EQUAL, new SymbolReference("a_bigint"), new SymbolReference("b_bigint")), new ComparisonExpression(LESS_THAN, new SymbolReference("c_bigint"), new SymbolReference("d_bigint")))),
                 new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new SymbolReference("d_bigint"), new SymbolReference("c_bigint")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("b_bigint"), new SymbolReference("c_bigint")))));
@@ -290,30 +293,30 @@ public class TestExpressionEquivalence
                 new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new SymbolReference("d_bigint"), new SymbolReference("c_bigint")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("b_bigint"), new SymbolReference("c_bigint")))));
 
         assertNotEquivalent(
-                new Cast(new GenericLiteral("TIME", "12:34:56.123 +00:00"), VARCHAR),
-                new Cast(new GenericLiteral("TIME", "14:34:56.123 +02:00"), VARCHAR));
+                new Cast(new GenericLiteral(createTimeWithTimeZoneType(3), "12:34:56.123 +00:00"), VARCHAR),
+                new Cast(new GenericLiteral(createTimeWithTimeZoneType(3), "14:34:56.123 +02:00"), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral("TIME", "12:34:56.123456 +00:00"), VARCHAR),
-                new Cast(new GenericLiteral("TIME", "14:34:56.123456 +02:00"), VARCHAR));
+                new Cast(new GenericLiteral(createTimeWithTimeZoneType(6), "12:34:56.123456 +00:00"), VARCHAR),
+                new Cast(new GenericLiteral(createTimeWithTimeZoneType(6), "14:34:56.123456 +02:00"), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral("TIME", "12:34:56.123456789 +00:00"), VARCHAR),
-                new Cast(new GenericLiteral("TIME", "14:34:56.123456789 +02:00"), VARCHAR));
+                new Cast(new GenericLiteral(createTimeWithTimeZoneType(9), "12:34:56.123456789 +00:00"), VARCHAR),
+                new Cast(new GenericLiteral(createTimeWithTimeZoneType(9), "14:34:56.123456789 +02:00"), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral("TIME", "12:34:56.123456789012 +00:00"), VARCHAR),
-                new Cast(new GenericLiteral("TIME", "14:34:56.123456789012 +02:00"), VARCHAR));
+                new Cast(new GenericLiteral(createTimeWithTimeZoneType(12), "12:34:56.123456789012 +00:00"), VARCHAR),
+                new Cast(new GenericLiteral(createTimeWithTimeZoneType(12), "14:34:56.123456789012 +02:00"), VARCHAR));
 
         assertNotEquivalent(
-                new Cast(new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123 Europe/Warsaw"), VARCHAR),
-                new Cast(new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123 Europe/Paris"), VARCHAR));
+                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(3), "2020-05-10 12:34:56.123 Europe/Warsaw"), VARCHAR),
+                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(3), "2020-05-10 12:34:56.123 Europe/Paris"), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123456 Europe/Warsaw"), VARCHAR),
-                new Cast(new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123456 Europe/Paris"), VARCHAR));
+                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(6), "2020-05-10 12:34:56.123456 Europe/Warsaw"), VARCHAR),
+                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(6), "2020-05-10 12:34:56.123456 Europe/Paris"), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123456789 Europe/Warsaw"), VARCHAR),
-                new Cast(new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123456789 Europe/Paris"), VARCHAR));
+                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(9), "2020-05-10 12:34:56.123456789 Europe/Warsaw"), VARCHAR),
+                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(9), "2020-05-10 12:34:56.123456789 Europe/Paris"), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123456789012 Europe/Warsaw"), VARCHAR),
-                new Cast(new GenericLiteral("TIMESTAMP", "2020-05-10 12:34:56.123456789012 Europe/Paris"), VARCHAR));
+                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(12), "2020-05-10 12:34:56.123456789012 Europe/Warsaw"), VARCHAR),
+                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(12), "2020-05-10 12:34:56.123456789012 Europe/Paris"), VARCHAR));
     }
 
     private static void assertNotEquivalent(Expression leftExpression, Expression rightExpression)

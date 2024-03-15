@@ -116,23 +116,23 @@ public final class LiteralEncoder
         checkArgument(Primitives.wrap(type.getJavaType()).isInstance(object), "object.getClass (%s) and type.getJavaType (%s) do not agree", object.getClass(), type.getJavaType());
 
         if (type.equals(TINYINT)) {
-            return new GenericLiteral("TINYINT", object.toString());
+            return new GenericLiteral(TINYINT, object.toString());
         }
 
         if (type.equals(SMALLINT)) {
-            return new GenericLiteral("SMALLINT", object.toString());
+            return new GenericLiteral(SMALLINT, object.toString());
         }
 
         if (type.equals(INTEGER)) {
-            return new LongLiteral(object.toString());
+            return new LongLiteral((Long) object);
         }
 
         if (type.equals(BIGINT)) {
-            LongLiteral expression = new LongLiteral(object.toString());
-            if (expression.getParsedValue() >= Integer.MIN_VALUE && expression.getParsedValue() <= Integer.MAX_VALUE) {
-                return new GenericLiteral("BIGINT", object.toString());
+            LongLiteral expression = new LongLiteral((Long) object);
+            if (expression.getValue() >= Integer.MIN_VALUE && expression.getValue() <= Integer.MAX_VALUE) {
+                return new GenericLiteral(BIGINT, object.toString());
             }
-            return new LongLiteral(object.toString());
+            return expression;
         }
 
         if (type.equals(DOUBLE)) {
@@ -152,7 +152,7 @@ public final class LiteralEncoder
                         .setName("infinity")
                         .build();
             }
-            return new DoubleLiteral(object.toString());
+            return new DoubleLiteral(value);
         }
 
         if (type.equals(REAL)) {
@@ -178,7 +178,7 @@ public final class LiteralEncoder
                                 .build(),
                         REAL);
             }
-            return new GenericLiteral("REAL", value.toString());
+            return new GenericLiteral(REAL, value.toString());
         }
 
         if (type instanceof DecimalType decimalType) {
@@ -195,7 +195,7 @@ public final class LiteralEncoder
         if (type instanceof VarcharType varcharType) {
             Slice value = (Slice) object;
             if (varcharType.isUnbounded()) {
-                return new GenericLiteral("VARCHAR", value.toStringUtf8());
+                return new GenericLiteral(VARCHAR, value.toStringUtf8());
             }
             StringLiteral stringLiteral = new StringLiteral(value.toStringUtf8());
             int boundedLength = varcharType.getBoundedLength();
@@ -215,11 +215,11 @@ public final class LiteralEncoder
         }
 
         if (type.equals(BOOLEAN)) {
-            return new BooleanLiteral(object.toString());
+            return new BooleanLiteral((Boolean) object);
         }
 
         if (type.equals(DATE)) {
-            return new GenericLiteral("DATE", new SqlDate(toIntExact((Long) object)).toString());
+            return new GenericLiteral(DATE, new SqlDate(toIntExact((Long) object)).toString());
         }
 
         if (type instanceof TimestampType timestampType) {
@@ -230,7 +230,7 @@ public final class LiteralEncoder
             else {
                 representation = TimestampToVarcharCast.cast(timestampType.getPrecision(), (LongTimestamp) object).toStringUtf8();
             }
-            return new GenericLiteral("TIMESTAMP", representation);
+            return new GenericLiteral(timestampType, representation);
         }
 
         if (type instanceof TimestampWithTimeZoneType timestampWithTimeZoneType) {
@@ -248,7 +248,7 @@ public final class LiteralEncoder
                 // TODO (https://github.com/trinodb/trino/issues/5781) consider treating such values as illegal
             }
             else {
-                return new GenericLiteral("TIMESTAMP", representation);
+                return new GenericLiteral(timestampWithTimeZoneType, representation);
             }
         }
 

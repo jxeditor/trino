@@ -32,7 +32,10 @@ import org.intellij.lang.annotations.Language;
 import org.junit.jupiter.api.Test;
 
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
+import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
+import static io.trino.spi.type.IntegerType.INTEGER;
+import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.sql.ir.ArithmeticBinaryExpression.Operator.ADD;
 import static io.trino.sql.ir.BooleanLiteral.TRUE_LITERAL;
 import static io.trino.sql.ir.ComparisonExpression.Operator.GREATER_THAN_OR_EQUAL;
@@ -76,38 +79,38 @@ public class TestRecursiveCte
                         union(
                                 // base term
                                 project(project(project(
-                                        ImmutableMap.of("expr", expression(new LongLiteral("1"))),
+                                        ImmutableMap.of("expr", expression(new LongLiteral(1))),
                                         values()))),
                                 // first recursion step
                                 project(project(project(
-                                        ImmutableMap.of("expr_0", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), new LongLiteral("2")))),
+                                        ImmutableMap.of("expr_0", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), new LongLiteral(2)))),
                                         filter(
-                                                new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), new LongLiteral("6")),
+                                                new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), new LongLiteral(6)),
                                                 project(project(project(
-                                                        ImmutableMap.of("expr", expression(new LongLiteral("1"))),
+                                                        ImmutableMap.of("expr", expression(new LongLiteral(1))),
                                                         values()))))))),
                                 // "post-recursion" step with convergence assertion
                                 filter(
                                         new IfExpression(
-                                                new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("count"), new GenericLiteral("BIGINT", "0")),
-                                                new Cast(new FunctionCall(QualifiedName.of("fail"), ImmutableList.of(new GenericLiteral("INTEGER", Integer.toString(NOT_SUPPORTED.toErrorCode().getCode())), new GenericLiteral("VARCHAR", "Recursion depth limit exceeded (1). Use 'max_recursion_depth' session property to modify the limit."))), BOOLEAN),
+                                                new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("count"), new GenericLiteral(BIGINT, "0")),
+                                                new Cast(new FunctionCall(QualifiedName.of("fail"), ImmutableList.of(new GenericLiteral(INTEGER, Integer.toString(NOT_SUPPORTED.toErrorCode().getCode())), new GenericLiteral(VARCHAR, "Recursion depth limit exceeded (1). Use 'max_recursion_depth' session property to modify the limit."))), BOOLEAN),
                                                 TRUE_LITERAL),
                                         window(windowBuilder -> windowBuilder
                                                         .addFunction(
                                                                 "count",
                                                                 windowFunction("count", ImmutableList.of(), DEFAULT_FRAME)),
                                                 project(project(project(
-                                                        ImmutableMap.of("expr_1", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), new LongLiteral("2")))),
+                                                        ImmutableMap.of("expr_1", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), new LongLiteral(2)))),
                                                         filter(
-                                                                new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), new LongLiteral("6")),
+                                                                new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), new LongLiteral(6)),
                                                                 project(
                                                                         ImmutableMap.of("expr", expression(new SymbolReference("expr_0"))),
                                                                         project(project(project(
-                                                                                ImmutableMap.of("expr_0", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), new LongLiteral("2")))),
+                                                                                ImmutableMap.of("expr_0", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), new LongLiteral(2)))),
                                                                                 filter(
-                                                                                        new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), new LongLiteral("6")),
+                                                                                        new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), new LongLiteral(6)),
                                                                                         project(project(project(
-                                                                                                ImmutableMap.of("expr", expression(new LongLiteral("1"))),
+                                                                                                ImmutableMap.of("expr", expression(new LongLiteral(1))),
                                                                                                 values()))))))))))))))));
 
         assertPlan(sql, CREATED, pattern);

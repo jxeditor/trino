@@ -45,13 +45,11 @@ import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
-import io.trino.sql.ir.InListExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IntervalLiteral;
 import io.trino.sql.ir.IrVisitor;
 import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
-import io.trino.sql.ir.LambdaArgumentDeclaration;
 import io.trino.sql.ir.LambdaExpression;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.LongLiteral;
@@ -194,10 +192,10 @@ public final class SqlToRowExpressionTranslator
         @Override
         protected RowExpression visitLongLiteral(LongLiteral node, Void context)
         {
-            if (node.getParsedValue() >= Integer.MIN_VALUE && node.getParsedValue() <= Integer.MAX_VALUE) {
-                return constant(node.getParsedValue(), INTEGER);
+            if (node.getValue() >= Integer.MIN_VALUE && node.getValue() <= Integer.MAX_VALUE) {
+                return constant(node.getValue(), INTEGER);
             }
-            return constant(node.getParsedValue(), BIGINT);
+            return constant(node.getValue(), BIGINT);
         }
 
         @Override
@@ -314,9 +312,7 @@ public final class SqlToRowExpressionTranslator
             Type type = getType(node);
             List<Type> typeParameters = type.getTypeParameters();
             List<Type> argumentTypes = typeParameters.subList(0, typeParameters.size() - 1);
-            List<String> argumentNames = node.getArguments().stream()
-                    .map(LambdaArgumentDeclaration::getName)
-                    .collect(toImmutableList());
+            List<String> argumentNames = node.getArguments();
 
             return new LambdaDefinitionExpression(argumentTypes, argumentNames, body);
         }
@@ -566,8 +562,7 @@ public final class SqlToRowExpressionTranslator
             ImmutableList.Builder<RowExpression> arguments = ImmutableList.builder();
             RowExpression value = process(node.getValue(), context);
             arguments.add(value);
-            InListExpression values = (InListExpression) node.getValueList();
-            for (Expression testValue : values.getValues()) {
+            for (Expression testValue : node.getValueList()) {
                 arguments.add(process(testValue, context));
             }
 

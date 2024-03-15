@@ -117,11 +117,6 @@ public abstract class IrVisitor<R, C>
         return visitLiteral(node, context);
     }
 
-    protected R visitInListExpression(InListExpression node, C context)
-    {
-        return visitExpression(node, context);
-    }
-
     protected R visitNullIfExpression(NullIfExpression node, C context)
     {
         return visitExpression(node, context);
@@ -193,11 +188,6 @@ public abstract class IrVisitor<R, C>
     }
 
     protected R visitSymbolReference(SymbolReference node, C context)
-    {
-        return visitExpression(node, context);
-    }
-
-    protected R visitLambdaArgumentDeclaration(LambdaArgumentDeclaration node, C context)
     {
         return visitExpression(node, context);
     }

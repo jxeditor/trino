@@ -18,10 +18,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.io.BaseEncoding;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
-import io.trino.metadata.Metadata;
-import io.trino.metadata.MetadataManager;
 import io.trino.metadata.TestingFunctionResolution;
-import io.trino.security.AllowAllAccessControl;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.Range;
 import io.trino.spi.predicate.TupleDomain;
@@ -39,7 +36,6 @@ import io.trino.sql.ir.DoubleLiteral;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.GenericLiteral;
-import io.trino.sql.ir.InListExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.Literal;
@@ -48,8 +44,6 @@ import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.ir.StringLiteral;
 import io.trino.sql.planner.DomainTranslator.ExtractionResult;
-import io.trino.transaction.TestingTransactionManager;
-import io.trino.transaction.TransactionManager;
 import io.trino.type.LikePattern;
 import io.trino.type.LikePatternType;
 import io.trino.type.TypeCoercion;
@@ -97,7 +91,6 @@ import static io.trino.sql.ir.ComparisonExpression.Operator.NOT_EQUAL;
 import static io.trino.sql.ir.IrUtils.and;
 import static io.trino.sql.ir.IrUtils.or;
 import static io.trino.testing.TestingConnectorSession.SESSION;
-import static io.trino.testing.TransactionBuilder.transaction;
 import static io.trino.type.ColorType.COLOR;
 import static io.trino.type.LikeFunctions.LIKE_FUNCTION_NAME;
 import static io.trino.type.LikeFunctions.LIKE_PATTERN_FUNCTION_NAME;
@@ -1031,7 +1024,7 @@ public class TestDomainTranslator
     {
         // =
         assertPredicateDerives(
-                equal(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", " +2005-9-10  \t")),
+                equal(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, " +2005-9-10  \t")),
                 tupleDomain(C_VARCHAR, Domain.create(ValueSet.ofRanges(
                                 Range.lessThan(VARCHAR, utf8Slice("1")),
                                 Range.range(VARCHAR, utf8Slice("2005-09-10"), true, utf8Slice("2005-09-11"), false),
@@ -1040,7 +1033,7 @@ public class TestDomainTranslator
                         false)));
         // = with day ending with 9
         assertPredicateDerives(
-                equal(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", "2005-09-09")),
+                equal(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, "2005-09-09")),
                 tupleDomain(C_VARCHAR, Domain.create(ValueSet.ofRanges(
                                 Range.lessThan(VARCHAR, utf8Slice("1")),
                                 Range.range(VARCHAR, utf8Slice("2005-09-09"), true, utf8Slice("2005-09-0:"), false),
@@ -1050,7 +1043,7 @@ public class TestDomainTranslator
                                 Range.greaterThan(VARCHAR, utf8Slice("9"))),
                         false)));
         assertPredicateDerives(
-                equal(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", "2005-09-19")),
+                equal(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, "2005-09-19")),
                 tupleDomain(C_VARCHAR, Domain.create(ValueSet.ofRanges(
                                 Range.lessThan(VARCHAR, utf8Slice("1")),
                                 Range.range(VARCHAR, utf8Slice("2005-09-19"), true, utf8Slice("2005-09-1:"), false),
@@ -1060,7 +1053,7 @@ public class TestDomainTranslator
 
         // !=
         assertPredicateDerives(
-                notEqual(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", " +2005-9-10  \t")),
+                notEqual(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, " +2005-9-10  \t")),
                 tupleDomain(C_VARCHAR, Domain.create(ValueSet.ofRanges(
                                 Range.lessThan(VARCHAR, utf8Slice("2005-09-10")),
                                 Range.range(VARCHAR, utf8Slice("2005-09-11"), true, utf8Slice("2005-9-10"), false),
@@ -1069,12 +1062,12 @@ public class TestDomainTranslator
 
         // != with single-digit day
         assertUnsupportedPredicate(
-                notEqual(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", " +2005-9-2  \t")));
+                notEqual(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, " +2005-9-2  \t")));
         // != with day ending with 9
         assertUnsupportedPredicate(
-                notEqual(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", "2005-09-09")));
+                notEqual(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, "2005-09-09")));
         assertPredicateDerives(
-                notEqual(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", "2005-09-19")),
+                notEqual(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, "2005-09-19")),
                 tupleDomain(C_VARCHAR, Domain.create(ValueSet.ofRanges(
                                 Range.lessThan(VARCHAR, utf8Slice("2005-09-19")),
                                 Range.range(VARCHAR, utf8Slice("2005-09-1:"), true, utf8Slice("2005-9-19"), false),
@@ -1083,7 +1076,7 @@ public class TestDomainTranslator
 
         // <
         assertPredicateDerives(
-                lessThan(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", " +2005-9-10  \t")),
+                lessThan(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, " +2005-9-10  \t")),
                 tupleDomain(C_VARCHAR, Domain.create(ValueSet.ofRanges(
                                 Range.lessThan(VARCHAR, utf8Slice("2006")),
                                 Range.greaterThan(VARCHAR, utf8Slice("9"))),
@@ -1091,7 +1084,7 @@ public class TestDomainTranslator
 
         // >
         assertPredicateDerives(
-                greaterThan(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", " +2005-9-10  \t")),
+                greaterThan(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, " +2005-9-10  \t")),
                 tupleDomain(C_VARCHAR, Domain.create(ValueSet.ofRanges(
                                 Range.lessThan(VARCHAR, utf8Slice("1")),
                                 Range.greaterThan(VARCHAR, utf8Slice("2004"))),
@@ -1099,30 +1092,30 @@ public class TestDomainTranslator
 
         // Regression test for https://github.com/trinodb/trino/issues/14954
         assertPredicateTranslates(
-                greaterThan(new GenericLiteral("DATE", "2001-01-31"), cast(C_VARCHAR, DATE)),
+                greaterThan(new GenericLiteral(DATE, "2001-01-31"), cast(C_VARCHAR, DATE)),
                 tupleDomain(
                         C_VARCHAR,
                         Domain.create(ValueSet.ofRanges(
                                         Range.lessThan(VARCHAR, utf8Slice("2002")),
                                         Range.greaterThan(VARCHAR, utf8Slice("9"))),
                                 false)),
-                greaterThan(new GenericLiteral("DATE", "2001-01-31"), cast(C_VARCHAR, DATE)));
+                greaterThan(new GenericLiteral(DATE, "2001-01-31"), cast(C_VARCHAR, DATE)));
 
         // BETWEEN
         assertPredicateTranslates(
-                between(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", "2001-01-31"), new GenericLiteral("DATE", "2005-09-10")),
+                between(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, "2001-01-31"), new GenericLiteral(DATE, "2005-09-10")),
                 tupleDomain(C_VARCHAR, Domain.create(ValueSet.ofRanges(
                                 Range.lessThan(VARCHAR, utf8Slice("1")),
                                 Range.range(VARCHAR, utf8Slice("2000"), false, utf8Slice("2006"), false),
                                 Range.greaterThan(VARCHAR, utf8Slice("9"))),
                         false)),
                 and(
-                        greaterThanOrEqual(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", "2001-01-31")),
-                        lessThanOrEqual(cast(C_VARCHAR, DATE), new GenericLiteral("DATE", "2005-09-10"))));
+                        greaterThanOrEqual(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, "2001-01-31")),
+                        lessThanOrEqual(cast(C_VARCHAR, DATE), new GenericLiteral(DATE, "2005-09-10"))));
 
         // Regression test for https://github.com/trinodb/trino/issues/14954
         assertPredicateTranslates(
-                between(new GenericLiteral("DATE", "2001-01-31"), cast(C_VARCHAR, DATE), cast(C_VARCHAR_1, DATE)),
+                between(new GenericLiteral(DATE, "2001-01-31"), cast(C_VARCHAR, DATE), cast(C_VARCHAR_1, DATE)),
                 tupleDomain(
                         C_VARCHAR,
                         Domain.create(ValueSet.ofRanges(
@@ -1135,19 +1128,19 @@ public class TestDomainTranslator
                                         Range.greaterThan(VARCHAR, utf8Slice("2000"))),
                                 false)),
                 and(
-                        greaterThanOrEqual(new GenericLiteral("DATE", "2001-01-31"), cast(C_VARCHAR, DATE)),
-                        lessThanOrEqual(new GenericLiteral("DATE", "2001-01-31"), cast(C_VARCHAR_1, DATE))));
+                        greaterThanOrEqual(new GenericLiteral(DATE, "2001-01-31"), cast(C_VARCHAR, DATE)),
+                        lessThanOrEqual(new GenericLiteral(DATE, "2001-01-31"), cast(C_VARCHAR_1, DATE))));
     }
 
     @Test
     public void testFromUnprocessableInPredicate()
     {
-        assertUnsupportedPredicate(new InPredicate(unprocessableExpression1(C_BIGINT), new InListExpression(ImmutableList.of(TRUE_LITERAL))));
-        assertUnsupportedPredicate(new InPredicate(C_BOOLEAN.toSymbolReference(), new InListExpression(ImmutableList.of(unprocessableExpression1(C_BOOLEAN)))));
+        assertUnsupportedPredicate(new InPredicate(unprocessableExpression1(C_BIGINT), ImmutableList.of(TRUE_LITERAL)));
+        assertUnsupportedPredicate(new InPredicate(C_BOOLEAN.toSymbolReference(), ImmutableList.of(unprocessableExpression1(C_BOOLEAN))));
         assertUnsupportedPredicate(
-                new InPredicate(C_BOOLEAN.toSymbolReference(), new InListExpression(ImmutableList.of(TRUE_LITERAL, unprocessableExpression1(C_BOOLEAN)))));
+                new InPredicate(C_BOOLEAN.toSymbolReference(), ImmutableList.of(TRUE_LITERAL, unprocessableExpression1(C_BOOLEAN))));
         assertPredicateTranslates(
-                not(new InPredicate(C_BOOLEAN.toSymbolReference(), new InListExpression(ImmutableList.of(unprocessableExpression1(C_BOOLEAN))))),
+                not(new InPredicate(C_BOOLEAN.toSymbolReference(), ImmutableList.of(unprocessableExpression1(C_BOOLEAN)))),
                 tupleDomain(C_BOOLEAN, Domain.notNull(BOOLEAN)),
                 not(equal(C_BOOLEAN, unprocessableExpression1(C_BOOLEAN))));
     }
@@ -1408,18 +1401,18 @@ public class TestDomainTranslator
         assertPredicateTranslates(
                 new InPredicate(
                         C_BIGINT.toSymbolReference(),
-                        new InListExpression(ImmutableList.of(cast(toExpression(1L, SMALLINT), BIGINT)))),
+                        ImmutableList.of(cast(toExpression(1L, SMALLINT), BIGINT))),
                 tupleDomain(C_BIGINT, Domain.singleValue(BIGINT, 1L)));
 
         assertPredicateTranslates(
                 new InPredicate(
                         cast(C_SMALLINT, BIGINT),
-                        new InListExpression(ImmutableList.of(toExpression(1L, BIGINT)))),
+                        ImmutableList.of(toExpression(1L, BIGINT))),
                 tupleDomain(C_SMALLINT, Domain.singleValue(SMALLINT, 1L)));
 
         assertUnsupportedPredicate(new InPredicate(
                 cast(C_BIGINT, INTEGER),
-                new InListExpression(ImmutableList.of(toExpression(1L, INTEGER)))));
+                ImmutableList.of(toExpression(1L, INTEGER))));
     }
 
     @Test
@@ -1427,21 +1420,21 @@ public class TestDomainTranslator
     {
         assertPredicateIsAlwaysFalse(new InPredicate(
                 C_BIGINT.toSymbolReference(),
-                new InListExpression(ImmutableList.of(cast(toExpression(null, SMALLINT), BIGINT)))));
+                ImmutableList.of(cast(toExpression(null, SMALLINT), BIGINT))));
 
         assertUnsupportedPredicate(not(new InPredicate(
                 cast(C_SMALLINT, BIGINT),
-                new InListExpression(ImmutableList.of(toExpression(null, BIGINT))))));
+                ImmutableList.of(toExpression(null, BIGINT)))));
 
         assertPredicateTranslates(
                 new InPredicate(
                         C_BIGINT.toSymbolReference(),
-                        new InListExpression(ImmutableList.of(cast(toExpression(null, SMALLINT), BIGINT), toExpression(1L, BIGINT)))),
+                        ImmutableList.of(cast(toExpression(null, SMALLINT), BIGINT), toExpression(1L, BIGINT))),
                 tupleDomain(C_BIGINT, Domain.create(ValueSet.ofRanges(Range.equal(BIGINT, 1L)), false)));
 
         assertPredicateIsAlwaysFalse(not(new InPredicate(
                 C_BIGINT.toSymbolReference(),
-                new InListExpression(ImmutableList.of(cast(toExpression(null, SMALLINT), BIGINT), toExpression(1L, BIGINT))))));
+                ImmutableList.of(cast(toExpression(null, SMALLINT), BIGINT), toExpression(1L, BIGINT)))));
     }
 
     @Test
@@ -2072,13 +2065,7 @@ public class TestDomainTranslator
 
     private ExtractionResult fromPredicate(Expression originalPredicate)
     {
-        TransactionManager transactionManager = new TestingTransactionManager();
-        Metadata metadata = MetadataManager.testMetadataManagerBuilder().withTransactionManager(transactionManager).build();
-        return transaction(transactionManager, metadata, new AllowAllAccessControl())
-                .singleStatement()
-                .execute(TEST_SESSION, transactionSession -> {
-                    return DomainTranslator.getExtractionResult(functionResolution.getPlannerContext(), transactionSession, originalPredicate, TYPES);
-                });
+        return DomainTranslator.getExtractionResult(functionResolution.getPlannerContext(), TEST_SESSION, originalPredicate, TYPES);
     }
 
     private Expression toPredicate(TupleDomain<Symbol> tupleDomain)
@@ -2204,7 +2191,7 @@ public class TestDomainTranslator
     {
         List<Type> types = nCopies(values.size(), expressisonType);
         List<Expression> expressions = literalEncoder.toExpressions(values, types);
-        return new InPredicate(expression, new InListExpression(expressions));
+        return new InPredicate(expression, expressions);
     }
 
     private static BetweenPredicate between(Expression expression, Expression min, Expression max)
@@ -2260,19 +2247,19 @@ public class TestDomainTranslator
     private static Literal bigintLiteral(long value)
     {
         if (value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE) {
-            return new GenericLiteral("BIGINT", Long.toString(value));
+            return new GenericLiteral(BIGINT, Long.toString(value));
         }
-        return new LongLiteral(Long.toString(value));
+        return new LongLiteral(value);
     }
 
     private static DoubleLiteral doubleLiteral(double value)
     {
-        return new DoubleLiteral(Double.toString(value));
+        return new DoubleLiteral(value);
     }
 
     private static Expression realLiteral(String value)
     {
-        return new GenericLiteral("REAL", value);
+        return new GenericLiteral(REAL, value);
     }
 
     private static StringLiteral stringLiteral(String value)

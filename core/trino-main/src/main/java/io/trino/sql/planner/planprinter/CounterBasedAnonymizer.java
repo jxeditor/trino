@@ -119,7 +119,7 @@ public class CounterBasedAnonymizer
             return anonymizeLiteral("string", literal.getValue());
         }
         if (node instanceof GenericLiteral literal) {
-            return anonymizeLiteral(literal.getType(), literal.getValue());
+            return anonymizeLiteral(literal.getType().getDisplayName(), literal.getValue());
         }
         if (node instanceof BinaryLiteral literal) {
             return anonymizeLiteral("binary", new String(literal.getValue(), UTF_8));
@@ -131,7 +131,7 @@ public class CounterBasedAnonymizer
             return anonymizeLiteral("double", literal.getValue());
         }
         if (node instanceof LongLiteral literal) {
-            return anonymizeLiteral("long", literal.getParsedValue());
+            return anonymizeLiteral("long", literal.getValue());
         }
         if (node instanceof IntervalLiteral literal) {
             return anonymizeLiteral("interval", literal.getValue());

@@ -48,7 +48,6 @@ import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.ExpressionTreeRewriter;
 import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.GenericLiteral;
-import io.trino.sql.ir.InListExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrUtils;
 import io.trino.sql.ir.IsNullPredicate;
@@ -561,7 +560,7 @@ public class TestEffectivePredicateExtractor
                                 new Row(ImmutableList.of(bigintLiteral(1))),
                                 new Row(ImmutableList.of(bigintLiteral(2))))),
                 types,
-                typeAnalyzer)).isEqualTo(new InPredicate(AE, new InListExpression(ImmutableList.of(bigintLiteral(1), bigintLiteral(2)))));
+                typeAnalyzer)).isEqualTo(new InPredicate(AE, ImmutableList.of(bigintLiteral(1), bigintLiteral(2))));
 
         // one column with null
         assertThat(effectivePredicateExtractor.extract(
@@ -576,7 +575,7 @@ public class TestEffectivePredicateExtractor
                 types,
                 typeAnalyzer))
                 .isEqualTo(or(
-                        new InPredicate(AE, new InListExpression(ImmutableList.of(bigintLiteral(1), bigintLiteral(2)))),
+                        new InPredicate(AE, ImmutableList.of(bigintLiteral(1), bigintLiteral(2))),
                         new IsNullPredicate(AE)));
 
         // all nulls
@@ -672,8 +671,8 @@ public class TestEffectivePredicateExtractor
                 types,
                 typeAnalyzer))
                 .isEqualTo(and(
-                        new InPredicate(AE, new InListExpression(ImmutableList.of(bigintLiteral(1), bigintLiteral(2)))),
-                        new InPredicate(BE, new InListExpression(ImmutableList.of(bigintLiteral(100), bigintLiteral(200))))));
+                        new InPredicate(AE, ImmutableList.of(bigintLiteral(1), bigintLiteral(2))),
+                        new InPredicate(BE, ImmutableList.of(bigintLiteral(100), bigintLiteral(200)))));
 
         // multiple columns with null
         assertThat(effectivePredicateExtractor.extract(
@@ -1111,14 +1110,14 @@ public class TestEffectivePredicateExtractor
     private static Expression bigintLiteral(long number)
     {
         if (number < Integer.MAX_VALUE && number > Integer.MIN_VALUE) {
-            return new GenericLiteral("BIGINT", String.valueOf(number));
+            return new GenericLiteral(BIGINT, String.valueOf(number));
         }
-        return new LongLiteral(String.valueOf(number));
+        return new LongLiteral(number);
     }
 
     private static Expression doubleLiteral(double value)
     {
-        return new DoubleLiteral(String.valueOf(value));
+        return new DoubleLiteral(value);
     }
 
     private static ComparisonExpression equals(Expression expression1, Expression expression2)

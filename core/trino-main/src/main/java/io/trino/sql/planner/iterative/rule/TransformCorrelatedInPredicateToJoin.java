@@ -285,7 +285,7 @@ public class TransformCorrelatedInPredicateToJoin
 
     private static Expression bigint(long value)
     {
-        return new Cast(new LongLiteral(String.valueOf(value)), BIGINT);
+        return new Cast(new LongLiteral(value), BIGINT);
     }
 
     private static Expression booleanConstant(@Nullable Boolean value)
@@ -293,7 +293,7 @@ public class TransformCorrelatedInPredicateToJoin
         if (value == null) {
             return new Cast(new NullLiteral(), BOOLEAN);
         }
-        return new BooleanLiteral(value.toString());
+        return new BooleanLiteral(value);
     }
 
     private static class DecorrelatingVisitor
