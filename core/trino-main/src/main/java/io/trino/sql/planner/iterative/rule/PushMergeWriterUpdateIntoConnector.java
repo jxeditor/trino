@@ -18,11 +18,16 @@ import io.trino.matching.Capture;
 import io.trino.matching.Captures;
 import io.trino.matching.Pattern;
 import io.trino.metadata.Metadata;
+import io.trino.spi.block.SqlRow;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.expression.Constant;
+import io.trino.spi.type.RowType;
+import io.trino.spi.type.Type;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.Expression;
+import io.trino.sql.ir.GenericLiteral;
+import io.trino.sql.ir.Row;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.ConnectorExpressionTranslator;
 import io.trino.sql.planner.IrTypeAnalyzer;
@@ -40,6 +45,7 @@ import java.util.Optional;
 
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.trino.matching.Capture.newCapture;
+import static io.trino.spi.type.TypeUtils.readNativeValue;
 import static io.trino.sql.planner.plan.Patterns.mergeProcessor;
 import static io.trino.sql.planner.plan.Patterns.mergeWriter;
 import static io.trino.sql.planner.plan.Patterns.project;
@@ -94,9 +100,9 @@ public class PushMergeWriterUpdateIntoConnector
 
         Map<String, ColumnHandle> columnHandles = metadata.getColumnHandles(context.getSession(), mergeWriter.getTarget().getHandle());
         List<String> orderedColumnNames = mergeWriter.getTarget().getMergeParadigmAndTypes().getColumnNames();
-        List<? extends Expression> mergeAssignments = project.getAssignments().get(mergeProcessor.getMergeRowSymbol()).getChildren();
+        Expression mergeRow = project.getAssignments().get(mergeProcessor.getMergeRowSymbol());
+        Map<ColumnHandle, Constant> assignments = buildAssignments(orderedColumnNames, mergeRow, columnHandles, context);
 
-        Map<ColumnHandle, Constant> assignments = buildAssignments(orderedColumnNames, mergeAssignments, columnHandles, context);
         if (assignments.isEmpty()) {
             return Result.empty();
         }
@@ -112,33 +118,46 @@ public class PushMergeWriterUpdateIntoConnector
 
     private Map<ColumnHandle, Constant> buildAssignments(
             List<String> orderedColumnNames,
-            List<? extends Expression> mergeAssignments,
+            Expression mergeRow,
             Map<String, ColumnHandle> columnHandles,
             Context context)
     {
-        ImmutableMap.Builder<ColumnHandle, Constant> assignmentsBuilder = ImmutableMap.builder();
-        for (int i = 0; i < orderedColumnNames.size(); i++) {
-            String columnName = orderedColumnNames.get(i);
-            Expression assigmentNode = mergeAssignments.get(i);
-            if (assigmentNode instanceof SymbolReference) {
-                // the column is not updated
-                continue;
-            }
+        ImmutableMap.Builder<ColumnHandle, Constant> assignments = ImmutableMap.builder();
+        if (mergeRow instanceof Row row) {
+            List<? extends Expression> fields = row.getChildren();
+            for (int i = 0; i < orderedColumnNames.size(); i++) {
+                String columnName = orderedColumnNames.get(i);
+                Expression field = fields.get(i);
+                if (field instanceof SymbolReference) {
+                    // the column is not updated
+                    continue;
+                }
 
-            Optional<ConnectorExpression> connectorExpression = ConnectorExpressionTranslator.translate(
-                    context.getSession(),
-                    ((Expression) assigmentNode),
-                    context.getSymbolAllocator().getTypes(),
-                    plannerContext,
-                    typeAnalyzer);
+                Optional<ConnectorExpression> connectorExpression = ConnectorExpressionTranslator.translate(
+                        context.getSession(),
+                        field,
+                        context.getSymbolAllocator().getTypes(),
+                        plannerContext,
+                        typeAnalyzer);
 
-            // we don't support any expressions in update statements yet, only constants
-            if (connectorExpression.isEmpty() || !(connectorExpression.get() instanceof Constant)) {
-                return ImmutableMap.of();
+                // we don't support any expressions in update statements yet, only constants
+                if (connectorExpression.isEmpty() || !(connectorExpression.get() instanceof Constant)) {
+                    return ImmutableMap.of();
+                }
+                assignments.put(columnHandles.get(columnName), (Constant) connectorExpression.get());
             }
-            assignmentsBuilder.put(columnHandles.get(columnName), (Constant) connectorExpression.get());
+        }
+        else if (mergeRow instanceof GenericLiteral row) {
+            RowType type = (RowType) row.getType();
+            SqlRow rowValue = (SqlRow) row.getRawValue();
+
+            for (int i = 0; i < orderedColumnNames.size(); i++) {
+                Type fieldType = type.getFields().get(i).getType();
+                Object fieldValue = readNativeValue(fieldType, rowValue.getRawFieldBlock(i), rowValue.getRawIndex());
+                assignments.put(columnHandles.get(orderedColumnNames.get(i)), new Constant(fieldValue, fieldType));
+            }
         }
 
-        return assignmentsBuilder.buildOrThrow();
+        return assignments.buildOrThrow();
     }
 }

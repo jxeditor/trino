@@ -15,6 +15,7 @@ package io.trino.sql.planner.optimizations;
 
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
+import io.airlift.slice.Slices;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.MetadataManager;
 import io.trino.metadata.ResolvedFunction;
@@ -31,13 +32,13 @@ import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NullLiteral;
-import io.trino.sql.ir.StringLiteral;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.IrTypeAnalyzer;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.TypeProvider;
 import io.trino.transaction.TestingTransactionManager;
 import io.trino.transaction.TransactionManager;
+import io.trino.type.DateTimes;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -106,8 +107,8 @@ public class TestExpressionEquivalence
                 GenericLiteral.constant(createDecimalType(3, 1), Decimals.valueOfShort(new BigDecimal("4.4"))),
                 GenericLiteral.constant(createDecimalType(3, 1), Decimals.valueOfShort(new BigDecimal("4.4"))));
         assertEquivalent(
-                new StringLiteral("foo"),
-                new StringLiteral("foo"));
+                GenericLiteral.constant(VARCHAR, Slices.utf8Slice("foo")),
+                GenericLiteral.constant(VARCHAR, Slices.utf8Slice("foo")));
 
         assertEquivalent(
                 new ComparisonExpression(EQUAL, GenericLiteral.constant(INTEGER, 4L), GenericLiteral.constant(INTEGER, 5L)),
@@ -116,8 +117,8 @@ public class TestExpressionEquivalence
                 new ComparisonExpression(EQUAL, GenericLiteral.constant(createDecimalType(3, 1), Decimals.valueOfShort(new BigDecimal("4.4"))), GenericLiteral.constant(createDecimalType(3, 1), Decimals.valueOfShort(new BigDecimal("5.5")))),
                 new ComparisonExpression(EQUAL, GenericLiteral.constant(createDecimalType(3, 1), Decimals.valueOfShort(new BigDecimal("5.5"))), GenericLiteral.constant(createDecimalType(3, 1), Decimals.valueOfShort(new BigDecimal("4.4")))));
         assertEquivalent(
-                new ComparisonExpression(EQUAL, new StringLiteral("foo"), new StringLiteral("bar")),
-                new ComparisonExpression(EQUAL, new StringLiteral("bar"), new StringLiteral("foo")));
+                new ComparisonExpression(EQUAL, GenericLiteral.constant(VARCHAR, Slices.utf8Slice("foo")), GenericLiteral.constant(VARCHAR, Slices.utf8Slice("bar"))),
+                new ComparisonExpression(EQUAL, GenericLiteral.constant(VARCHAR, Slices.utf8Slice("bar")), GenericLiteral.constant(VARCHAR, Slices.utf8Slice("foo"))));
         assertEquivalent(
                 new ComparisonExpression(NOT_EQUAL, GenericLiteral.constant(INTEGER, 4L), GenericLiteral.constant(INTEGER, 5L)),
                 new ComparisonExpression(NOT_EQUAL, GenericLiteral.constant(INTEGER, 5L), GenericLiteral.constant(INTEGER, 4L)));
@@ -131,11 +132,11 @@ public class TestExpressionEquivalence
                 new ComparisonExpression(LESS_THAN_OR_EQUAL, GenericLiteral.constant(INTEGER, 4L), GenericLiteral.constant(INTEGER, 5L)),
                 new ComparisonExpression(GREATER_THAN_OR_EQUAL, GenericLiteral.constant(INTEGER, 5L), GenericLiteral.constant(INTEGER, 4L)));
         assertEquivalent(
-                new ComparisonExpression(EQUAL, new GenericLiteral(createTimestampType(9), "2020-05-10 12:34:56.123456789"), new GenericLiteral(createTimestampType(9), "2021-05-10 12:34:56.123456789")),
-                new ComparisonExpression(EQUAL, new GenericLiteral(createTimestampType(9), "2021-05-10 12:34:56.123456789"), new GenericLiteral(createTimestampType(9), "2020-05-10 12:34:56.123456789")));
+                new ComparisonExpression(EQUAL, GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-05-10 12:34:56.123456789")), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2021-05-10 12:34:56.123456789"))),
+                new ComparisonExpression(EQUAL, GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2021-05-10 12:34:56.123456789")), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-05-10 12:34:56.123456789"))));
         assertEquivalent(
-                new ComparisonExpression(EQUAL, new GenericLiteral(createTimestampWithTimeZoneType(9), "2020-05-10 12:34:56.123456789 +8"), new GenericLiteral(createTimestampWithTimeZoneType(9), "2021-05-10 12:34:56.123456789 +8")),
-                new ComparisonExpression(EQUAL, new GenericLiteral(createTimestampWithTimeZoneType(9), "2021-05-10 12:34:56.123456789 +8"), new GenericLiteral(createTimestampWithTimeZoneType(9), "2020-05-10 12:34:56.123456789 +8")));
+                new ComparisonExpression(EQUAL, GenericLiteral.constant(createTimestampWithTimeZoneType(9), DateTimes.parseTimestampWithTimeZone(9, "2020-05-10 12:34:56.123456789 +8")), GenericLiteral.constant(createTimestampWithTimeZoneType(9), DateTimes.parseTimestampWithTimeZone(9, "2021-05-10 12:34:56.123456789 +8"))),
+                new ComparisonExpression(EQUAL, GenericLiteral.constant(createTimestampWithTimeZoneType(9), DateTimes.parseTimestampWithTimeZone(9, "2021-05-10 12:34:56.123456789 +8")), GenericLiteral.constant(createTimestampWithTimeZoneType(9), DateTimes.parseTimestampWithTimeZone(9, "2020-05-10 12:34:56.123456789 +8"))));
 
         assertEquivalent(
                 new FunctionCall(MOD.toQualifiedName(), ImmutableList.of(GenericLiteral.constant(INTEGER, 4L), GenericLiteral.constant(INTEGER, 5L))),
@@ -243,8 +244,8 @@ public class TestExpressionEquivalence
                 GenericLiteral.constant(createDecimalType(3, 1), Decimals.valueOfShort(new BigDecimal("4.4"))),
                 GenericLiteral.constant(createDecimalType(3, 1), Decimals.valueOfShort(new BigDecimal("5.5"))));
         assertNotEquivalent(
-                new StringLiteral("'foo'"),
-                new StringLiteral("'bar'"));
+                GenericLiteral.constant(VARCHAR, Slices.utf8Slice("'foo'")),
+                GenericLiteral.constant(VARCHAR, Slices.utf8Slice("'bar'")));
 
         assertNotEquivalent(
                 new ComparisonExpression(EQUAL, GenericLiteral.constant(INTEGER, 4L), GenericLiteral.constant(INTEGER, 5L)),
@@ -294,30 +295,30 @@ public class TestExpressionEquivalence
                 new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(GREATER_THAN, new SymbolReference("d_bigint"), new SymbolReference("c_bigint")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("b_bigint"), new SymbolReference("c_bigint")))));
 
         assertNotEquivalent(
-                new Cast(new GenericLiteral(createTimeWithTimeZoneType(3), "12:34:56.123 +00:00"), VARCHAR),
-                new Cast(new GenericLiteral(createTimeWithTimeZoneType(3), "14:34:56.123 +02:00"), VARCHAR));
+                new Cast(GenericLiteral.constant(createTimeWithTimeZoneType(3), DateTimes.parseTimeWithTimeZone(3, "12:34:56.123 +00:00")), VARCHAR),
+                new Cast(GenericLiteral.constant(createTimeWithTimeZoneType(3), DateTimes.parseTimeWithTimeZone(3, "14:34:56.123 +02:00")), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral(createTimeWithTimeZoneType(6), "12:34:56.123456 +00:00"), VARCHAR),
-                new Cast(new GenericLiteral(createTimeWithTimeZoneType(6), "14:34:56.123456 +02:00"), VARCHAR));
+                new Cast(GenericLiteral.constant(createTimeWithTimeZoneType(6), DateTimes.parseTimeWithTimeZone(6, "12:34:56.123456 +00:00")), VARCHAR),
+                new Cast(GenericLiteral.constant(createTimeWithTimeZoneType(6), DateTimes.parseTimeWithTimeZone(6, "14:34:56.123456 +02:00")), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral(createTimeWithTimeZoneType(9), "12:34:56.123456789 +00:00"), VARCHAR),
-                new Cast(new GenericLiteral(createTimeWithTimeZoneType(9), "14:34:56.123456789 +02:00"), VARCHAR));
+                new Cast(GenericLiteral.constant(createTimeWithTimeZoneType(9), DateTimes.parseTimeWithTimeZone(9, "12:34:56.123456789 +00:00")), VARCHAR),
+                new Cast(GenericLiteral.constant(createTimeWithTimeZoneType(9), DateTimes.parseTimeWithTimeZone(9, "14:34:56.123456789 +02:00")), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral(createTimeWithTimeZoneType(12), "12:34:56.123456789012 +00:00"), VARCHAR),
-                new Cast(new GenericLiteral(createTimeWithTimeZoneType(12), "14:34:56.123456789012 +02:00"), VARCHAR));
+                new Cast(GenericLiteral.constant(createTimeWithTimeZoneType(12), DateTimes.parseTimeWithTimeZone(12, "12:34:56.123456789012 +00:00")), VARCHAR),
+                new Cast(GenericLiteral.constant(createTimeWithTimeZoneType(12), DateTimes.parseTimeWithTimeZone(12, "14:34:56.123456789012 +02:00")), VARCHAR));
 
         assertNotEquivalent(
-                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(3), "2020-05-10 12:34:56.123 Europe/Warsaw"), VARCHAR),
-                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(3), "2020-05-10 12:34:56.123 Europe/Paris"), VARCHAR));
+                new Cast(GenericLiteral.constant(createTimestampWithTimeZoneType(3), DateTimes.parseTimestampWithTimeZone(3, "2020-05-10 12:34:56.123 Europe/Warsaw")), VARCHAR),
+                new Cast(GenericLiteral.constant(createTimestampWithTimeZoneType(3), DateTimes.parseTimestampWithTimeZone(3, "2020-05-10 12:34:56.123 Europe/Paris")), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(6), "2020-05-10 12:34:56.123456 Europe/Warsaw"), VARCHAR),
-                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(6), "2020-05-10 12:34:56.123456 Europe/Paris"), VARCHAR));
+                new Cast(GenericLiteral.constant(createTimestampWithTimeZoneType(6), DateTimes.parseTimestampWithTimeZone(6, "2020-05-10 12:34:56.123456 Europe/Warsaw")), VARCHAR),
+                new Cast(GenericLiteral.constant(createTimestampWithTimeZoneType(6), DateTimes.parseTimestampWithTimeZone(6, "2020-05-10 12:34:56.123456 Europe/Paris")), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(9), "2020-05-10 12:34:56.123456789 Europe/Warsaw"), VARCHAR),
-                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(9), "2020-05-10 12:34:56.123456789 Europe/Paris"), VARCHAR));
+                new Cast(GenericLiteral.constant(createTimestampWithTimeZoneType(9), DateTimes.parseTimestampWithTimeZone(9, "2020-05-10 12:34:56.123456789 Europe/Warsaw")), VARCHAR),
+                new Cast(GenericLiteral.constant(createTimestampWithTimeZoneType(9), DateTimes.parseTimestampWithTimeZone(9, "2020-05-10 12:34:56.123456789 Europe/Paris")), VARCHAR));
         assertNotEquivalent(
-                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(12), "2020-05-10 12:34:56.123456789012 Europe/Warsaw"), VARCHAR),
-                new Cast(new GenericLiteral(createTimestampWithTimeZoneType(12), "2020-05-10 12:34:56.123456789012 Europe/Paris"), VARCHAR));
+                new Cast(GenericLiteral.constant(createTimestampWithTimeZoneType(12), DateTimes.parseTimestampWithTimeZone(12, "2020-05-10 12:34:56.123456789012 Europe/Warsaw")), VARCHAR),
+                new Cast(GenericLiteral.constant(createTimestampWithTimeZoneType(12), DateTimes.parseTimestampWithTimeZone(12, "2020-05-10 12:34:56.123456789012 Europe/Paris")), VARCHAR));
     }
 
     private static void assertNotEquivalent(Expression leftExpression, Expression rightExpression)

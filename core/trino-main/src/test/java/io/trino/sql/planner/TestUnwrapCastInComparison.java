@@ -14,6 +14,7 @@
 package io.trino.sql.planner;
 
 import com.google.common.collect.ImmutableList;
+import io.airlift.slice.Slices;
 import io.trino.Session;
 import io.trino.spi.type.TimeZoneKey;
 import io.trino.sql.ir.Cast;
@@ -25,10 +26,12 @@ import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.NullLiteral;
-import io.trino.sql.ir.StringLiteral;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.assertions.BasePlanTest;
 import io.trino.sql.tree.QualifiedName;
+import io.trino.type.DateTimes;
+import io.trino.type.Reals;
+import io.trino.util.DateTimeUtils;
 import org.junit.jupiter.api.Test;
 
 import static io.trino.spi.type.BigintType.BIGINT;
@@ -42,6 +45,7 @@ import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TimestampType.createTimestampType;
 import static io.trino.spi.type.TimestampWithTimeZoneType.TIMESTAMP_TZ_MILLIS;
 import static io.trino.spi.type.TinyintType.TINYINT;
+import static io.trino.spi.type.VarcharType.createVarcharType;
 import static io.trino.sql.ir.ComparisonExpression.Operator.EQUAL;
 import static io.trino.sql.ir.ComparisonExpression.Operator.GREATER_THAN;
 import static io.trino.sql.ir.ComparisonExpression.Operator.GREATER_THAN_OR_EQUAL;
@@ -103,13 +107,13 @@ public class TestUnwrapCastInComparison
         testUnwrap("bigint", "a = DOUBLE '-18446744073709551616'", new LogicalExpression(AND, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new Cast(new NullLiteral(), BOOLEAN))));
 
         // varchar and char, same length
-        testUnwrap("varchar(3)", "a = CAST('abc' AS char(3))", new ComparisonExpression(EQUAL, new SymbolReference("a"), new StringLiteral("abc")));
+        testUnwrap("varchar(3)", "a = CAST('abc' AS char(3))", new ComparisonExpression(EQUAL, new SymbolReference("a"), GenericLiteral.constant(createVarcharType(3), Slices.utf8Slice("abc"))));
         // longer varchar and char
         // actually unwrapping didn't happen
-        testUnwrap("varchar(10)", "a = CAST('abc' AS char(3))", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), createCharType(10)), new Cast(new StringLiteral("abc"), createCharType(10))));
+        testUnwrap("varchar(10)", "a = CAST('abc' AS char(3))", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), createCharType(10)), GenericLiteral.constant(createCharType(10), Slices.utf8Slice("abc"))));
         // unbounded varchar and char
         // actually unwrapping didn't happen
-        testUnwrap("varchar", "a = CAST('abc' AS char(3))", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), createCharType(65536)), new Cast(new StringLiteral("abc"), createCharType(65536))));
+        testUnwrap("varchar", "a = CAST('abc' AS char(3))", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), createCharType(65536)), GenericLiteral.constant(createCharType(65536), Slices.utf8Slice("abc"))));
     }
 
     @Test
@@ -414,7 +418,7 @@ public class TestUnwrapCastInComparison
 
         testUnwrap("real", "a <> nan()", new LogicalExpression(OR, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new Cast(new NullLiteral(), BOOLEAN))));
 
-        testUnwrap("real", "a IS DISTINCT FROM nan()", new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), new Cast(new FunctionCall(QualifiedName.of("nan"), ImmutableList.of()), REAL)));
+        testUnwrap("real", "a IS DISTINCT FROM nan()", new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), GenericLiteral.constant(REAL, Reals.toReal(Float.NaN))));
     }
 
     @Test
@@ -433,7 +437,7 @@ public class TestUnwrapCastInComparison
             testUnwrap("integer", format("a = %s '1'", type), new ComparisonExpression(EQUAL, new SymbolReference("a"), GenericLiteral.constant(INTEGER, 1L)));
         }
 
-        testUnwrap("real", "a = DOUBLE '1'", new ComparisonExpression(EQUAL, new SymbolReference("a"), new GenericLiteral(REAL, "1.0")));
+        testUnwrap("real", "a = DOUBLE '1'", new ComparisonExpression(EQUAL, new SymbolReference("a"), GenericLiteral.constant(REAL, Reals.toReal(1.0f))));
     }
 
     @Test
@@ -444,7 +448,7 @@ public class TestUnwrapCastInComparison
         assertPlan("SELECT * FROM (VALUES REAL '1') t(a) WHERE DOUBLE '1' = a",
                 output(
                         filter(
-                                new ComparisonExpression(EQUAL, new SymbolReference("A"), new GenericLiteral(REAL, "1.0")),
+                                new ComparisonExpression(EQUAL, new SymbolReference("A"), GenericLiteral.constant(REAL, Reals.toReal(1.0f))),
                                 values("A"))));
     }
 
@@ -460,75 +464,75 @@ public class TestUnwrapCastInComparison
         Session losAngelesSession = withZone(session, TimeZoneKey.getTimeZoneKey("America/Los_Angeles"));
 
         // same zone
-        testUnwrap(utcSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-10-26")));
-        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18 Europe/Warsaw'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-10-26")));
-        testUnwrap(losAngelesSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18 America/Los_Angeles'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-10-26")));
+        testUnwrap(utcSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-10-26"))));
+        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18 Europe/Warsaw'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-10-26"))));
+        testUnwrap(losAngelesSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18 America/Los_Angeles'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-10-26"))));
 
         // different zone
-        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-10-26")));
-        testUnwrap(losAngelesSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-10-26")));
+        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-10-26"))));
+        testUnwrap(losAngelesSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-10-26"))));
 
         // maximum precision
-        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18.123456789321 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-10-26")));
-        testUnwrap(losAngelesSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18.123456789321 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-10-26")));
+        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18.123456789321 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-10-26"))));
+        testUnwrap(losAngelesSession, "date", "a > TIMESTAMP '2020-10-26 11:02:18.123456789321 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-10-26"))));
 
         // DST forward -- Warsaw changed clock 1h forward on 2020-03-29T01:00 UTC (2020-03-29T02:00 local time)
         // Note that in given session input TIMESTAMP values  2020-03-29 02:31 and 2020-03-29 03:31 produce the same value 2020-03-29 01:31 UTC (conversion is not monotonic)
         // last before
-        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-03-29")));
-        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59.999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-03-29")));
-        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59.13 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-03-29")));
-        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59.999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-03-29")));
-        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59.999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-03-29")));
-        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59.999999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "2020-03-29")));
+        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-03-29"))));
+        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59.999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-03-29"))));
+        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59.13 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-03-29"))));
+        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59.999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-03-29"))));
+        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59.999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-03-29"))));
+        testUnwrap(warsawSession, "date", "a > TIMESTAMP '2020-03-29 00:59:59.999999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("2020-03-29"))));
 
         // equal
-        testUnwrap(utcSession, "date", "a = TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a = TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a = TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a = TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
+        testUnwrap(utcSession, "date", "a = TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a = TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a = TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a = TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
 
         // not equal
-        testUnwrap(utcSession, "date", "a <> TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(NOT_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a <> TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(NOT_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a <> TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(NOT_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a <> TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(NOT_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
+        testUnwrap(utcSession, "date", "a <> TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(NOT_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a <> TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(NOT_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a <> TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(NOT_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a <> TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(NOT_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
 
         // less than
-        testUnwrap(utcSession, "date", "a < TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a < TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a < TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a < TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
+        testUnwrap(utcSession, "date", "a < TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a < TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a < TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a < TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
 
         // less than or equal
-        testUnwrap(utcSession, "date", "a <= TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(LESS_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a <= TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(LESS_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a <= TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(LESS_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a <= TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(LESS_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
+        testUnwrap(utcSession, "date", "a <= TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(LESS_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a <= TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(LESS_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a <= TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(LESS_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a <= TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(LESS_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
 
         // greater than
-        testUnwrap(utcSession, "date", "a > TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a > TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a > TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a > TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
+        testUnwrap(utcSession, "date", "a > TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a > TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a > TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a > TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
 
         // greater than or equal
-        testUnwrap(utcSession, "date", "a >= TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a >= TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a >= TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a >= TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
+        testUnwrap(utcSession, "date", "a >= TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a >= TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a >= TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a >= TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
 
         // is distinct
-        testUnwrap(utcSession, "date", "a IS DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a IS DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a IS DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
-        testUnwrap(utcSession, "date", "a IS DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
+        testUnwrap(utcSession, "date", "a IS DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00 UTC'", new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a IS DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a IS DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
+        testUnwrap(utcSession, "date", "a IS DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
 
         // is not distinct
-        testUnwrap(utcSession, "date", "a IS NOT DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00 UTC'", new NotExpression(new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22"))));
-        testUnwrap(utcSession, "date", "a IS NOT DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new NotExpression(new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22"))));
-        testUnwrap(utcSession, "date", "a IS NOT DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new NotExpression(new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22"))));
-        testUnwrap(utcSession, "date", "a IS NOT DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new NotExpression(new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22"))));
+        testUnwrap(utcSession, "date", "a IS NOT DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00 UTC'", new NotExpression(new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22")))));
+        testUnwrap(utcSession, "date", "a IS NOT DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000 UTC'", new NotExpression(new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22")))));
+        testUnwrap(utcSession, "date", "a IS NOT DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000000 UTC'", new NotExpression(new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22")))));
+        testUnwrap(utcSession, "date", "a IS NOT DISTINCT FROM TIMESTAMP '1981-06-22 00:00:00.000000000000 UTC'", new NotExpression(new ComparisonExpression(IS_DISTINCT_FROM, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22")))));
 
         // null date literal
         testUnwrap("date", "CAST(a AS TIMESTAMP WITH TIME ZONE) = NULL", new Cast(new NullLiteral(), BOOLEAN));
@@ -539,7 +543,7 @@ public class TestUnwrapCastInComparison
         testUnwrap("date", "CAST(a AS TIMESTAMP WITH TIME ZONE) IS DISTINCT FROM NULL", new NotExpression(new IsNullPredicate(new Cast(new SymbolReference("a"), TIMESTAMP_TZ_MILLIS))));
 
         // timestamp with time zone value on the left
-        testUnwrap(utcSession, "date", "TIMESTAMP '1981-06-22 00:00:00 UTC' = a", new ComparisonExpression(EQUAL, new SymbolReference("a"), new GenericLiteral(DATE, "1981-06-22")));
+        testUnwrap(utcSession, "date", "TIMESTAMP '1981-06-22 00:00:00 UTC' = a", new ComparisonExpression(EQUAL, new SymbolReference("a"), GenericLiteral.constant(DATE, (long) DateTimeUtils.parseDate("1981-06-22"))));
     }
 
     @Test
@@ -554,72 +558,72 @@ public class TestUnwrapCastInComparison
         Session losAngelesSession = withZone(session, TimeZoneKey.getTimeZoneKey("America/Los_Angeles"));
 
         // same zone
-        testUnwrap(utcSession, "timestamp(0)", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-10-26 11:02:18")));
-        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-26 11:02:18 Europe/Warsaw'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-10-26 11:02:18")));
-        testUnwrap(losAngelesSession, "timestamp(0)", "a > TIMESTAMP '2020-10-26 11:02:18 America/Los_Angeles'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-10-26 11:02:18")));
+        testUnwrap(utcSession, "timestamp(0)", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-10-26 11:02:18"))));
+        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-26 11:02:18 Europe/Warsaw'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-10-26 11:02:18"))));
+        testUnwrap(losAngelesSession, "timestamp(0)", "a > TIMESTAMP '2020-10-26 11:02:18 America/Los_Angeles'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-10-26 11:02:18"))));
 
         // different zone
-        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-10-26 12:02:18")));
-        testUnwrap(losAngelesSession, "timestamp(0)", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-10-26 04:02:18")));
+        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-10-26 12:02:18"))));
+        testUnwrap(losAngelesSession, "timestamp(0)", "a > TIMESTAMP '2020-10-26 11:02:18 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-10-26 04:02:18"))));
 
         // short timestamp, short timestamp with time zone being coerced to long timestamp with time zone
-        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-10-26 11:02:18.12 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "2020-10-26 12:02:18.120000")));
-        testUnwrap(losAngelesSession, "timestamp(6)", "a > TIMESTAMP '2020-10-26 11:02:18.12 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "2020-10-26 04:02:18.120000")));
+        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-10-26 11:02:18.12 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "2020-10-26 12:02:18.120000"))));
+        testUnwrap(losAngelesSession, "timestamp(6)", "a > TIMESTAMP '2020-10-26 11:02:18.12 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "2020-10-26 04:02:18.120000"))));
 
         // long timestamp, short timestamp with time zone being coerced to long timestamp with time zone
-        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-26 11:02:18.12 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "2020-10-26 12:02:18.120000000")));
-        testUnwrap(losAngelesSession, "timestamp(9)", "a > TIMESTAMP '2020-10-26 11:02:18.12 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "2020-10-26 04:02:18.120000000")));
+        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-26 11:02:18.12 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-10-26 12:02:18.120000000"))));
+        testUnwrap(losAngelesSession, "timestamp(9)", "a > TIMESTAMP '2020-10-26 11:02:18.12 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-10-26 04:02:18.120000000"))));
 
         // long timestamp, long timestamp with time zone
-        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-26 11:02:18.123456 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "2020-10-26 12:02:18.123456000")));
-        testUnwrap(losAngelesSession, "timestamp(9)", "a > TIMESTAMP '2020-10-26 11:02:18.123456 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "2020-10-26 04:02:18.123456000")));
+        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-26 11:02:18.123456 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-10-26 12:02:18.123456000"))));
+        testUnwrap(losAngelesSession, "timestamp(9)", "a > TIMESTAMP '2020-10-26 11:02:18.123456 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-10-26 04:02:18.123456000"))));
 
         // maximum precision
-        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-10-26 11:02:18.123456789321 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "2020-10-26 12:02:18.123456789321")));
-        testUnwrap(losAngelesSession, "timestamp(12)", "a > TIMESTAMP '2020-10-26 11:02:18.123456789321 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "2020-10-26 04:02:18.123456789321")));
+        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-10-26 11:02:18.123456789321 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "2020-10-26 12:02:18.123456789321"))));
+        testUnwrap(losAngelesSession, "timestamp(12)", "a > TIMESTAMP '2020-10-26 11:02:18.123456789321 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "2020-10-26 04:02:18.123456789321"))));
 
         // DST forward -- Warsaw changed clock 1h forward on 2020-03-29T01:00 UTC (2020-03-29T02:00 local time)
         // Note that in given session input TIMESTAMP values  2020-03-29 02:31 and 2020-03-29 03:31 produce the same value 2020-03-29 01:31 UTC (conversion is not monotonic)
         // last before
-        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-03-29 00:59:59 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-03-29 01:59:59")));
-        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-03-29 00:59:59.999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "2020-03-29 01:59:59.999")));
-        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-03-29 00:59:59.13 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "2020-03-29 01:59:59.130000")));
-        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-03-29 00:59:59.999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "2020-03-29 01:59:59.999999")));
-        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-03-29 00:59:59.999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "2020-03-29 01:59:59.999999999")));
-        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-03-29 00:59:59.999999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "2020-03-29 01:59:59.999999999999")));
+        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-03-29 00:59:59 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-03-29 01:59:59"))));
+        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-03-29 00:59:59.999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "2020-03-29 01:59:59.999"))));
+        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-03-29 00:59:59.13 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "2020-03-29 01:59:59.130000"))));
+        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-03-29 00:59:59.999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "2020-03-29 01:59:59.999999"))));
+        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-03-29 00:59:59.999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-03-29 01:59:59.999999999"))));
+        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-03-29 00:59:59.999999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "2020-03-29 01:59:59.999999999999"))));
         // first after
-        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-03-29 02:00:00 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-03-29 04:00:00")));
-        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-03-29 02:00:00.000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "2020-03-29 04:00:00.000")));
-        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-03-29 02:00:00.000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "2020-03-29 04:00:00.000000")));
-        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-03-29 02:00:00.000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "2020-03-29 04:00:00.000000000")));
-        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-03-29 02:00:00.000000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "2020-03-29 04:00:00.000000000000")));
+        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-03-29 02:00:00 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-03-29 04:00:00"))));
+        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-03-29 02:00:00.000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "2020-03-29 04:00:00.000"))));
+        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-03-29 02:00:00.000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "2020-03-29 04:00:00.000000"))));
+        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-03-29 02:00:00.000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-03-29 04:00:00.000000000"))));
+        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-03-29 02:00:00.000000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "2020-03-29 04:00:00.000000000000"))));
 
         // DST backward -- Warsaw changed clock 1h backward on 2020-10-25T01:00 UTC (2020-03-29T03:00 local time)
         // Note that in given session no input TIMESTAMP value can produce TIMESTAMP WITH TIME ZONE within [2020-10-25 00:00:00 UTC, 2020-10-25 01:00:00 UTC], so '>=' is OK
         // last before
-        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-25 00:59:59 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-10-25 02:59:59")));
-        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-10-25 00:59:59.999 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "2020-10-25 02:59:59.999")));
-        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-10-25 00:59:59.999999 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "2020-10-25 02:59:59.999999")));
-        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-25 00:59:59.999999999 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "2020-10-25 02:59:59.999999999")));
-        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-10-25 00:59:59.999999999999 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "2020-10-25 02:59:59.999999999999")));
+        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-25 00:59:59 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-10-25 02:59:59"))));
+        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-10-25 00:59:59.999 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "2020-10-25 02:59:59.999"))));
+        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-10-25 00:59:59.999999 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "2020-10-25 02:59:59.999999"))));
+        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-25 00:59:59.999999999 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-10-25 02:59:59.999999999"))));
+        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-10-25 00:59:59.999999999999 UTC'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "2020-10-25 02:59:59.999999999999"))));
         // first within
-        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-25 01:00:00 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-10-25 02:00:00")));
-        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-10-25 01:00:00.000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "2020-10-25 02:00:00.000")));
-        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-10-25 01:00:00.000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "2020-10-25 02:00:00.000000")));
-        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-25 01:00:00.000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "2020-10-25 02:00:00.000000000")));
-        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-10-25 01:00:00.000000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "2020-10-25 02:00:00.000000000000")));
+        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-25 01:00:00 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-10-25 02:00:00"))));
+        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-10-25 01:00:00.000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "2020-10-25 02:00:00.000"))));
+        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-10-25 01:00:00.000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "2020-10-25 02:00:00.000000"))));
+        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-25 01:00:00.000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-10-25 02:00:00.000000000"))));
+        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-10-25 01:00:00.000000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "2020-10-25 02:00:00.000000000000"))));
         // last within
-        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-25 01:59:59 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-10-25 02:59:59")));
-        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-10-25 01:59:59.999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "2020-10-25 02:59:59.999")));
-        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-10-25 01:59:59.999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "2020-10-25 02:59:59.999999")));
-        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-25 01:59:59.999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "2020-10-25 02:59:59.999999999")));
-        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-10-25 01:59:59.999999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "2020-10-25 02:59:59.999999999999")));
+        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-25 01:59:59 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-10-25 02:59:59"))));
+        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-10-25 01:59:59.999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "2020-10-25 02:59:59.999"))));
+        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-10-25 01:59:59.999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "2020-10-25 02:59:59.999999"))));
+        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-25 01:59:59.999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-10-25 02:59:59.999999999"))));
+        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-10-25 01:59:59.999999999999 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "2020-10-25 02:59:59.999999999999"))));
         // first after
-        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-25 02:00:00 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(0), "2020-10-25 03:00:00")));
-        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-10-25 02:00:00.000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "2020-10-25 03:00:00.000")));
-        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-10-25 02:00:00.000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "2020-10-25 03:00:00.000000")));
-        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-25 02:00:00.000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "2020-10-25 03:00:00.000000000")));
-        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-10-25 02:00:00.000000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "2020-10-25 03:00:00.000000000000")));
+        testUnwrap(warsawSession, "timestamp(0)", "a > TIMESTAMP '2020-10-25 02:00:00 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(0), DateTimes.parseTimestamp(0, "2020-10-25 03:00:00"))));
+        testUnwrap(warsawSession, "timestamp(3)", "a > TIMESTAMP '2020-10-25 02:00:00.000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "2020-10-25 03:00:00.000"))));
+        testUnwrap(warsawSession, "timestamp(6)", "a > TIMESTAMP '2020-10-25 02:00:00.000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "2020-10-25 03:00:00.000000"))));
+        testUnwrap(warsawSession, "timestamp(9)", "a > TIMESTAMP '2020-10-25 02:00:00.000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "2020-10-25 03:00:00.000000000"))));
+        testUnwrap(warsawSession, "timestamp(12)", "a > TIMESTAMP '2020-10-25 02:00:00.000000000000 UTC'", new ComparisonExpression(GREATER_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "2020-10-25 03:00:00.000000000000"))));
     }
 
     @Test
@@ -636,30 +640,30 @@ public class TestUnwrapCastInComparison
         testUnwrap("bigint", "a = DOUBLE '-9223372036854775807'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), DOUBLE), GenericLiteral.constant(DOUBLE, -9.223372036854776E18)));
 
         // BIGINT->REAL implicit cast is not injective if the real constant is >= 2^23 and <= real(2^63 - 1)
-        testUnwrap("bigint", "a = REAL '8388608'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), new GenericLiteral(REAL, "8388608.0")));
+        testUnwrap("bigint", "a = REAL '8388608'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), GenericLiteral.constant(REAL, Reals.toReal(8388608.0f))));
 
-        testUnwrap("bigint", "a = REAL '9223372036854775807'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), new GenericLiteral(REAL, "9.223372E18")));
+        testUnwrap("bigint", "a = REAL '9223372036854775807'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), GenericLiteral.constant(REAL, Reals.toReal(9.223372E18f))));
 
         // BIGINT->REAL implicit cast is not injective if the real constant is <= -2^23 and >= real(-2^63 + 1)
-        testUnwrap("bigint", "a = REAL '-8388608'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), new GenericLiteral(REAL, "-8388608.0")));
+        testUnwrap("bigint", "a = REAL '-8388608'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), GenericLiteral.constant(REAL, Reals.toReal(-8388608.0f))));
 
-        testUnwrap("bigint", "a = REAL '-9223372036854775807'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), new GenericLiteral(REAL, "-9.223372E18")));
+        testUnwrap("bigint", "a = REAL '-9223372036854775807'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), GenericLiteral.constant(REAL, Reals.toReal(-9.223372E18f))));
 
         // INTEGER->REAL implicit cast is not injective if the real constant is >= 2^23 and <= 2^31 - 1
-        testUnwrap("integer", "a = REAL '8388608'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), new GenericLiteral(REAL, "8388608.0")));
+        testUnwrap("integer", "a = REAL '8388608'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), GenericLiteral.constant(REAL, Reals.toReal(8388608.0f))));
 
-        testUnwrap("integer", "a = REAL '2147483647'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), new GenericLiteral(REAL, "2.1474836E9")));
+        testUnwrap("integer", "a = REAL '2147483647'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), GenericLiteral.constant(REAL, Reals.toReal(2.1474836E9f))));
 
         // INTEGER->REAL implicit cast is not injective if the real constant is <= -2^23 and >= -2^31 + 1
-        testUnwrap("integer", "a = REAL '-8388608'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), new GenericLiteral(REAL, "-8388608.0")));
+        testUnwrap("integer", "a = REAL '-8388608'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), GenericLiteral.constant(REAL, Reals.toReal(-8388608.0f))));
 
-        testUnwrap("integer", "a = REAL '-2147483647'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), new GenericLiteral(REAL, "-2.1474836E9")));
+        testUnwrap("integer", "a = REAL '-2147483647'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), GenericLiteral.constant(REAL, Reals.toReal(-2.1474836E9f))));
 
         // DECIMAL(p)->DOUBLE not injective for p > 15
         testUnwrap("decimal(16)", "a = DOUBLE '1'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), DOUBLE), GenericLiteral.constant(DOUBLE, 1.0)));
 
         // DECIMAL(p)->REAL not injective for p > 7
-        testUnwrap("decimal(8)", "a = REAL '1'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), new GenericLiteral(REAL, "1.0")));
+        testUnwrap("decimal(8)", "a = REAL '1'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), REAL), GenericLiteral.constant(REAL, Reals.toReal(1.0f))));
 
         // no implicit cast between VARCHAR->INTEGER
         testUnwrap("varchar", "CAST(a AS INTEGER) = INTEGER '1'", new ComparisonExpression(EQUAL, new Cast(new SymbolReference("a"), INTEGER), GenericLiteral.constant(INTEGER, 1L)));
@@ -672,52 +676,52 @@ public class TestUnwrapCastInComparison
     public void testUnwrapCastTimestampAsDate()
     {
         // equal
-        testUnwrap("timestamp(3)", "CAST(a AS DATE) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")))));
-        testUnwrap("timestamp(6)", "CAST(a AS DATE) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")))));
-        testUnwrap("timestamp(9)", "CAST(a AS DATE) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")))));
-        testUnwrap("timestamp(12)", "CAST(a AS DATE) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")))));
+        testUnwrap("timestamp(3)", "CAST(a AS DATE) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))))));
+        testUnwrap("timestamp(6)", "CAST(a AS DATE) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))))));
+        testUnwrap("timestamp(9)", "CAST(a AS DATE) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))))));
+        testUnwrap("timestamp(12)", "CAST(a AS DATE) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))))));
 
         // not equal
-        testUnwrap("timestamp(3)", "CAST(a AS DATE) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")))));
-        testUnwrap("timestamp(6)", "CAST(a AS DATE) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")))));
-        testUnwrap("timestamp(9)", "CAST(a AS DATE) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")))));
-        testUnwrap("timestamp(12)", "CAST(a AS DATE) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")))));
+        testUnwrap("timestamp(3)", "CAST(a AS DATE) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))))));
+        testUnwrap("timestamp(6)", "CAST(a AS DATE) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))))));
+        testUnwrap("timestamp(9)", "CAST(a AS DATE) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))))));
+        testUnwrap("timestamp(12)", "CAST(a AS DATE) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))))));
 
         // less than
-        testUnwrap("timestamp(3)", "CAST(a AS DATE) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")));
-        testUnwrap("timestamp(6)", "CAST(a AS DATE) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")));
-        testUnwrap("timestamp(9)", "CAST(a AS DATE) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")));
-        testUnwrap("timestamp(12)", "CAST(a AS DATE) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")));
+        testUnwrap("timestamp(3)", "CAST(a AS DATE) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))));
+        testUnwrap("timestamp(6)", "CAST(a AS DATE) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))));
+        testUnwrap("timestamp(9)", "CAST(a AS DATE) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))));
+        testUnwrap("timestamp(12)", "CAST(a AS DATE) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))));
 
         // less than or equal
-        testUnwrap("timestamp(3)", "CAST(a AS DATE) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")));
-        testUnwrap("timestamp(6)", "CAST(a AS DATE) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")));
-        testUnwrap("timestamp(9)", "CAST(a AS DATE) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")));
-        testUnwrap("timestamp(12)", "CAST(a AS DATE) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")));
+        testUnwrap("timestamp(3)", "CAST(a AS DATE) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))));
+        testUnwrap("timestamp(6)", "CAST(a AS DATE) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))));
+        testUnwrap("timestamp(9)", "CAST(a AS DATE) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))));
+        testUnwrap("timestamp(12)", "CAST(a AS DATE) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))));
 
         // greater than
-        testUnwrap("timestamp(3)", "CAST(a AS DATE) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")));
-        testUnwrap("timestamp(6)", "CAST(a AS DATE) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")));
-        testUnwrap("timestamp(9)", "CAST(a AS DATE) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")));
-        testUnwrap("timestamp(12)", "CAST(a AS DATE) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")));
+        testUnwrap("timestamp(3)", "CAST(a AS DATE) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))));
+        testUnwrap("timestamp(6)", "CAST(a AS DATE) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))));
+        testUnwrap("timestamp(9)", "CAST(a AS DATE) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))));
+        testUnwrap("timestamp(12)", "CAST(a AS DATE) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))));
 
         // greater than or equal
-        testUnwrap("timestamp(3)", "CAST(a AS DATE) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")));
-        testUnwrap("timestamp(6)", "CAST(a AS DATE) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")));
-        testUnwrap("timestamp(9)", "CAST(a AS DATE) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")));
-        testUnwrap("timestamp(12)", "CAST(a AS DATE) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")));
+        testUnwrap("timestamp(3)", "CAST(a AS DATE) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))));
+        testUnwrap("timestamp(6)", "CAST(a AS DATE) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))));
+        testUnwrap("timestamp(9)", "CAST(a AS DATE) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))));
+        testUnwrap("timestamp(12)", "CAST(a AS DATE) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))));
 
         // is distinct
-        testUnwrap("timestamp(3)", "CAST(a AS DATE) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")))));
-        testUnwrap("timestamp(6)", "CAST(a AS DATE) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")))));
-        testUnwrap("timestamp(9)", "CAST(a AS DATE) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")))));
-        testUnwrap("timestamp(12)", "CAST(a AS DATE) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")))));
+        testUnwrap("timestamp(3)", "CAST(a AS DATE) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))))));
+        testUnwrap("timestamp(6)", "CAST(a AS DATE) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))))));
+        testUnwrap("timestamp(9)", "CAST(a AS DATE) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))))));
+        testUnwrap("timestamp(12)", "CAST(a AS DATE) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))))));
 
         // is not distinct
-        testUnwrap("timestamp(3)", "CAST(a AS DATE) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")))));
-        testUnwrap("timestamp(6)", "CAST(a AS DATE) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")))));
-        testUnwrap("timestamp(9)", "CAST(a AS DATE) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")))));
-        testUnwrap("timestamp(12)", "CAST(a AS DATE) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")))));
+        testUnwrap("timestamp(3)", "CAST(a AS DATE) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))))));
+        testUnwrap("timestamp(6)", "CAST(a AS DATE) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))))));
+        testUnwrap("timestamp(9)", "CAST(a AS DATE) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))))));
+        testUnwrap("timestamp(12)", "CAST(a AS DATE) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))))));
 
         // null date literal
         testUnwrap("timestamp(3)", "CAST(a AS DATE) = NULL", new Cast(new NullLiteral(), BOOLEAN));
@@ -728,62 +732,62 @@ public class TestUnwrapCastInComparison
         testUnwrap("timestamp(3)", "CAST(a AS DATE) IS DISTINCT FROM NULL", new NotExpression(new IsNullPredicate(new Cast(new SymbolReference("a"), DATE))));
 
         // non-optimized expression on the right
-        testUnwrap("timestamp(3)", "CAST(a AS DATE) = DATE '1981-06-22' + INTERVAL '2' DAY", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-24 00:00:00.000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-25 00:00:00.000")))));
+        testUnwrap("timestamp(3)", "CAST(a AS DATE) = DATE '1981-06-22' + INTERVAL '2' DAY", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-24 00:00:00.000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-25 00:00:00.000"))))));
 
         // cast on the right
-        testUnwrap("timestamp(3)", "DATE '1981-06-22' = CAST(a AS DATE)", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")))));
+        testUnwrap("timestamp(3)", "DATE '1981-06-22' = CAST(a AS DATE)", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))))));
     }
 
     @Test
     public void testUnwrapConvertTimestatmpToDate()
     {
         // equal
-        testUnwrap("timestamp(3)", "date(a) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")))));
-        testUnwrap("timestamp(6)", "date(a) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")))));
-        testUnwrap("timestamp(9)", "date(a) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")))));
-        testUnwrap("timestamp(12)", "date(a) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")))));
+        testUnwrap("timestamp(3)", "date(a) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))))));
+        testUnwrap("timestamp(6)", "date(a) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))))));
+        testUnwrap("timestamp(9)", "date(a) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))))));
+        testUnwrap("timestamp(12)", "date(a) = DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))))));
 
         // not equal
-        testUnwrap("timestamp(3)", "date(a) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")))));
-        testUnwrap("timestamp(6)", "date(a) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")))));
-        testUnwrap("timestamp(9)", "date(a) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")))));
-        testUnwrap("timestamp(12)", "date(a) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")))));
+        testUnwrap("timestamp(3)", "date(a) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))))));
+        testUnwrap("timestamp(6)", "date(a) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))))));
+        testUnwrap("timestamp(9)", "date(a) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))))));
+        testUnwrap("timestamp(12)", "date(a) <> DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))))));
 
         // less than
-        testUnwrap("timestamp(3)", "date(a) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")));
-        testUnwrap("timestamp(6)", "date(a) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")));
-        testUnwrap("timestamp(9)", "date(a) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")));
-        testUnwrap("timestamp(12)", "date(a) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")));
+        testUnwrap("timestamp(3)", "date(a) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))));
+        testUnwrap("timestamp(6)", "date(a) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))));
+        testUnwrap("timestamp(9)", "date(a) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))));
+        testUnwrap("timestamp(12)", "date(a) < DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))));
 
         // less than or equal
-        testUnwrap("timestamp(3)", "date(a) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")));
-        testUnwrap("timestamp(6)", "date(a) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")));
-        testUnwrap("timestamp(9)", "date(a) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")));
-        testUnwrap("timestamp(12)", "date(a) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")));
+        testUnwrap("timestamp(3)", "date(a) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))));
+        testUnwrap("timestamp(6)", "date(a) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))));
+        testUnwrap("timestamp(9)", "date(a) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))));
+        testUnwrap("timestamp(12)", "date(a) <= DATE '1981-06-22'", new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))));
 
         // greater than
-        testUnwrap("timestamp(3)", "date(a) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")));
-        testUnwrap("timestamp(6)", "date(a) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")));
-        testUnwrap("timestamp(9)", "date(a) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")));
-        testUnwrap("timestamp(12)", "date(a) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")));
+        testUnwrap("timestamp(3)", "date(a) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))));
+        testUnwrap("timestamp(6)", "date(a) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))));
+        testUnwrap("timestamp(9)", "date(a) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))));
+        testUnwrap("timestamp(12)", "date(a) > DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))));
 
         // greater than or equal
-        testUnwrap("timestamp(3)", "date(a) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")));
-        testUnwrap("timestamp(6)", "date(a) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")));
-        testUnwrap("timestamp(9)", "date(a) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")));
-        testUnwrap("timestamp(12)", "date(a) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")));
+        testUnwrap("timestamp(3)", "date(a) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))));
+        testUnwrap("timestamp(6)", "date(a) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))));
+        testUnwrap("timestamp(9)", "date(a) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))));
+        testUnwrap("timestamp(12)", "date(a) >= DATE '1981-06-22'", new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))));
 
         // is distinct
-        testUnwrap("timestamp(3)", "date(a) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")))));
-        testUnwrap("timestamp(6)", "date(a) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")))));
-        testUnwrap("timestamp(9)", "date(a) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")))));
-        testUnwrap("timestamp(12)", "date(a) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")))));
+        testUnwrap("timestamp(3)", "date(a) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))))));
+        testUnwrap("timestamp(6)", "date(a) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))))));
+        testUnwrap("timestamp(9)", "date(a) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))))));
+        testUnwrap("timestamp(12)", "date(a) IS DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(OR, ImmutableList.of(new IsNullPredicate(new SymbolReference("a")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))))));
 
         // is not distinct
-        testUnwrap("timestamp(3)", "date(a) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")))));
-        testUnwrap("timestamp(6)", "date(a) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-22 00:00:00.000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(6), "1981-06-23 00:00:00.000000")))));
-        testUnwrap("timestamp(9)", "date(a) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-22 00:00:00.000000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(9), "1981-06-23 00:00:00.000000000")))));
-        testUnwrap("timestamp(12)", "date(a) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-22 00:00:00.000000000000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(12), "1981-06-23 00:00:00.000000000000")))));
+        testUnwrap("timestamp(3)", "date(a) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))))));
+        testUnwrap("timestamp(6)", "date(a) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-22 00:00:00.000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(6), DateTimes.parseTimestamp(6, "1981-06-23 00:00:00.000000"))))));
+        testUnwrap("timestamp(9)", "date(a) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-22 00:00:00.000000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(9), DateTimes.parseTimestamp(9, "1981-06-23 00:00:00.000000000"))))));
+        testUnwrap("timestamp(12)", "date(a) IS NOT DISTINCT FROM DATE '1981-06-22'", new LogicalExpression(AND, ImmutableList.of(new NotExpression(new IsNullPredicate(new SymbolReference("a"))), new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-22 00:00:00.000000000000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(12), DateTimes.parseTimestamp(12, "1981-06-23 00:00:00.000000000000"))))));
 
         // null date literal
         testUnwrap("timestamp(3)", "date(a) = NULL", new Cast(new NullLiteral(), BOOLEAN));
@@ -794,10 +798,10 @@ public class TestUnwrapCastInComparison
         testUnwrap("timestamp(3)", "date(a) IS DISTINCT FROM NULL", new NotExpression(new IsNullPredicate(new Cast(new SymbolReference("a"), DATE))));
 
         // non-optimized expression on the right
-        testUnwrap("timestamp(3)", "date(a) = DATE '1981-06-22' + INTERVAL '2' DAY", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-24 00:00:00.000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-25 00:00:00.000")))));
+        testUnwrap("timestamp(3)", "date(a) = DATE '1981-06-22' + INTERVAL '2' DAY", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-24 00:00:00.000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-25 00:00:00.000"))))));
 
         // cast on the right
-        testUnwrap("timestamp(3)", "DATE '1981-06-22' = date(a)", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-22 00:00:00.000")), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), new GenericLiteral(createTimestampType(3), "1981-06-23 00:00:00.000")))));
+        testUnwrap("timestamp(3)", "DATE '1981-06-22' = date(a)", new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-22 00:00:00.000"))), new ComparisonExpression(LESS_THAN, new SymbolReference("a"), GenericLiteral.constant(createTimestampType(3), DateTimes.parseTimestamp(3, "1981-06-23 00:00:00.000"))))));
     }
 
     private void testRemoveFilter(String inputType, String inputPredicate)

@@ -22,14 +22,11 @@ import io.trino.metadata.TableHandle;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorPartitioningHandle;
 import io.trino.spi.type.Type;
-import io.trino.sql.ir.BinaryLiteral;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.ExpressionFormatter;
 import io.trino.sql.ir.GenericLiteral;
-import io.trino.sql.ir.IntervalLiteral;
 import io.trino.sql.ir.Literal;
 import io.trino.sql.ir.NullLiteral;
-import io.trino.sql.ir.StringLiteral;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.PartitioningHandle;
 import io.trino.sql.planner.Symbol;
@@ -50,7 +47,6 @@ import static io.trino.sql.planner.plan.TableWriterNode.MergeTarget;
 import static io.trino.sql.planner.plan.TableWriterNode.RefreshMaterializedViewTarget;
 import static io.trino.sql.planner.plan.TableWriterNode.TableExecuteTarget;
 import static io.trino.sql.planner.plan.TableWriterNode.WriterTarget;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Locale.ENGLISH;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toMap;
@@ -112,20 +108,11 @@ public class CounterBasedAnonymizer
 
     private String anonymizeLiteral(Literal node)
     {
-        if (node instanceof StringLiteral literal) {
-            return anonymizeLiteral("string", literal.getValue());
-        }
         if (node instanceof GenericLiteral literal) {
             if (literal.getType().equals(BOOLEAN)) {
-                return literal.getValue();
+                return literal.getRawValue().toString();
             }
-            return anonymizeLiteral(literal.getType().getDisplayName(), literal.getValue());
-        }
-        if (node instanceof BinaryLiteral literal) {
-            return anonymizeLiteral("binary", new String(literal.getValue(), UTF_8));
-        }
-        if (node instanceof IntervalLiteral literal) {
-            return anonymizeLiteral("interval", literal.getValue());
+            return anonymizeLiteral(literal.getType().getDisplayName(), literal.getRawValue());
         }
         if (node instanceof NullLiteral) {
             return "null";

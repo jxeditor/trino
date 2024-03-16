@@ -77,7 +77,6 @@ import static io.trino.SystemSessionProperties.isComplexExpressionPushdown;
 import static io.trino.metadata.GlobalFunctionCatalog.builtinFunctionName;
 import static io.trino.metadata.GlobalFunctionCatalog.isBuiltinFunctionName;
 import static io.trino.metadata.LanguageFunctionManager.isInlineFunction;
-import static io.trino.metadata.LiteralFunction.LITERAL_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.ADD_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.AND_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.ARRAY_CONSTRUCTOR_FUNCTION_NAME;
@@ -118,9 +117,9 @@ public final class ConnectorExpressionTranslator
 {
     private ConnectorExpressionTranslator() {}
 
-    public static Expression translate(Session session, ConnectorExpression expression, PlannerContext plannerContext, Map<String, Symbol> variableMappings, LiteralEncoder literalEncoder)
+    public static Expression translate(Session session, ConnectorExpression expression, PlannerContext plannerContext, Map<String, Symbol> variableMappings)
     {
-        return new ConnectorToSqlExpressionTranslator(session, plannerContext, literalEncoder, variableMappings)
+        return new ConnectorToSqlExpressionTranslator(session, plannerContext, variableMappings)
                 .translate(expression)
                 .orElseThrow(() -> new UnsupportedOperationException("Expression is not supported: " + expression.toString()));
     }
@@ -139,7 +138,7 @@ public final class ConnectorExpressionTranslator
             IrTypeAnalyzer typeAnalyzer)
     {
         Map<NodeRef<Expression>, Type> remainingExpressionTypes = typeAnalyzer.getTypes(session, types, expression);
-        ConnectorExpressionTranslator.SqlToConnectorExpressionTranslator translator = new ConnectorExpressionTranslator.SqlToConnectorExpressionTranslator(
+        SqlToConnectorExpressionTranslator translator = new SqlToConnectorExpressionTranslator(
                 session,
                 remainingExpressionTypes,
                 plannerContext);
@@ -200,14 +199,12 @@ public final class ConnectorExpressionTranslator
     {
         private final Session session;
         private final PlannerContext plannerContext;
-        private final LiteralEncoder literalEncoder;
         private final Map<String, Symbol> variableMappings;
 
-        public ConnectorToSqlExpressionTranslator(Session session, PlannerContext plannerContext, LiteralEncoder literalEncoder, Map<String, Symbol> variableMappings)
+        public ConnectorToSqlExpressionTranslator(Session session, PlannerContext plannerContext, Map<String, Symbol> variableMappings)
         {
             this.session = requireNonNull(session, "session is null");
             this.plannerContext = requireNonNull(plannerContext, "plannerContext is null");
-            this.literalEncoder = requireNonNull(literalEncoder, "literalEncoder is null");
             this.variableMappings = requireNonNull(variableMappings, "variableMappings is null");
         }
 
@@ -219,7 +216,7 @@ public final class ConnectorExpressionTranslator
             }
 
             if (expression instanceof Constant) {
-                return Optional.of(literalEncoder.toExpression(((Constant) expression).getValue(), expression.getType()));
+                return Optional.of(LiteralEncoder.toExpression(((Constant) expression).getValue(), expression.getType()));
             }
 
             if (expression instanceof FieldDereference dereference) {
@@ -544,14 +541,12 @@ public final class ConnectorExpressionTranslator
         private final Session session;
         private final Map<NodeRef<Expression>, Type> types;
         private final PlannerContext plannerContext;
-        private final IrLiteralInterpreter literalInterpreter;
 
         public SqlToConnectorExpressionTranslator(Session session, Map<NodeRef<Expression>, Type> types, PlannerContext plannerContext)
         {
             this.session = requireNonNull(session, "session is null");
             this.types = requireNonNull(types, "types is null");
             this.plannerContext = requireNonNull(plannerContext, "plannerContext is null");
-            this.literalInterpreter = new IrLiteralInterpreter(plannerContext, session);
         }
 
         @Override
@@ -563,8 +558,10 @@ public final class ConnectorExpressionTranslator
         @Override
         protected Optional<ConnectorExpression> visitLiteral(Literal node, Void context)
         {
-            Type type = typeOf(node);
-            return Optional.of(new Constant(literalInterpreter.evaluate(node, type), type));
+            return Optional.of(switch (node) {
+                case GenericLiteral literal -> constantFor(literal.getType(), literal.getRawValue());
+                case NullLiteral nullLiteral -> new Constant(null, typeOf(node));
+            });
         }
 
         @Override
@@ -642,7 +639,7 @@ public final class ConnectorExpressionTranslator
         protected Optional<ConnectorExpression> visitCast(Cast node, Void context)
         {
             if (isEffectivelyLiteral(plannerContext, session, node)) {
-                return Optional.of(constantFor(node));
+                return Optional.of(constantFor(typeOf(node), evaluateConstantExpression(node, plannerContext, session)));
             }
 
             if (node.isSafe()) {
@@ -670,13 +667,11 @@ public final class ConnectorExpressionTranslator
             }
 
             if (isEffectivelyLiteral(plannerContext, session, node)) {
-                return Optional.of(constantFor(node));
+                return Optional.of(constantFor(typeOf(node), evaluateConstantExpression(node, plannerContext, session)));
             }
 
             CatalogSchemaFunctionName functionName = ResolvedFunction.extractFunctionName(node.getName());
             checkArgument(!isDynamicFilterFunction(functionName), "Dynamic filter has no meaning for a connector, it should not be translated into ConnectorExpression");
-            // literals should be handled by isEffectivelyLiteral case above
-            checkArgument(!builtinFunctionName(LITERAL_FUNCTION_NAME).equals(functionName), "Unexpected literal function");
 
             if (functionName.equals(builtinFunctionName(LIKE_FUNCTION_NAME))) {
                 return translateLike(node);
@@ -781,11 +776,8 @@ public final class ConnectorExpressionTranslator
             return Optional.empty();
         }
 
-        private ConnectorExpression constantFor(Expression node)
+        private ConnectorExpression constantFor(Type type, Object value)
         {
-            Type type = typeOf(node);
-            Object value = evaluateConstantExpression(node, plannerContext, session);
-
             if (type == JONI_REGEXP) {
                 Slice pattern = ((JoniRegexp) value).pattern();
                 return new Constant(pattern, createVarcharType(countCodePoints(pattern)));
@@ -824,7 +816,7 @@ public final class ConnectorExpressionTranslator
                 return Optional.empty();
             }
 
-            return Optional.of(new FieldDereference(typeOf(node), translatedBase.get(), Integer.parseInt(((GenericLiteral) node.getIndex()).getValue()) - 1));
+            return Optional.of(new FieldDereference(typeOf(node), translatedBase.get(), (int) ((long) ((GenericLiteral) node.getIndex()).getRawValue() - 1)));
         }
 
         @Override

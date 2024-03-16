@@ -15,7 +15,6 @@ package io.trino.sql.ir;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
-import com.google.common.io.BaseEncoding;
 
 import java.util.List;
 import java.util.Optional;
@@ -63,22 +62,6 @@ public final class ExpressionFormatter
         }
 
         @Override
-        protected String visitStringLiteral(StringLiteral node, Void context)
-        {
-            return literalFormatter
-                    .map(formatter -> formatter.apply(node))
-                    .orElseGet(() -> formatStringLiteral(node.getValue()));
-        }
-
-        @Override
-        protected String visitBinaryLiteral(BinaryLiteral node, Void context)
-        {
-            return literalFormatter
-                    .map(formatter -> formatter.apply(node))
-                    .orElseGet(() -> "X'" + BaseEncoding.base16().encode(node.getValue()) + "'");
-        }
-
-        @Override
         protected String visitArray(Array node, Void context)
         {
             return node.getValues().stream()
@@ -97,7 +80,7 @@ public final class ExpressionFormatter
         {
             return literalFormatter
                     .map(formatter -> formatter.apply(node))
-                    .orElseGet(() -> node.getType() + " " + formatStringLiteral(node.getValue()));
+                    .orElseGet(() -> node.getType() + " '" + node.getType().getObjectValue(null, node.getRawValueAsBlock(), 0) + "'");
         }
 
         @Override
@@ -106,25 +89,6 @@ public final class ExpressionFormatter
             return literalFormatter
                     .map(formatter -> formatter.apply(node))
                     .orElse("null");
-        }
-
-        @Override
-        protected String visitIntervalLiteral(IntervalLiteral node, Void context)
-        {
-            if (literalFormatter.isPresent()) {
-                return literalFormatter.get().apply(node);
-            }
-            String sign = (node.getSign() == IntervalLiteral.Sign.NEGATIVE) ? "-" : "";
-            StringBuilder builder = new StringBuilder()
-                    .append("INTERVAL ")
-                    .append(sign)
-                    .append("'").append(node.getValue()).append("' ")
-                    .append(node.getStartField());
-
-            if (node.getEndField().isPresent()) {
-                builder.append(" TO ").append(node.getEndField().get());
-            }
-            return builder.toString();
         }
 
         @Override

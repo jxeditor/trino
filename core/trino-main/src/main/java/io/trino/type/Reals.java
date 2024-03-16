@@ -11,15 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.sql.ir;
+package io.trino.type;
 
-public abstract sealed class Literal
-        extends Expression
-        permits GenericLiteral, NullLiteral
+public class Reals
 {
-    @Override
-    public <R, C> R accept(IrVisitor<R, C> visitor, C context)
+    private Reals() {}
+
+    /**
+     * Converts a Java float into Trino's native carrier encoding for REAL type
+     */
+    public static long toReal(float value)
     {
-        return visitor.visitLiteral(this, context);
+        return Float.floatToIntBits(value);
     }
 }

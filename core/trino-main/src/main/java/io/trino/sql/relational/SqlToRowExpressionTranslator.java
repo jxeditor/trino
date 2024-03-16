@@ -19,24 +19,12 @@ import io.trino.Session;
 import io.trino.metadata.FunctionManager;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.ResolvedFunction;
-import io.trino.spi.type.BigintType;
-import io.trino.spi.type.CharType;
-import io.trino.spi.type.DecimalType;
-import io.trino.spi.type.DoubleType;
-import io.trino.spi.type.IntegerType;
 import io.trino.spi.type.RowType;
-import io.trino.spi.type.SmallintType;
-import io.trino.spi.type.TimeType;
-import io.trino.spi.type.TimeWithTimeZoneType;
-import io.trino.spi.type.TimestampType;
-import io.trino.spi.type.TimestampWithTimeZoneType;
-import io.trino.spi.type.TinyintType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeManager;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
 import io.trino.sql.ir.ArithmeticUnaryExpression;
 import io.trino.sql.ir.BetweenPredicate;
-import io.trino.sql.ir.BinaryLiteral;
 import io.trino.sql.ir.BindExpression;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
@@ -47,7 +35,6 @@ import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.InPredicate;
-import io.trino.sql.ir.IntervalLiteral;
 import io.trino.sql.ir.IrVisitor;
 import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
@@ -60,14 +47,12 @@ import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.ir.Row;
 import io.trino.sql.ir.SearchedCaseExpression;
 import io.trino.sql.ir.SimpleCaseExpression;
-import io.trino.sql.ir.StringLiteral;
 import io.trino.sql.ir.SubscriptExpression;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.ir.WhenClause;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.relational.SpecialForm.Form;
 import io.trino.sql.relational.optimizer.ExpressionOptimizer;
-import io.trino.type.JsonType;
 import io.trino.type.TypeCoercion;
 import io.trino.type.UnknownType;
 
@@ -75,8 +60,6 @@ import java.util.List;
 import java.util.Map;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static io.airlift.slice.Slices.utf8Slice;
-import static io.airlift.slice.Slices.wrappedBuffer;
 import static io.trino.metadata.GlobalFunctionCatalog.builtinFunctionName;
 import static io.trino.spi.function.OperatorType.EQUAL;
 import static io.trino.spi.function.OperatorType.HASH_CODE;
@@ -86,9 +69,6 @@ import static io.trino.spi.function.OperatorType.NEGATION;
 import static io.trino.spi.function.OperatorType.SUBSCRIPT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.IntegerType.INTEGER;
-import static io.trino.spi.type.VarbinaryType.VARBINARY;
-import static io.trino.spi.type.VarcharType.VARCHAR;
-import static io.trino.spi.type.VarcharType.createVarcharType;
 import static io.trino.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static io.trino.sql.relational.Expressions.call;
 import static io.trino.sql.relational.Expressions.constant;
@@ -107,12 +87,6 @@ import static io.trino.sql.relational.SpecialForm.Form.OR;
 import static io.trino.sql.relational.SpecialForm.Form.ROW_CONSTRUCTOR;
 import static io.trino.sql.relational.SpecialForm.Form.SWITCH;
 import static io.trino.sql.relational.SpecialForm.Form.WHEN;
-import static io.trino.type.DateTimes.parseTime;
-import static io.trino.type.DateTimes.parseTimeWithTimeZone;
-import static io.trino.type.DateTimes.parseTimestamp;
-import static io.trino.type.DateTimes.parseTimestampWithTimeZone;
-import static io.trino.util.DateTimeUtils.parseDayTimeInterval;
-import static io.trino.util.DateTimeUtils.parseYearMonthInterval;
 import static java.util.Objects.requireNonNull;
 
 public final class SqlToRowExpressionTranslator
@@ -182,52 +156,9 @@ public final class SqlToRowExpressionTranslator
         }
 
         @Override
-        protected RowExpression visitStringLiteral(StringLiteral node, Void context)
-        {
-            return constant(utf8Slice(node.getValue()), createVarcharType(node.length()));
-        }
-
-        @Override
-        protected RowExpression visitBinaryLiteral(BinaryLiteral node, Void context)
-        {
-            return constant(wrappedBuffer(node.getValue()), VARBINARY);
-        }
-
-        @Override
         protected RowExpression visitGenericLiteral(GenericLiteral node, Void context)
         {
-            return switch (node.getType()) {
-                case TinyintType type -> constant(node.getRawValue(), type);
-                case SmallintType type -> constant(node.getRawValue(), type);
-                case IntegerType type -> constant(node.getRawValue(), type);
-                case BigintType type -> constant(node.getRawValue(), type);
-                case DoubleType type -> constant(node.getRawValue(), type);
-                case DecimalType type -> constant(node.getRawValue(), type);
-                case CharType type -> constant(utf8Slice(node.getValue()), type);
-                case TimeType type -> constant(parseTime(node.getValue()), type);
-                case TimeWithTimeZoneType type -> constant(parseTimeWithTimeZone(type.getPrecision(), node.getValue()), type);
-                case TimestampType type -> constant(parseTimestamp(type.getPrecision(), node.getValue()), type);
-                case TimestampWithTimeZoneType type -> constant(parseTimestampWithTimeZone(type.getPrecision(), node.getValue()), type);
-                case JsonType unused -> call(
-                        metadata.resolveBuiltinFunction("json_parse", fromTypes(VARCHAR)),
-                        constant(utf8Slice(node.getValue()), VARCHAR));
-                case Type type -> call(
-                        metadata.getCoercion(VARCHAR, type),
-                        constant(utf8Slice(node.getValue()), VARCHAR));
-            };
-        }
-
-        @Override
-        protected RowExpression visitIntervalLiteral(IntervalLiteral node, Void context)
-        {
-            long value;
-            if (node.isYearToMonth()) {
-                value = node.getSign().multiplier() * parseYearMonthInterval(node.getValue(), node.getStartField(), node.getEndField());
-            }
-            else {
-                value = node.getSign().multiplier() * parseDayTimeInterval(node.getValue(), node.getStartField(), node.getEndField());
-            }
-            return constant(value, getType(node));
+            return constant(node.getRawValue(), node.getType());
         }
 
         @Override

@@ -14,17 +14,14 @@
 package io.trino.sql.planner.planprinter;
 
 import com.google.common.collect.ImmutableList;
-import io.trino.sql.ir.BinaryLiteral;
+import io.airlift.slice.Slices;
+import io.trino.spi.type.VarcharType;
 import io.trino.sql.ir.ComparisonExpression;
 import io.trino.sql.ir.GenericLiteral;
-import io.trino.sql.ir.IntervalLiteral;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NullLiteral;
-import io.trino.sql.ir.StringLiteral;
 import io.trino.sql.ir.SymbolReference;
 import org.junit.jupiter.api.Test;
-
-import java.util.Optional;
 
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.IntegerType.INTEGER;
@@ -63,22 +60,16 @@ public class TestCounterBasedAnonymizer
     {
         CounterBasedAnonymizer anonymizer = new CounterBasedAnonymizer();
 
-        assertThat(anonymizer.anonymize(new BinaryLiteral(new byte[] {1, 2, 3})))
-                .isEqualTo("'binary_literal_1'");
-
-        assertThat(anonymizer.anonymize(new StringLiteral("abc")))
-                .isEqualTo("'string_literal_2'");
+        assertThat(anonymizer.anonymize(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("abc"))))
+                .isEqualTo("'varchar_literal_1'");
 
         assertThat(anonymizer.anonymize(GenericLiteral.constant(BIGINT, 1L)))
-                .isEqualTo("'bigint_literal_3'");
+                .isEqualTo("'bigint_literal_2'");
 
         assertThat(anonymizer.anonymize(TRUE_LITERAL))
                 .isEqualTo("true");
 
         assertThat(anonymizer.anonymize(new NullLiteral()))
                 .isEqualTo("null");
-
-        assertThat(anonymizer.anonymize(new IntervalLiteral("33", IntervalLiteral.Sign.POSITIVE, IntervalLiteral.IntervalField.DAY, Optional.empty())))
-                .isEqualTo("'interval_literal_4'");
     }
 }

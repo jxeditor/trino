@@ -48,7 +48,6 @@ import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
-import io.trino.sql.ir.IntervalLiteral;
 import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LogicalExpression;
@@ -111,6 +110,7 @@ import io.trino.sql.tree.Update;
 import io.trino.sql.tree.VariableDefinition;
 import io.trino.sql.tree.WindowFrame;
 import io.trino.sql.tree.WindowOperation;
+import io.trino.type.Reals;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -155,9 +155,6 @@ import static io.trino.sql.NodeUtils.getSortItemsFromOrderBy;
 import static io.trino.sql.ir.BooleanLiteral.TRUE_LITERAL;
 import static io.trino.sql.ir.ComparisonExpression.Operator.GREATER_THAN_OR_EQUAL;
 import static io.trino.sql.ir.ComparisonExpression.Operator.LESS_THAN_OR_EQUAL;
-import static io.trino.sql.ir.IntervalLiteral.IntervalField.DAY;
-import static io.trino.sql.ir.IntervalLiteral.IntervalField.YEAR;
-import static io.trino.sql.ir.IntervalLiteral.Sign.POSITIVE;
 import static io.trino.sql.ir.IrUtils.and;
 import static io.trino.sql.planner.GroupingOperationRewriter.rewriteGroupingOperation;
 import static io.trino.sql.planner.LogicalPlanner.failFunction;
@@ -1686,7 +1683,9 @@ class QueryPlanner
         if (type.equals(BIGINT) ||
                 type.equals(INTEGER) ||
                 type.equals(SMALLINT) ||
-                type.equals(TINYINT)) {
+                type.equals(TINYINT) ||
+                type.equals(INTERVAL_DAY_TIME) ||
+                type.equals(INTERVAL_YEAR_MONTH)) {
             return GenericLiteral.constant(type, 0L);
         }
 
@@ -1703,15 +1702,9 @@ class QueryPlanner
         }
 
         if (type.equals(REAL)) {
-            return new GenericLiteral(type, "0");
+            return GenericLiteral.constant(type, Reals.toReal(0));
         }
 
-        if (type.equals(INTERVAL_DAY_TIME)) {
-            return new IntervalLiteral("0", POSITIVE, DAY);
-        }
-        if (type.equals(INTERVAL_YEAR_MONTH)) {
-            return new IntervalLiteral("0", POSITIVE, YEAR);
-        }
         throw new IllegalArgumentException("unexpected type: " + type);
     }
 

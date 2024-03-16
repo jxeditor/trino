@@ -15,11 +15,13 @@ package io.trino.cost;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import io.airlift.slice.Slices;
 import io.trino.Session;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.MetadataManager;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.metadata.TestingFunctionResolution;
+import io.trino.plugin.base.util.JsonTypeUtil;
 import io.trino.security.AllowAllAccessControl;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.Type;
@@ -40,7 +42,6 @@ import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.NullLiteral;
-import io.trino.sql.ir.StringLiteral;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.IrTypeAnalyzer;
 import io.trino.sql.planner.Symbol;
@@ -331,7 +332,7 @@ public class TestFilterStatsCalculator
                                 .distinctValuesCount(2)
                                 .nullsFraction(0));
 
-        assertExpression(new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(EQUAL, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 1.0)), new ComparisonExpression(EQUAL, new StringLiteral("a"), new StringLiteral("b")), new ComparisonExpression(EQUAL, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 3.0)))))
+        assertExpression(new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(EQUAL, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 1.0)), new ComparisonExpression(EQUAL, GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("a")), GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("b"))), new ComparisonExpression(EQUAL, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 3.0)))))
                 .outputRowsCount(37.5)
                 .symbolStats(new Symbol("x"), symbolAssert ->
                         symbolAssert.averageRowSize(4.0)
@@ -340,7 +341,7 @@ public class TestFilterStatsCalculator
                                 .distinctValuesCount(2)
                                 .nullsFraction(0));
 
-        assertExpression(new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(EQUAL, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 1.0)), new InPredicate(new Cast(new StringLiteral("b"), createVarcharType(3)), ImmutableList.of(new Cast(new StringLiteral("a"), createVarcharType(3)), new Cast(new StringLiteral("b"), createVarcharType(3)))), new ComparisonExpression(EQUAL, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 3.0)))))
+        assertExpression(new LogicalExpression(OR, ImmutableList.of(new ComparisonExpression(EQUAL, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 1.0)), new InPredicate(new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("b")), createVarcharType(3)), ImmutableList.of(new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("a")), createVarcharType(3)), new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("b")), createVarcharType(3)))), new ComparisonExpression(EQUAL, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 3.0)))))
                 .equalTo(standardInputStatistics);
     }
 
@@ -381,7 +382,7 @@ public class TestFilterStatsCalculator
                 .symbolStats(new Symbol("y"), SymbolStatsAssertion::emptyRange);
 
         // first argument unknown
-        assertExpression(new LogicalExpression(AND, ImmutableList.of(new FunctionCall(JSON_ARRAY_CONTAINS.toQualifiedName(), ImmutableList.of(new GenericLiteral(JSON, "[]"), new SymbolReference("x"))), new ComparisonExpression(LESS_THAN, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 0.0)))))
+        assertExpression(new LogicalExpression(AND, ImmutableList.of(new FunctionCall(JSON_ARRAY_CONTAINS.toQualifiedName(), ImmutableList.of(GenericLiteral.constant(JSON, JsonTypeUtil.jsonParse(Slices.utf8Slice("[]"))), new SymbolReference("x"))), new ComparisonExpression(LESS_THAN, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 0.0)))))
                 .outputRowsCount(337.5)
                 .symbolStats(new Symbol("x"), symbolAssert ->
                         symbolAssert.lowValue(-10)
@@ -390,7 +391,7 @@ public class TestFilterStatsCalculator
                                 .nullsFraction(0));
 
         // second argument unknown
-        assertExpression(new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 0.0)), new FunctionCall(JSON_ARRAY_CONTAINS.toQualifiedName(), ImmutableList.of(new GenericLiteral(JSON, "[]"), new SymbolReference("x"))))))
+        assertExpression(new LogicalExpression(AND, ImmutableList.of(new ComparisonExpression(LESS_THAN, new SymbolReference("x"), GenericLiteral.constant(DOUBLE, 0.0)), new FunctionCall(JSON_ARRAY_CONTAINS.toQualifiedName(), ImmutableList.of(GenericLiteral.constant(JSON, JsonTypeUtil.jsonParse(Slices.utf8Slice("[]"))), new SymbolReference("x"))))))
                 .outputRowsCount(337.5)
                 .symbolStats(new Symbol("x"), symbolAssert ->
                         symbolAssert.lowValue(-10)
@@ -400,11 +401,11 @@ public class TestFilterStatsCalculator
 
         // both arguments unknown
         assertExpression(new LogicalExpression(AND, ImmutableList.of(
-                new FunctionCall(JSON_ARRAY_CONTAINS.toQualifiedName(), ImmutableList.of(new GenericLiteral(JSON, "[11]"), new SymbolReference("x"))),
-                new FunctionCall(JSON_ARRAY_CONTAINS.toQualifiedName(), ImmutableList.of(new GenericLiteral(JSON, "[13]"), new SymbolReference("x"))))))
+                new FunctionCall(JSON_ARRAY_CONTAINS.toQualifiedName(), ImmutableList.of(GenericLiteral.constant(JSON, JsonTypeUtil.jsonParse(Slices.utf8Slice("[11]"))), new SymbolReference("x"))),
+                new FunctionCall(JSON_ARRAY_CONTAINS.toQualifiedName(), ImmutableList.of(GenericLiteral.constant(JSON, JsonTypeUtil.jsonParse(Slices.utf8Slice("[13]"))), new SymbolReference("x"))))))
                 .outputRowsCountUnknown();
 
-        assertExpression(new LogicalExpression(AND, ImmutableList.of(new InPredicate(new StringLiteral("a"), ImmutableList.of(new StringLiteral("b"), new StringLiteral("c"))), new ComparisonExpression(EQUAL, new SymbolReference("unknownRange"), GenericLiteral.constant(DOUBLE, 3.0)))))
+        assertExpression(new LogicalExpression(AND, ImmutableList.of(new InPredicate(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("a")), ImmutableList.of(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("b")), GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("c")))), new ComparisonExpression(EQUAL, new SymbolReference("unknownRange"), GenericLiteral.constant(DOUBLE, 3.0)))))
                 .outputRowsCount(0);
 
         assertExpression(new LogicalExpression(AND, ImmutableList.of(new Cast(new NullLiteral(), BOOLEAN), new Cast(new NullLiteral(), BOOLEAN)))).equalTo(zeroStatistics);
@@ -592,7 +593,7 @@ public class TestFilterStatsCalculator
                                 .nullsFraction(0))
                 .symbolStats(new Symbol("y"), symbolAssert -> symbolAssert.isEqualTo(yStats));
 
-        assertExpression(new NotExpression(new FunctionCall(JSON_ARRAY_CONTAINS.toQualifiedName(), ImmutableList.of(new GenericLiteral(JSON, "[]"), new SymbolReference("x")))))
+        assertExpression(new NotExpression(new FunctionCall(JSON_ARRAY_CONTAINS.toQualifiedName(), ImmutableList.of(GenericLiteral.constant(JSON, JsonTypeUtil.jsonParse(Slices.utf8Slice("[]"))), new SymbolReference("x")))))
                 .outputRowsCountUnknown();
     }
 
@@ -724,12 +725,12 @@ public class TestFilterStatsCalculator
                                 .highValue(xStats.getHighValue())
                                 .nullsFraction(xStats.getNullsFraction()));
 
-        assertExpression(new InPredicate(new StringLiteral("a"), ImmutableList.of(new StringLiteral("a"), new StringLiteral("b")))).equalTo(standardInputStatistics);
-        assertExpression(new InPredicate(new StringLiteral("a"), ImmutableList.of(new StringLiteral("a"), new StringLiteral("b"), new Cast(new NullLiteral(), createVarcharType(1))))).equalTo(standardInputStatistics);
-        assertExpression(new InPredicate(new StringLiteral("a"), ImmutableList.of(new StringLiteral("b"), new StringLiteral("c")))).outputRowsCount(0);
-        assertExpression(new InPredicate(new StringLiteral("a"), ImmutableList.of(new StringLiteral("b"), new StringLiteral("c"), new Cast(new NullLiteral(), createVarcharType(1))))).outputRowsCount(0);
-        assertExpression(new InPredicate(new Cast(new StringLiteral("b"), createVarcharType(3)), ImmutableList.of(new Cast(new StringLiteral("a"), createVarcharType(3)), new Cast(new StringLiteral("b"), createVarcharType(3))))).equalTo(standardInputStatistics);
-        assertExpression(new InPredicate(new Cast(new StringLiteral("c"), createVarcharType(3)), ImmutableList.of(new Cast(new StringLiteral("a"), createVarcharType(3)), new Cast(new StringLiteral("b"), createVarcharType(3))))).outputRowsCount(0);
+        assertExpression(new InPredicate(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("a")), ImmutableList.of(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("a")), GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("b"))))).equalTo(standardInputStatistics);
+        assertExpression(new InPredicate(GenericLiteral.constant(createVarcharType(1), Slices.utf8Slice("a")), ImmutableList.of(GenericLiteral.constant(createVarcharType(1), Slices.utf8Slice("a")), GenericLiteral.constant(createVarcharType(1), Slices.utf8Slice("b")), new Cast(new NullLiteral(), createVarcharType(1))))).equalTo(standardInputStatistics);
+        assertExpression(new InPredicate(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("a")), ImmutableList.of(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("b")), GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("c"))))).outputRowsCount(0);
+        assertExpression(new InPredicate(GenericLiteral.constant(createVarcharType(1), Slices.utf8Slice("a")), ImmutableList.of(GenericLiteral.constant(createVarcharType(1), Slices.utf8Slice("b")), GenericLiteral.constant(createVarcharType(1), Slices.utf8Slice("c")), new Cast(new NullLiteral(), createVarcharType(1))))).outputRowsCount(0);
+        assertExpression(new InPredicate(new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("b")), createVarcharType(3)), ImmutableList.of(new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("a")), createVarcharType(3)), new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("b")), createVarcharType(3))))).equalTo(standardInputStatistics);
+        assertExpression(new InPredicate(new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("c")), createVarcharType(3)), ImmutableList.of(new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("a")), createVarcharType(3)), new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("b")), createVarcharType(3))))).outputRowsCount(0);
     }
 
     @Test
@@ -822,13 +823,13 @@ public class TestFilterStatsCalculator
                                 .nullsFraction(0.0));
 
         // Casted literals as value
-        assertExpression(new InPredicate(new SymbolReference("mediumVarchar"), ImmutableList.of(new Cast(new StringLiteral("abc"), MEDIUM_VARCHAR_TYPE))))
+        assertExpression(new InPredicate(new SymbolReference("mediumVarchar"), ImmutableList.of(new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("abc")), MEDIUM_VARCHAR_TYPE))))
                 .outputRowsCount(4)
                 .symbolStats("mediumVarchar", symbolStats ->
                         symbolStats.distinctValuesCount(1)
                                 .nullsFraction(0.0));
 
-        assertExpression(new InPredicate(new SymbolReference("mediumVarchar"), ImmutableList.of(new Cast(new StringLiteral("abc"), createVarcharType(100)), new Cast(new StringLiteral("def"), createVarcharType(100)))))
+        assertExpression(new InPredicate(new SymbolReference("mediumVarchar"), ImmutableList.of(new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("abc")), createVarcharType(100)), new Cast(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("def")), createVarcharType(100)))))
                 .outputRowsCount(8)
                 .symbolStats("mediumVarchar", symbolStats ->
                         symbolStats.distinctValuesCount(2)

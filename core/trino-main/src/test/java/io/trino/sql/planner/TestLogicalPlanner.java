@@ -40,7 +40,6 @@ import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.ir.Row;
 import io.trino.sql.ir.SimpleCaseExpression;
-import io.trino.sql.ir.StringLiteral;
 import io.trino.sql.ir.SubscriptExpression;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.ir.WhenClause;
@@ -83,6 +82,7 @@ import io.trino.sql.planner.rowpattern.ir.IrLabel;
 import io.trino.sql.planner.rowpattern.ir.IrQuantified;
 import io.trino.sql.tree.QualifiedName;
 import io.trino.tests.QueryTemplate;
+import io.trino.type.Reals;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -602,7 +602,7 @@ public class TestLogicalPlanner
                                                 equiJoinClause("NATION_REGIONKEY", "REGION_REGIONKEY")))
                                 .left(
                                         filter(
-                                                new ComparisonExpression(EQUAL, new SymbolReference("NATION_NAME"), new Cast(new StringLiteral("blah"), createVarcharType(25))),
+                                                new ComparisonExpression(EQUAL, new SymbolReference("NATION_NAME"), GenericLiteral.constant(createVarcharType(25), utf8Slice("blah"))),
                                                 constrainedTableScan(
                                                         "nation",
                                                         ImmutableMap.of(),
@@ -612,7 +612,7 @@ public class TestLogicalPlanner
                                 .right(
                                         anyTree(
                                                 filter(
-                                                        new ComparisonExpression(EQUAL, new SymbolReference("REGION_NAME"), new Cast(new StringLiteral("blah"), createVarcharType(25))),
+                                                        new ComparisonExpression(EQUAL, new SymbolReference("REGION_NAME"), GenericLiteral.constant(createVarcharType(25), utf8Slice("blah"))),
                                                         constrainedTableScan(
                                                                 "region",
                                                                 ImmutableMap.of(),
@@ -868,7 +868,7 @@ public class TestLogicalPlanner
                                 new SimpleCaseExpression(
                                         new SymbolReference("is_distinct"),
                                         ImmutableList.of(new WhenClause(TRUE_LITERAL, TRUE_LITERAL)),
-                                        Optional.of(new Cast(new FunctionCall(QualifiedName.of("fail"), ImmutableList.of(GenericLiteral.constant(INTEGER, (long) SUBQUERY_MULTIPLE_ROWS.toErrorCode().getCode()), new GenericLiteral(VARCHAR, "Scalar sub-query has returned multiple rows"))), BOOLEAN))),
+                                        Optional.of(new Cast(new FunctionCall(QualifiedName.of("fail"), ImmutableList.of(GenericLiteral.constant(INTEGER, (long) SUBQUERY_MULTIPLE_ROWS.toErrorCode().getCode()), GenericLiteral.constant(VARCHAR, utf8Slice("Scalar sub-query has returned multiple rows")))), BOOLEAN))),
                                 project(
                                         markDistinct("is_distinct", ImmutableList.of("unique"),
                                                 join(LEFT, builder -> builder
@@ -886,7 +886,7 @@ public class TestLogicalPlanner
                                 new SimpleCaseExpression(
                                         new SymbolReference("is_distinct"),
                                         ImmutableList.of(new WhenClause(TRUE_LITERAL, TRUE_LITERAL)),
-                                        Optional.of(new Cast(new FunctionCall(QualifiedName.of("fail"), ImmutableList.of(GenericLiteral.constant(INTEGER, (long) SUBQUERY_MULTIPLE_ROWS.toErrorCode().getCode()), new GenericLiteral(VARCHAR, "Scalar sub-query has returned multiple rows"))), BOOLEAN))),
+                                        Optional.of(new Cast(new FunctionCall(QualifiedName.of("fail"), ImmutableList.of(GenericLiteral.constant(INTEGER, (long) SUBQUERY_MULTIPLE_ROWS.toErrorCode().getCode()), GenericLiteral.constant(VARCHAR, utf8Slice("Scalar sub-query has returned multiple rows")))), BOOLEAN))),
                                 project(
                                         markDistinct("is_distinct", ImmutableList.of("unique"),
                                                 join(LEFT, builder -> builder
@@ -1144,7 +1144,7 @@ public class TestLogicalPlanner
                                 new SimpleCaseExpression(
                                         new SymbolReference("is_distinct"),
                                         ImmutableList.of(new WhenClause(TRUE_LITERAL, TRUE_LITERAL)),
-                                        Optional.of(new Cast(new FunctionCall(QualifiedName.of("fail"), ImmutableList.of(GenericLiteral.constant(INTEGER, (long) SUBQUERY_MULTIPLE_ROWS.toErrorCode().getCode()), new GenericLiteral(VARCHAR, "Scalar sub-query has returned multiple rows"))), BOOLEAN))),
+                                        Optional.of(new Cast(new FunctionCall(QualifiedName.of("fail"), ImmutableList.of(GenericLiteral.constant(INTEGER, (long) SUBQUERY_MULTIPLE_ROWS.toErrorCode().getCode()), GenericLiteral.constant(VARCHAR, utf8Slice("Scalar sub-query has returned multiple rows")))), BOOLEAN))),
                                 project(markDistinct(
                                         "is_distinct",
                                         ImmutableList.of("unique"),
@@ -1932,10 +1932,10 @@ public class TestLogicalPlanner
                                                         ImmutableMap.of("orderstatus", multipleValues(createVarcharType(1), ImmutableList.of(utf8Slice("F"), utf8Slice("O")))))))
                                 .right(
                                         filter(
-                                                new InPredicate(new SymbolReference("expr"), ImmutableList.of(new StringLiteral("F"), new StringLiteral("O"))),
+                                                new InPredicate(new SymbolReference("expr"), ImmutableList.of(GenericLiteral.constant(createVarcharType(1), utf8Slice("F")), GenericLiteral.constant(createVarcharType(1), utf8Slice("O")))),
                                                 values(
                                                         ImmutableList.of("expr"),
-                                                        ImmutableList.of(ImmutableList.of(new StringLiteral("O")), ImmutableList.of(new StringLiteral("F")))))))));
+                                                        ImmutableList.of(ImmutableList.of(GenericLiteral.constant(createVarcharType(1), utf8Slice("O"))), ImmutableList.of(GenericLiteral.constant(createVarcharType(1), utf8Slice("F"))))))))));
     }
 
     @Test
@@ -2035,8 +2035,8 @@ public class TestLogicalPlanner
                                                         ImmutableMap.of("orderstatus", multipleValues(createVarcharType(1), ImmutableList.of(utf8Slice("F"), utf8Slice("O")))))))
                                 .right(
                                         filter(
-                                                new InPredicate(new SymbolReference("expr"), ImmutableList.of(new StringLiteral("F"), new StringLiteral("O"))),
-                                                values(ImmutableList.of("expr"), ImmutableList.of(ImmutableList.of(new StringLiteral("O")), ImmutableList.of(new StringLiteral("F")))))))));
+                                                new InPredicate(new SymbolReference("expr"), ImmutableList.of(GenericLiteral.constant(createVarcharType(1), utf8Slice("F")), GenericLiteral.constant(createVarcharType(1), utf8Slice("O")))),
+                                                values(ImmutableList.of("expr"), ImmutableList.of(ImmutableList.of(GenericLiteral.constant(createVarcharType(1), utf8Slice("O"))), ImmutableList.of(GenericLiteral.constant(createVarcharType(1), utf8Slice("F"))))))))));
 
         // Constraint for the table is derived, based on constant values in the other branch of the join.
         // It is not accepted by the connector, and remains in form of a filter over TableScan.
@@ -2178,7 +2178,7 @@ public class TestLogicalPlanner
                                 ImmutableList.of("field"),
                                 ImmutableList.of(
                                         ImmutableList.of(new Cast(GenericLiteral.constant(TINYINT, 1L), REAL)),
-                                        ImmutableList.of(new GenericLiteral(REAL, "1"))))));
+                                        ImmutableList.of(GenericLiteral.constant(REAL, Reals.toReal(1f)))))));
 
         // rows coerced by field
         assertPlan("VALUES (TINYINT '1', REAL '1'), (DOUBLE '2', SMALLINT '2')",
@@ -2187,7 +2187,7 @@ public class TestLogicalPlanner
                         values(
                                 ImmutableList.of("field", "field0"),
                                 ImmutableList.of(
-                                        ImmutableList.of(new Cast(GenericLiteral.constant(TINYINT, 1L), DOUBLE), new GenericLiteral(REAL, "1")),
+                                        ImmutableList.of(new Cast(GenericLiteral.constant(TINYINT, 1L), DOUBLE), GenericLiteral.constant(REAL, Reals.toReal(1f))),
                                         ImmutableList.of(GenericLiteral.constant(DOUBLE, 2.0), new Cast(GenericLiteral.constant(SMALLINT, 2L), REAL))))));
 
         // entry of type other than Row coerced as a whole

@@ -14,6 +14,7 @@
 package io.trino.plugin.hive.optimizer;
 
 import com.google.common.collect.ImmutableList;
+import io.airlift.slice.Slices;
 import io.trino.Session;
 import io.trino.plugin.hive.TestingHiveConnectorFactory;
 import io.trino.plugin.hive.metastore.Database;
@@ -22,19 +23,18 @@ import io.trino.plugin.hive.metastore.HiveMetastoreFactory;
 import io.trino.spi.security.PrincipalType;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
 import io.trino.sql.ir.BetweenPredicate;
-import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.ComparisonExpression;
 import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.LogicalExpression;
-import io.trino.sql.ir.StringLiteral;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.OptimizerConfig.JoinDistributionType;
 import io.trino.sql.planner.OptimizerConfig.JoinReorderingStrategy;
 import io.trino.sql.planner.assertions.BasePlanTest;
 import io.trino.sql.tree.QualifiedName;
 import io.trino.testing.PlanTester;
+import io.trino.type.LikePattern;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -70,6 +70,7 @@ import static io.trino.sql.planner.plan.ExchangeNode.Type.REPARTITION;
 import static io.trino.sql.planner.plan.ExchangeNode.Type.REPLICATE;
 import static io.trino.sql.planner.plan.JoinType.INNER;
 import static io.trino.testing.TestingSession.testSessionBuilder;
+import static io.trino.type.LikePatternType.LIKE_PATTERN;
 
 public class TestHivePlans
         extends BasePlanTest
@@ -146,7 +147,7 @@ public class TestHivePlans
                 "SELECT * FROM table_str_partitioned WHERE str_part LIKE 't%'",
                 output(
                         filter(
-                                new FunctionCall(QualifiedName.of("$like"), ImmutableList.of(new SymbolReference("STR_PART"), new FunctionCall(QualifiedName.of("$literal$"), ImmutableList.of(new FunctionCall(QualifiedName.of("from_base64"), ImmutableList.of(new StringLiteral("DgAAAFZBUklBQkxFX1dJRFRIAQAAAAEAAAAHAAAAAAcAAAACAAAAdCUA"))))))),
+                                new FunctionCall(QualifiedName.of("$like"), ImmutableList.of(new SymbolReference("STR_PART"), GenericLiteral.constant(LIKE_PATTERN, LikePattern.compile("t%", Optional.empty())))),
                                 tableScan("table_str_partitioned", Map.of("INT_COL", "int_col", "STR_PART", "str_part")))));
     }
 
@@ -168,12 +169,12 @@ public class TestHivePlans
                                 .left(
                                         exchange(REMOTE, REPARTITION,
                                                 filter(
-                                                        new FunctionCall(QualifiedName.of("$like"), ImmutableList.of(new SymbolReference("L_STR_PART"), new FunctionCall(QualifiedName.of("$literal$"), ImmutableList.of(new FunctionCall(QualifiedName.of("from_base64"), ImmutableList.of(new StringLiteral("DgAAAFZBUklBQkxFX1dJRFRIAQAAAAEAAAAHAAAAAAcAAAACAAAAdCUA"))))))),
+                                                        new FunctionCall(QualifiedName.of("$like"), ImmutableList.of(new SymbolReference("L_STR_PART"), GenericLiteral.constant(LIKE_PATTERN, LikePattern.compile("t%", Optional.empty())))),
                                                         tableScan("table_str_partitioned", Map.of("L_INT_COL", "int_col", "L_STR_PART", "str_part")))))
                                 .right(exchange(LOCAL,
                                         exchange(REMOTE, REPARTITION,
                                                 filter(
-                                                        new LogicalExpression(AND, ImmutableList.of(new InPredicate(new SymbolReference("R_STR_COL"), ImmutableList.of(new StringLiteral("three"), new Cast(new StringLiteral("two"), createVarcharType(5)))), new FunctionCall(QualifiedName.of("$like"), ImmutableList.of(new SymbolReference("R_STR_COL"), new FunctionCall(QualifiedName.of("$literal$"), ImmutableList.of(new FunctionCall(QualifiedName.of("from_base64"), ImmutableList.of(new StringLiteral("DgAAAFZBUklBQkxFX1dJRFRIAQAAAAEAAAAHAAAAAAcAAAACAAAAdCUA"))))))))),
+                                                        new LogicalExpression(AND, ImmutableList.of(new InPredicate(new SymbolReference("R_STR_COL"), ImmutableList.of(GenericLiteral.constant(createVarcharType(5), Slices.utf8Slice("three")), GenericLiteral.constant(createVarcharType(5), Slices.utf8Slice("two")))), new FunctionCall(QualifiedName.of("$like"), ImmutableList.of(new SymbolReference("R_STR_COL"), GenericLiteral.constant(LIKE_PATTERN, LikePattern.compile("t%", Optional.empty())))))),
                                                         tableScan("table_unpartitioned", Map.of("R_STR_COL", "str_col", "R_INT_COL", "int_col")))))))));
     }
 
@@ -218,7 +219,7 @@ public class TestHivePlans
                                 .left(
                                         exchange(REMOTE, REPARTITION,
                                                 filter(
-                                                        new ComparisonExpression(NOT_EQUAL, new SymbolReference("L_STR_COL"), new StringLiteral("three")),
+                                                        new ComparisonExpression(NOT_EQUAL, new SymbolReference("L_STR_COL"), GenericLiteral.constant(createVarcharType(5), Slices.utf8Slice("three"))),
                                                         tableScan("table_int_partitioned", Map.of("L_INT_PART", "int_part", "L_STR_COL", "str_col")))))
                                 .right(
                                         exchange(LOCAL,
@@ -244,7 +245,7 @@ public class TestHivePlans
                                 .left(
                                         exchange(REMOTE, REPARTITION,
                                                 filter(
-                                                        new ComparisonExpression(NOT_EQUAL, new FunctionCall(QualifiedName.of("substring"), ImmutableList.of(new SymbolReference("L_STR_COL"), GenericLiteral.constant(BIGINT, 2L))), new Cast(new StringLiteral("hree"), createVarcharType(5))),
+                                                        new ComparisonExpression(NOT_EQUAL, new FunctionCall(QualifiedName.of("substring"), ImmutableList.of(new SymbolReference("L_STR_COL"), GenericLiteral.constant(BIGINT, 2L))), GenericLiteral.constant(createVarcharType(5), Slices.utf8Slice("hree"))),
                                                         tableScan("table_int_partitioned", Map.of("L_INT_PART", "int_part", "L_STR_COL", "str_col")))))
                                 .right(
                                         exchange(LOCAL,

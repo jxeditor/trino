@@ -67,11 +67,6 @@ public abstract class IrVisitor<R, C>
         return visitExpression(node, context);
     }
 
-    protected R visitIntervalLiteral(IntervalLiteral node, C context)
-    {
-        return visitLiteral(node, context);
-    }
-
     protected R visitInPredicate(InPredicate node, C context)
     {
         return visitExpression(node, context);
@@ -90,16 +85,6 @@ public abstract class IrVisitor<R, C>
     protected R visitSimpleCaseExpression(SimpleCaseExpression node, C context)
     {
         return visitExpression(node, context);
-    }
-
-    protected R visitStringLiteral(StringLiteral node, C context)
-    {
-        return visitLiteral(node, context);
-    }
-
-    protected R visitBinaryLiteral(BinaryLiteral node, C context)
-    {
-        return visitLiteral(node, context);
     }
 
     protected R visitNullIfExpression(NullIfExpression node, C context)

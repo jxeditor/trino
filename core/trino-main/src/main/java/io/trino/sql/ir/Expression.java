@@ -26,7 +26,6 @@ import java.util.List;
         @JsonSubTypes.Type(value = ArithmeticUnaryExpression.class, name = "arithmeticUnary"),
         @JsonSubTypes.Type(value = Array.class, name = "array"),
         @JsonSubTypes.Type(value = BetweenPredicate.class, name = "between"),
-        @JsonSubTypes.Type(value = BinaryLiteral.class, name = "binary"),
         @JsonSubTypes.Type(value = BindExpression.class, name = "bind"),
         @JsonSubTypes.Type(value = BooleanLiteral.class, name = "boolean"),
         @JsonSubTypes.Type(value = Cast.class, name = "cast"),
@@ -36,7 +35,6 @@ import java.util.List;
         @JsonSubTypes.Type(value = GenericLiteral.class, name = "constant"),
         @JsonSubTypes.Type(value = IfExpression.class, name = "if"),
         @JsonSubTypes.Type(value = InPredicate.class, name = "in"),
-        @JsonSubTypes.Type(value = IntervalLiteral.class, name = "interval"),
         @JsonSubTypes.Type(value = IsNotNullPredicate.class, name = "isNotNull"),
         @JsonSubTypes.Type(value = IsNullPredicate.class, name = "isNull"),
         @JsonSubTypes.Type(value = LambdaExpression.class, name = "lambda"),
@@ -48,7 +46,6 @@ import java.util.List;
         @JsonSubTypes.Type(value = SearchedCaseExpression.class, name = "searchedCase"),
         @JsonSubTypes.Type(value = SimpleCaseExpression.class, name = "simpleCase"),
         @JsonSubTypes.Type(value = SubscriptExpression.class, name = "subscript"),
-        @JsonSubTypes.Type(value = StringLiteral.class, name = "string"),
         @JsonSubTypes.Type(value = SymbolReference.class, name = "symbol"),
         @JsonSubTypes.Type(value = WhenClause.class, name = "when"),
 })
