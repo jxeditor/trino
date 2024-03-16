@@ -11,18 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.connector;
+package io.trino.spi.catalog;
 
-import io.trino.annotation.NotThreadSafe;
+import io.trino.spi.connector.ConnectorName;
 
 import java.util.Collection;
 import java.util.Map;
 
-@NotThreadSafe
 public interface CatalogStore
 {
     /**
-     * Get all catalogs
+     * Get all catalogs. This is called at startup to load the existing catalogs.
      */
     Collection<StoredCatalog> getCatalogs();
 
@@ -31,7 +30,7 @@ public interface CatalogStore
      * store to assign the initial handle for a catalog before the catalog is
      * created. This does not add the catalog to the store.
      */
-    CatalogProperties createCatalogProperties(String catalogName, ConnectorName connectorName, Map<String, String> properties);
+    CatalogProperties createCatalogProperties(CatalogName catalogName, ConnectorName connectorName, Map<String, String> properties);
 
     /**
      * Add or replace catalog properties.
@@ -41,11 +40,11 @@ public interface CatalogStore
     /**
      * Remove a catalog if present.
      */
-    void removeCatalog(String catalogName);
+    void removeCatalog(CatalogName catalogName);
 
     interface StoredCatalog
     {
-        String getName();
+        CatalogName name();
 
         CatalogProperties loadProperties();
     }

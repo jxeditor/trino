@@ -11,16 +11,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.hive;
+package io.trino.spi.catalog;
 
-public class DefaultHiveMaterializedViewMetadataFactory
-        implements HiveMaterializedViewMetadataFactory
+import java.util.Map;
+
+public interface CatalogStoreFactory
 {
-    private static final HiveMaterializedViewMetadata NONE = new NoneHiveMaterializedViewMetadata();
+    String getName();
 
-    @Override
-    public HiveMaterializedViewMetadata create(HiveMetastoreClosure hiveMetastoreClosure)
-    {
-        return NONE;
-    }
+    CatalogStore create(Map<String, String> config);
 }

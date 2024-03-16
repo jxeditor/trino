@@ -28,7 +28,6 @@ import io.trino.SystemSessionProperties;
 import io.trino.client.NodeVersion;
 import io.trino.connector.CatalogFactory;
 import io.trino.connector.CatalogServiceProviderModule;
-import io.trino.connector.ConnectorName;
 import io.trino.connector.ConnectorServicesProvider;
 import io.trino.connector.CoordinatorDynamicCatalogManager;
 import io.trino.connector.DefaultCatalogFactory;
@@ -132,9 +131,11 @@ import io.trino.server.security.PasswordAuthenticatorManager;
 import io.trino.spi.PageIndexerFactory;
 import io.trino.spi.PageSorter;
 import io.trino.spi.Plugin;
+import io.trino.spi.catalog.CatalogName;
 import io.trino.spi.connector.CatalogHandle;
 import io.trino.spi.connector.Connector;
 import io.trino.spi.connector.ConnectorFactory;
+import io.trino.spi.connector.ConnectorName;
 import io.trino.spi.type.TypeManager;
 import io.trino.spi.type.TypeOperators;
 import io.trino.spiller.GenericSpillerFactory;
@@ -436,6 +437,7 @@ public class PlanTester
         exchangeManagerRegistry = new ExchangeManagerRegistry(OpenTelemetry.noop(), noopTracer());
         this.pluginManager = new PluginManager(
                 (loader, createClassLoader) -> {},
+                Optional.empty(),
                 catalogFactory,
                 globalFunctionCatalog,
                 new NoOpResourceGroupManager(),
@@ -586,7 +588,7 @@ public class PlanTester
     public void createCatalog(String catalogName, ConnectorFactory connectorFactory, Map<String, String> properties)
     {
         catalogFactory.addConnectorFactory(connectorFactory);
-        catalogManager.createCatalog(catalogName, new ConnectorName(connectorFactory.getName()), properties, false);
+        catalogManager.createCatalog(new CatalogName(catalogName), new ConnectorName(connectorFactory.getName()), properties, false);
     }
 
     public void installPlugin(Plugin plugin)
@@ -601,7 +603,7 @@ public class PlanTester
 
     public void createCatalog(String catalogName, String connectorName, Map<String, String> properties)
     {
-        catalogManager.createCatalog(catalogName, new ConnectorName(connectorName), properties, false);
+        catalogManager.createCatalog(new CatalogName(catalogName), new ConnectorName(connectorName), properties, false);
     }
 
     public CatalogManager getCatalogManager()
