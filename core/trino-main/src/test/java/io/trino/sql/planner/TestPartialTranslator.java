@@ -20,9 +20,9 @@ import io.trino.Session;
 import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.type.Type;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.NodeRef;
 import io.trino.sql.ir.SubscriptExpression;
 import io.trino.sql.ir.SymbolReference;
@@ -71,9 +71,9 @@ public class TestPartialTranslator
     public void testPartialTranslator()
     {
         Expression rowSymbolReference = new SymbolReference("row_symbol_1");
-        Expression dereferenceExpression1 = new SubscriptExpression(rowSymbolReference, GenericLiteral.constant(INTEGER, 1L));
-        Expression dereferenceExpression2 = new SubscriptExpression(rowSymbolReference, GenericLiteral.constant(INTEGER, 2L));
-        Expression stringLiteral = GenericLiteral.constant(VARCHAR, Slices.utf8Slice("abcd"));
+        Expression dereferenceExpression1 = new SubscriptExpression(rowSymbolReference, new Constant(INTEGER, 1L));
+        Expression dereferenceExpression2 = new SubscriptExpression(rowSymbolReference, new Constant(INTEGER, 2L));
+        Expression stringLiteral = new Constant(VARCHAR, Slices.utf8Slice("abcd"));
         Expression symbolReference1 = new SymbolReference("double_symbol_1");
 
         assertFullTranslation(symbolReference1);
@@ -82,24 +82,24 @@ public class TestPartialTranslator
         assertFullTranslation(new ArithmeticBinaryExpression(ADD, symbolReference1, dereferenceExpression1));
 
         Expression functionCallExpression = new FunctionCall(
-                PLANNER_CONTEXT.getMetadata().resolveBuiltinFunction("concat", fromTypes(VARCHAR, VARCHAR)).toQualifiedName(),
+                PLANNER_CONTEXT.getMetadata().resolveBuiltinFunction("concat", fromTypes(VARCHAR, VARCHAR)),
                 ImmutableList.of(stringLiteral, dereferenceExpression2));
         assertFullTranslation(functionCallExpression);
     }
 
     private void assertPartialTranslation(Expression expression, List<Expression> subexpressions)
     {
-        Map<NodeRef<Expression>, ConnectorExpression> translation = extractPartialTranslations(expression, TEST_SESSION, TYPE_ANALYZER, TYPE_PROVIDER, PLANNER_CONTEXT);
+        Map<NodeRef<Expression>, ConnectorExpression> translation = extractPartialTranslations(expression, TEST_SESSION, TYPE_ANALYZER, TYPE_PROVIDER);
         assertThat(subexpressions.size()).isEqualTo(translation.size());
         for (Expression subexpression : subexpressions) {
-            assertThat(translation).containsEntry(NodeRef.of(subexpression), translate(TEST_SESSION, subexpression, TYPE_PROVIDER, PLANNER_CONTEXT, TYPE_ANALYZER).get());
+            assertThat(translation).containsEntry(NodeRef.of(subexpression), translate(TEST_SESSION, subexpression, TYPE_PROVIDER, TYPE_ANALYZER).get());
         }
     }
 
     private void assertFullTranslation(Expression expression)
     {
-        Map<NodeRef<Expression>, ConnectorExpression> translation = extractPartialTranslations(expression, TEST_SESSION, TYPE_ANALYZER, TYPE_PROVIDER, PLANNER_CONTEXT);
+        Map<NodeRef<Expression>, ConnectorExpression> translation = extractPartialTranslations(expression, TEST_SESSION, TYPE_ANALYZER, TYPE_PROVIDER);
         assertThat(getOnlyElement(translation.keySet())).isEqualTo(NodeRef.of(expression));
-        assertThat(getOnlyElement(translation.values())).isEqualTo(translate(TEST_SESSION, expression, TYPE_PROVIDER, PLANNER_CONTEXT, TYPE_ANALYZER).get());
+        assertThat(getOnlyElement(translation.values())).isEqualTo(translate(TEST_SESSION, expression, TYPE_PROVIDER, TYPE_ANALYZER).get());
     }
 }

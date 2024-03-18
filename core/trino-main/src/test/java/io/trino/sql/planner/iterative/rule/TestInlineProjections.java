@@ -18,11 +18,9 @@ import com.google.common.collect.ImmutableMap;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.RowType;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
-import io.trino.sql.ir.GenericLiteral;
-import io.trino.sql.ir.Literal;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.SubscriptExpression;
 import io.trino.sql.ir.SymbolReference;
-import io.trino.sql.planner.LiteralEncoder;
 import io.trino.sql.planner.assertions.ExpressionMatcher;
 import io.trino.sql.planner.assertions.PlanMatchPattern;
 import io.trino.sql.planner.iterative.rule.test.BaseRuleTest;
@@ -50,25 +48,25 @@ public class TestInlineProjections
     @Test
     public void test()
     {
-        tester().assertThat(new InlineProjections(tester().getPlannerContext(), tester().getTypeAnalyzer()))
+        tester().assertThat(new InlineProjections(tester().getTypeAnalyzer()))
                 .on(p ->
                         p.project(
                                 Assignments.builder()
                                         .put(p.symbol("identity"), new SymbolReference("symbol")) // identity
-                                        .put(p.symbol("multi_complex_1"), new ArithmeticBinaryExpression(ADD, new SymbolReference("complex"), GenericLiteral.constant(INTEGER, 1L))) // complex expression referenced multiple times
-                                        .put(p.symbol("multi_complex_2"), new ArithmeticBinaryExpression(ADD, new SymbolReference("complex"), GenericLiteral.constant(INTEGER, 2L))) // complex expression referenced multiple times
-                                        .put(p.symbol("multi_literal_1"), new ArithmeticBinaryExpression(ADD, new SymbolReference("literal"), GenericLiteral.constant(INTEGER, 1L))) // literal referenced multiple times
-                                        .put(p.symbol("multi_literal_2"), new ArithmeticBinaryExpression(ADD, new SymbolReference("literal"), GenericLiteral.constant(INTEGER, 2L))) // literal referenced multiple times
-                                        .put(p.symbol("single_complex"), new ArithmeticBinaryExpression(ADD, new SymbolReference("complex_2"), GenericLiteral.constant(INTEGER, 2L))) // complex expression reference only once
-                                        .put(p.symbol("msg_xx"), new ArithmeticBinaryExpression(ADD, new SymbolReference("z"), GenericLiteral.constant(INTEGER, 1L)))
+                                        .put(p.symbol("multi_complex_1"), new ArithmeticBinaryExpression(ADD, new SymbolReference("complex"), new Constant(INTEGER, 1L))) // complex expression referenced multiple times
+                                        .put(p.symbol("multi_complex_2"), new ArithmeticBinaryExpression(ADD, new SymbolReference("complex"), new Constant(INTEGER, 2L))) // complex expression referenced multiple times
+                                        .put(p.symbol("multi_literal_1"), new ArithmeticBinaryExpression(ADD, new SymbolReference("literal"), new Constant(INTEGER, 1L))) // literal referenced multiple times
+                                        .put(p.symbol("multi_literal_2"), new ArithmeticBinaryExpression(ADD, new SymbolReference("literal"), new Constant(INTEGER, 2L))) // literal referenced multiple times
+                                        .put(p.symbol("single_complex"), new ArithmeticBinaryExpression(ADD, new SymbolReference("complex_2"), new Constant(INTEGER, 2L))) // complex expression reference only once
+                                        .put(p.symbol("msg_xx"), new ArithmeticBinaryExpression(ADD, new SymbolReference("z"), new Constant(INTEGER, 1L)))
                                         .put(p.symbol("multi_symbol_reference"), new ArithmeticBinaryExpression(ADD, new SymbolReference("v"), new SymbolReference("v")))
                                         .build(),
                                 p.project(Assignments.builder()
                                                 .put(p.symbol("symbol"), new SymbolReference("x"))
-                                                .put(p.symbol("complex"), new ArithmeticBinaryExpression(MULTIPLY, new SymbolReference("x"), GenericLiteral.constant(INTEGER, 2L)))
-                                                .put(p.symbol("literal"), GenericLiteral.constant(INTEGER, 1L))
-                                                .put(p.symbol("complex_2"), new ArithmeticBinaryExpression(SUBTRACT, new SymbolReference("x"), GenericLiteral.constant(INTEGER, 1L)))
-                                                .put(p.symbol("z"), new SubscriptExpression(new SymbolReference("msg"), GenericLiteral.constant(INTEGER, 1L)))
+                                                .put(p.symbol("complex"), new ArithmeticBinaryExpression(MULTIPLY, new SymbolReference("x"), new Constant(INTEGER, 2L)))
+                                                .put(p.symbol("literal"), new Constant(INTEGER, 1L))
+                                                .put(p.symbol("complex_2"), new ArithmeticBinaryExpression(SUBTRACT, new SymbolReference("x"), new Constant(INTEGER, 1L)))
+                                                .put(p.symbol("z"), new SubscriptExpression(new SymbolReference("msg"), new Constant(INTEGER, 1L)))
                                                 .put(p.symbol("v"), new SymbolReference("x"))
                                                 .build(),
                                         p.values(p.symbol("x"), p.symbol("msg", MSG_TYPE)))))
@@ -76,19 +74,19 @@ public class TestInlineProjections
                         project(
                                 ImmutableMap.<String, ExpressionMatcher>builder()
                                         .put("out1", PlanMatchPattern.expression(new SymbolReference("x")))
-                                        .put("out2", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("y"), GenericLiteral.constant(INTEGER, 1L))))
-                                        .put("out3", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("y"), GenericLiteral.constant(INTEGER, 2L))))
-                                        .put("out4", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, GenericLiteral.constant(INTEGER, 1L), GenericLiteral.constant(INTEGER, 1L))))
-                                        .put("out5", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, GenericLiteral.constant(INTEGER, 1L), GenericLiteral.constant(INTEGER, 2L))))
-                                        .put("out6", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new ArithmeticBinaryExpression(SUBTRACT, new SymbolReference("x"), GenericLiteral.constant(INTEGER, 1L)), GenericLiteral.constant(INTEGER, 2L))))
-                                        .put("out8", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("z"), GenericLiteral.constant(INTEGER, 1L))))
+                                        .put("out2", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("y"), new Constant(INTEGER, 1L))))
+                                        .put("out3", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("y"), new Constant(INTEGER, 2L))))
+                                        .put("out4", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new Constant(INTEGER, 1L), new Constant(INTEGER, 1L))))
+                                        .put("out5", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new Constant(INTEGER, 1L), new Constant(INTEGER, 2L))))
+                                        .put("out6", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new ArithmeticBinaryExpression(SUBTRACT, new SymbolReference("x"), new Constant(INTEGER, 1L)), new Constant(INTEGER, 2L))))
+                                        .put("out8", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("z"), new Constant(INTEGER, 1L))))
                                         .put("out10", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("x"), new SymbolReference("x"))))
                                         .buildOrThrow(),
                                 project(
                                         ImmutableMap.of(
                                                 "x", PlanMatchPattern.expression(new SymbolReference("x")),
-                                                "y", PlanMatchPattern.expression(new ArithmeticBinaryExpression(MULTIPLY, new SymbolReference("x"), GenericLiteral.constant(INTEGER, 2L))),
-                                                "z", PlanMatchPattern.expression(new SubscriptExpression(new SymbolReference("msg"), GenericLiteral.constant(INTEGER, 1L)))),
+                                                "y", PlanMatchPattern.expression(new ArithmeticBinaryExpression(MULTIPLY, new SymbolReference("x"), new Constant(INTEGER, 2L))),
+                                                "z", PlanMatchPattern.expression(new SubscriptExpression(new SymbolReference("msg"), new Constant(INTEGER, 1L)))),
                                         values(ImmutableMap.of("x", 0, "msg", 1)))));
     }
 
@@ -100,7 +98,7 @@ public class TestInlineProjections
     @Test
     public void testInlineEffectivelyLiteral()
     {
-        tester().assertThat(new InlineProjections(tester().getPlannerContext(), tester().getTypeAnalyzer()))
+        tester().assertThat(new InlineProjections(tester().getTypeAnalyzer()))
                 .on(p ->
                         p.project(
                                 Assignments.builder()
@@ -109,33 +107,33 @@ public class TestInlineProjections
                                         .put(p.symbol("decimal_addition"), new ArithmeticBinaryExpression(ADD, new SymbolReference("decimal_literal"), new SymbolReference("decimal_literal")))
                                         .build(),
                                 p.project(Assignments.builder()
-                                                .put(p.symbol("decimal_literal", createDecimalType(8, 4)), GenericLiteral.constant(createDecimalType(8, 4), Decimals.valueOfShort(new BigDecimal("12.5"))))
+                                                .put(p.symbol("decimal_literal", createDecimalType(8, 4)), new Constant(createDecimalType(8, 4), Decimals.valueOfShort(new BigDecimal("12.5"))))
                                                 .build(),
                                         p.values(p.symbol("x")))))
                 .matches(
                         project(
                                 Map.of(
-                                        "decimal_multiplication", PlanMatchPattern.expression(new ArithmeticBinaryExpression(MULTIPLY, GenericLiteral.constant(createDecimalType(8, 4), Decimals.valueOfShort(new BigDecimal("12.5"))), GenericLiteral.constant(createDecimalType(8, 4), Decimals.valueOfShort(new BigDecimal("12.5"))))),
-                                        "decimal_addition", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, GenericLiteral.constant(createDecimalType(8, 4), Decimals.valueOfShort(new BigDecimal("12.5"))), GenericLiteral.constant(createDecimalType(8, 4), Decimals.valueOfShort(new BigDecimal("12.5")))))),
+                                        "decimal_multiplication", PlanMatchPattern.expression(new ArithmeticBinaryExpression(MULTIPLY, new Constant(createDecimalType(8, 4), Decimals.valueOfShort(new BigDecimal("12.5"))), new Constant(createDecimalType(8, 4), Decimals.valueOfShort(new BigDecimal("12.5"))))),
+                                        "decimal_addition", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new Constant(createDecimalType(8, 4), Decimals.valueOfShort(new BigDecimal("12.5"))), new Constant(createDecimalType(8, 4), Decimals.valueOfShort(new BigDecimal("12.5")))))),
                                 values(Map.of("x", 0))));
     }
 
     @Test
     public void testEliminatesIdentityProjection()
     {
-        tester().assertThat(new InlineProjections(tester().getPlannerContext(), tester().getTypeAnalyzer()))
+        tester().assertThat(new InlineProjections(tester().getTypeAnalyzer()))
                 .on(p ->
                         p.project(
                                 Assignments.builder()
-                                        .put(p.symbol("single_complex"), new ArithmeticBinaryExpression(ADD, new SymbolReference("complex"), GenericLiteral.constant(INTEGER, 2L))) // complex expression referenced only once
+                                        .put(p.symbol("single_complex"), new ArithmeticBinaryExpression(ADD, new SymbolReference("complex"), new Constant(INTEGER, 2L))) // complex expression referenced only once
                                         .build(),
                                 p.project(Assignments.builder()
-                                                .put(p.symbol("complex"), new ArithmeticBinaryExpression(SUBTRACT, new SymbolReference("x"), GenericLiteral.constant(INTEGER, 1L)))
+                                                .put(p.symbol("complex"), new ArithmeticBinaryExpression(SUBTRACT, new SymbolReference("x"), new Constant(INTEGER, 1L)))
                                                 .build(),
                                         p.values(p.symbol("x")))))
                 .matches(
                         project(
-                                ImmutableMap.of("out1", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new ArithmeticBinaryExpression(SUBTRACT, new SymbolReference("x"), GenericLiteral.constant(INTEGER, 1L)), GenericLiteral.constant(INTEGER, 2L)))),
+                                ImmutableMap.of("out1", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new ArithmeticBinaryExpression(SUBTRACT, new SymbolReference("x"), new Constant(INTEGER, 1L)), new Constant(INTEGER, 2L)))),
                                 values(ImmutableMap.of("x", 0))));
     }
 
@@ -143,7 +141,7 @@ public class TestInlineProjections
     public void testIdentityProjections()
     {
         // projection renaming symbol
-        tester().assertThat(new InlineProjections(tester().getPlannerContext(), tester().getTypeAnalyzer()))
+        tester().assertThat(new InlineProjections(tester().getTypeAnalyzer()))
                 .on(p ->
                         p.project(
                                 Assignments.of(p.symbol("output"), new SymbolReference("value")),
@@ -153,7 +151,7 @@ public class TestInlineProjections
                 .doesNotFire();
 
         // identity projection
-        tester().assertThat(new InlineProjections(tester().getPlannerContext(), tester().getTypeAnalyzer()))
+        tester().assertThat(new InlineProjections(tester().getTypeAnalyzer()))
                 .on(p ->
                         p.project(
                                 Assignments.identity(p.symbol("x")),
@@ -169,7 +167,7 @@ public class TestInlineProjections
     @Test
     public void testSubqueryProjections()
     {
-        tester().assertThat(new InlineProjections(tester().getPlannerContext(), tester().getTypeAnalyzer()))
+        tester().assertThat(new InlineProjections(tester().getTypeAnalyzer()))
                 .on(p ->
                         p.project(
                                 Assignments.identity(p.symbol("fromOuterScope"), p.symbol("value")),
@@ -182,12 +180,12 @@ public class TestInlineProjections
                                 // ImmutableMap.of("fromOuterScope", PlanMatchPattern.expression("fromOuterScope"), "value", PlanMatchPattern.expression("value")),
                                 values(ImmutableMap.of("value", 0))));
 
-        tester().assertThat(new InlineProjections(tester().getPlannerContext(), tester().getTypeAnalyzer()))
+        tester().assertThat(new InlineProjections(tester().getTypeAnalyzer()))
                 .on(p ->
                         p.project(
                                 Assignments.identity(p.symbol("fromOuterScope"), p.symbol("value_1")),
                                 p.project(
-                                        Assignments.of(p.symbol("value_1"), new ArithmeticBinaryExpression(SUBTRACT, new SymbolReference("value"), GenericLiteral.constant(INTEGER, 1L))),
+                                        Assignments.of(p.symbol("value_1"), new ArithmeticBinaryExpression(SUBTRACT, new SymbolReference("value"), new Constant(INTEGER, 1L))),
                                         p.values(p.symbol("value")))))
                 .matches(
                         project(

@@ -439,7 +439,7 @@ public final class ExpressionTreeRewriter<C>
             List<Expression> arguments = rewrite(node.getArguments(), context);
 
             if (!sameElements(node.getArguments(), arguments)) {
-                return new FunctionCall(node.getName(), arguments);
+                return new FunctionCall(node.getFunction(), arguments);
             }
             return node;
         }
@@ -512,10 +512,10 @@ public final class ExpressionTreeRewriter<C>
         }
 
         @Override
-        public Expression visitLiteral(Literal node, Context<C> context)
+        public Expression visitConstant(Constant node, Context<C> context)
         {
             if (!context.isDefaultRewrite()) {
-                Expression result = rewriter.rewriteLiteral(node, context.get(), ExpressionTreeRewriter.this);
+                Expression result = rewriter.rewriteConstant(node, context.get(), ExpressionTreeRewriter.this);
                 if (result != null) {
                     return result;
                 }

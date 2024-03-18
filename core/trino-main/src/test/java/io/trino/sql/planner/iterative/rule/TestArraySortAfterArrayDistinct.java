@@ -18,9 +18,9 @@ import io.airlift.slice.Slices;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.metadata.TestingFunctionResolution;
 import io.trino.spi.type.ArrayType;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.LambdaExpression;
 import io.trino.sql.planner.assertions.PlanMatchPattern;
 import io.trino.sql.planner.iterative.rule.test.BaseRuleTest;
@@ -49,22 +49,22 @@ public class TestArraySortAfterArrayDistinct
     public void testArrayDistinctAfterArraySort()
     {
         test(
-                new FunctionCall(DISTINCT.toQualifiedName(), ImmutableList.of(new FunctionCall(SORT.toQualifiedName(), ImmutableList.of(new FunctionCall(ARRAY.toQualifiedName(), ImmutableList.of(GenericLiteral.constant(VARCHAR, Slices.utf8Slice("a")))))))),
-                new FunctionCall(SORT.toQualifiedName(), ImmutableList.of(new FunctionCall(DISTINCT.toQualifiedName(), ImmutableList.of(new FunctionCall(ARRAY.toQualifiedName(), ImmutableList.of(GenericLiteral.constant(VARCHAR, Slices.utf8Slice("a")))))))));
+                new FunctionCall(DISTINCT, ImmutableList.of(new FunctionCall(SORT, ImmutableList.of(new FunctionCall(ARRAY, ImmutableList.of(new Constant(VARCHAR, Slices.utf8Slice("a")))))))),
+                new FunctionCall(SORT, ImmutableList.of(new FunctionCall(DISTINCT, ImmutableList.of(new FunctionCall(ARRAY, ImmutableList.of(new Constant(VARCHAR, Slices.utf8Slice("a")))))))));
     }
 
     @Test
     public void testArrayDistinctAfterArraySortWithLambda()
     {
         test(
-                new FunctionCall(DISTINCT.toQualifiedName(), ImmutableList.of(
-                        new FunctionCall(SORT_WITH_LAMBDA.toQualifiedName(), ImmutableList.of(
-                                new FunctionCall(ARRAY.toQualifiedName(), ImmutableList.of(GenericLiteral.constant(VARCHAR, Slices.utf8Slice("a")))),
-                                new LambdaExpression(ImmutableList.of("a", "b"), GenericLiteral.constant(INTEGER, 1L)))))),
-                new FunctionCall(SORT_WITH_LAMBDA.toQualifiedName(), ImmutableList.of(
-                        new FunctionCall(DISTINCT.toQualifiedName(), ImmutableList.of(
-                                new FunctionCall(ARRAY.toQualifiedName(), ImmutableList.of(GenericLiteral.constant(VARCHAR, Slices.utf8Slice("a")))))),
-                        new LambdaExpression(ImmutableList.of("a", "b"), GenericLiteral.constant(INTEGER, 1L)))));
+                new FunctionCall(DISTINCT, ImmutableList.of(
+                        new FunctionCall(SORT_WITH_LAMBDA, ImmutableList.of(
+                                new FunctionCall(ARRAY, ImmutableList.of(new Constant(VARCHAR, Slices.utf8Slice("a")))),
+                                new LambdaExpression(ImmutableList.of("a", "b"), new Constant(INTEGER, 1L)))))),
+                new FunctionCall(SORT_WITH_LAMBDA, ImmutableList.of(
+                        new FunctionCall(DISTINCT, ImmutableList.of(
+                                new FunctionCall(ARRAY, ImmutableList.of(new Constant(VARCHAR, Slices.utf8Slice("a")))))),
+                        new LambdaExpression(ImmutableList.of("a", "b"), new Constant(INTEGER, 1L)))));
     }
 
     private void test(Expression original, Expression rewritten)

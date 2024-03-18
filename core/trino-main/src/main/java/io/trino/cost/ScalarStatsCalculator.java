@@ -26,13 +26,11 @@ import io.trino.sql.ir.ArithmeticBinaryExpression;
 import io.trino.sql.ir.ArithmeticUnaryExpression;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IrVisitor;
-import io.trino.sql.ir.Literal;
 import io.trino.sql.ir.NodeRef;
-import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.IrExpressionInterpreter;
 import io.trino.sql.planner.IrTypeAnalyzer;
@@ -44,7 +42,6 @@ import java.util.Map;
 import java.util.OptionalDouble;
 
 import static io.trino.spi.statistics.StatsUtil.toStatsRepresentation;
-import static io.trino.sql.ir.IrUtils.isEffectivelyLiteral;
 import static io.trino.util.MoreMath.max;
 import static io.trino.util.MoreMath.min;
 import static java.lang.Double.NaN;
@@ -97,19 +94,13 @@ public class ScalarStatsCalculator
         }
 
         @Override
-        protected SymbolStatsEstimate visitNullLiteral(NullLiteral node, Void context)
+        protected SymbolStatsEstimate visitConstant(Constant node, Void context)
         {
-            return nullStatsEstimate();
-        }
-
-        @Override
-        protected SymbolStatsEstimate visitLiteral(Literal node, Void context)
-        {
-            Type type = typeAnalyzer.getType(session, TypeProvider.empty(), node);
-            Object value = switch (node) {
-                case GenericLiteral literal -> literal.getRawValue();
-                case NullLiteral literal -> null;
-            };
+            Type type = node.getType();
+            Object value = node.getValue();
+            if (value == null) {
+                return nullStatsEstimate();
+            }
 
             OptionalDouble doubleValue = toStatsRepresentation(type, value);
             SymbolStatsEstimate.Builder estimate = SymbolStatsEstimate.builder()
@@ -126,15 +117,15 @@ public class ScalarStatsCalculator
         @Override
         protected SymbolStatsEstimate visitFunctionCall(FunctionCall node, Void context)
         {
-            Map<NodeRef<Expression>, Type> expressionTypes = typeAnalyzer.getTypes(session, types, node);
+            Map<NodeRef<Expression>, Type> expressionTypes = typeAnalyzer.getTypes(types, node);
             IrExpressionInterpreter interpreter = new IrExpressionInterpreter(node, plannerContext, session, expressionTypes);
             Object value = interpreter.optimize(NoOpSymbolResolver.INSTANCE);
 
-            if (value == null || value instanceof NullLiteral) {
+            if (value == null) {
                 return nullStatsEstimate();
             }
 
-            if (value instanceof Expression && !isEffectivelyLiteral(plannerContext, session, (Expression) value)) {
+            if (value instanceof Expression) {
                 // value is not a constant
                 return SymbolStatsEstimate.unknown();
             }
@@ -156,7 +147,7 @@ public class ScalarStatsCalculator
             double lowValue = sourceStats.getLowValue();
             double highValue = sourceStats.getHighValue();
 
-            if (isIntegralType(typeAnalyzer.getType(session, types, node))) {
+            if (isIntegralType(typeAnalyzer.getType(types, node))) {
                 // todo handle low/high value changes if range gets narrower due to cast (e.g. BIGINT -> SMALLINT)
                 if (isFinite(lowValue)) {
                     lowValue = Math.round(lowValue);

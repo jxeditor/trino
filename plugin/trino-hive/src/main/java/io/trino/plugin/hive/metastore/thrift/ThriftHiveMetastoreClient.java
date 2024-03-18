@@ -64,6 +64,7 @@ import io.trino.hive.thrift.metastore.UnlockRequest;
 import io.trino.plugin.base.util.LoggingInvocationHandler;
 import io.trino.plugin.hive.acid.AcidOperation;
 import io.trino.plugin.hive.metastore.thrift.MetastoreSupportsDateStatistics.DateStatisticsSupport;
+import io.trino.spi.connector.RelationType;
 import org.apache.thrift.TApplicationException;
 import org.apache.thrift.TException;
 import org.apache.thrift.protocol.TBinaryProtocol;
@@ -72,9 +73,9 @@ import org.apache.thrift.transport.TTransportException;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
@@ -87,6 +88,8 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.reflect.Reflection.newProxy;
 import static io.trino.hive.thrift.metastore.GrantRevokeType.GRANT;
 import static io.trino.hive.thrift.metastore.GrantRevokeType.REVOKE;
+import static io.trino.plugin.hive.HiveMetadata.PRESTO_VIEW_COMMENT;
+import static io.trino.plugin.hive.TableType.VIRTUAL_VIEW;
 import static io.trino.plugin.hive.metastore.thrift.MetastoreSupportsDateStatistics.DateStatisticsSupport.NOT_SUPPORTED;
 import static io.trino.plugin.hive.metastore.thrift.MetastoreSupportsDateStatistics.DateStatisticsSupport.SUPPORTED;
 import static io.trino.plugin.hive.metastore.thrift.MetastoreSupportsDateStatistics.DateStatisticsSupport.UNKNOWN;
@@ -107,6 +110,7 @@ public class ThriftHiveMetastoreClient
     private final String hostname;
 
     private final MetastoreSupportsDateStatistics metastoreSupportsDateStatistics;
+    private final AtomicInteger chosenGetTableMetaAlternative;
     private final AtomicInteger chosenGetTableAlternative;
     private final AtomicInteger chosenAlterTransactionalTableAlternative;
     private final AtomicInteger chosenAlterPartitionsAlternative;
@@ -115,11 +119,8 @@ public class ThriftHiveMetastoreClient
             TransportSupplier transportSupplier,
             String hostname,
             MetastoreSupportsDateStatistics metastoreSupportsDateStatistics,
+            AtomicInteger chosenGetTableMetaAlternative,
             AtomicInteger chosenGetTableAlternative,
-            AtomicInteger chosenTableParamAlternative,
-            AtomicInteger chosenGetAllTablesAlternative,
-            AtomicInteger chosenGetAllViewsPerDatabaseAlternative,
-            AtomicInteger chosenGetAllViewsAlternative,
             AtomicInteger chosenAlterTransactionalTableAlternative,
             AtomicInteger chosenAlterPartitionsAlternative)
             throws TTransportException
@@ -127,6 +128,7 @@ public class ThriftHiveMetastoreClient
         this.transportSupplier = requireNonNull(transportSupplier, "transportSupplier is null");
         this.hostname = requireNonNull(hostname, "hostname is null");
         this.metastoreSupportsDateStatistics = requireNonNull(metastoreSupportsDateStatistics, "metastoreSupportsDateStatistics is null");
+        this.chosenGetTableMetaAlternative = requireNonNull(chosenGetTableMetaAlternative, "chosenGetTableMetaAlternative is null");
         this.chosenGetTableAlternative = requireNonNull(chosenGetTableAlternative, "chosenGetTableAlternative is null");
         this.chosenAlterTransactionalTableAlternative = requireNonNull(chosenAlterTransactionalTableAlternative, "chosenAlterTransactionalTableAlternative is null");
         this.chosenAlterPartitionsAlternative = requireNonNull(chosenAlterPartitionsAlternative, "chosenAlterPartitionsAlternative is null");
@@ -171,19 +173,33 @@ public class ThriftHiveMetastoreClient
     }
 
     @Override
-    public List<TableMeta> getTableMeta(Optional<String> databaseName)
+    public List<TableMeta> getTableMeta(String databaseName)
             throws TException
     {
-        if (databaseName.isPresent()) {
-            String name = databaseName.get();
-            if (name.indexOf('*') >= 0 || name.indexOf('|') >= 0) {
-                // in this case we replace any pipes with a glob and then filter the output
-                return client.getTableMeta(name.replace('|', '*'), "*", ImmutableList.of()).stream()
-                        .filter(tableMeta -> tableMeta.getDbName().equals(name))
-                        .collect(toImmutableList());
-            }
-        }
-        return client.getTableMeta(databaseName.orElse("*"), "*", ImmutableList.of());
+        return alternativeCall(
+                exception -> !(exception instanceof MetaException),
+                chosenGetTableMetaAlternative,
+                () -> {
+                    if (databaseName.indexOf('*') >= 0 || databaseName.indexOf('|') >= 0) {
+                        // in this case we replace any pipes with a glob and then filter the output
+                        return client.getTableMeta(databaseName.replace('|', '*'), "*", ImmutableList.of()).stream()
+                                .filter(tableMeta -> tableMeta.getDbName().equals(databaseName))
+                                .collect(toImmutableList());
+                    }
+                    return client.getTableMeta(databaseName, "*", ImmutableList.of());
+                },
+                () -> {
+                    // TODO: remove this once Unity adds support for getTableMeta
+                    Map<String, TableMeta> tables = new HashMap<>();
+                    client.getTables(databaseName, ".*").forEach(name -> tables.put(name, new TableMeta(databaseName, name, RelationType.TABLE.toString())));
+                    client.getTablesByType(databaseName, ".*", VIRTUAL_VIEW.name()).forEach(name -> {
+                        TableMeta tableMeta = new TableMeta(databaseName, name, VIRTUAL_VIEW.name());
+                        // This makes all views look like a Trino view, so that they are not filtered out during SHOW VIEWS
+                        tableMeta.setComments(PRESTO_VIEW_COMMENT);
+                        tables.put(name, tableMeta);
+                    });
+                    return ImmutableList.copyOf(tables.values());
+                });
     }
 
     @Override

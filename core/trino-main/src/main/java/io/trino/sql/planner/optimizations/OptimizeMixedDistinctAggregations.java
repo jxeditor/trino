@@ -20,13 +20,11 @@ import com.google.common.collect.Iterables;
 import io.trino.metadata.Metadata;
 import io.trino.spi.function.CatalogSchemaFunctionName;
 import io.trino.spi.type.Type;
-import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
-import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.planner.PlanNodeIdAllocator;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.SymbolAllocator;
@@ -208,7 +206,7 @@ public class OptimizeMixedDistinctAggregations
             Assignments.Builder outputSymbols = Assignments.builder();
             for (Symbol symbol : aggregationNode.getOutputSymbols()) {
                 if (coalesceSymbols.containsKey(symbol)) {
-                    Expression expression = new CoalesceExpression(symbol.toSymbolReference(), GenericLiteral.constant(BIGINT, 0L));
+                    Expression expression = new CoalesceExpression(symbol.toSymbolReference(), new Constant(BIGINT, 0L));
                     outputSymbols.put(coalesceSymbols.get(symbol), expression);
                 }
                 else {
@@ -331,7 +329,7 @@ public class OptimizeMixedDistinctAggregations
 
                     Expression expression = createIfExpression(
                             groupSymbol.toSymbolReference(),
-                            GenericLiteral.constant(BIGINT, 1L), // TODO: this should use GROUPING() when that's available instead of relying on specific group numbering
+                            new Constant(BIGINT, 1L), // TODO: this should use GROUPING() when that's available instead of relying on specific group numbering
                             ComparisonExpression.Operator.EQUAL,
                             symbol.toSymbolReference(),
                             symbolAllocator.getTypes().get(symbol));
@@ -343,7 +341,7 @@ public class OptimizeMixedDistinctAggregations
                     outputNonDistinctAggregateSymbols.put(aggregationOutputSymbolsMap.get(symbol), newSymbol);
                     Expression expression = createIfExpression(
                             groupSymbol.toSymbolReference(),
-                            GenericLiteral.constant(BIGINT, 0L), // TODO: this should use GROUPING() when that's available instead of relying on specific group numbering
+                            new Constant(BIGINT, 0L), // TODO: this should use GROUPING() when that's available instead of relying on specific group numbering
                             ComparisonExpression.Operator.EQUAL,
                             symbol.toSymbolReference(),
                             symbolAllocator.getTypes().get(symbol));
@@ -359,7 +357,7 @@ public class OptimizeMixedDistinctAggregations
 
             // add null assignment for mask
             // unused mask will be removed by PruneUnreferencedOutputs
-            outputSymbols.put(aggregateInfo.getMask(), new Cast(new NullLiteral(), BOOLEAN));
+            outputSymbols.put(aggregateInfo.getMask(), new Constant(BOOLEAN, null));
 
             aggregateInfo.setNewNonDistinctAggregateSymbols(outputNonDistinctAggregateSymbols.buildOrThrow());
 
@@ -469,7 +467,7 @@ public class OptimizeMixedDistinctAggregations
             return new IfExpression(
                     new ComparisonExpression(operator, left, right),
                     result,
-                    new Cast(new NullLiteral(), trueValueType));
+                    new Constant(trueValueType, null));
         }
     }
 

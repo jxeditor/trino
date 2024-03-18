@@ -17,27 +17,16 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.graph.SuccessorsFunction;
 import com.google.common.graph.Traverser;
-import io.trino.Session;
 import io.trino.metadata.Metadata;
-import io.trino.spi.type.Type;
-import io.trino.sql.PlannerContext;
 import io.trino.sql.planner.DeterminismEvaluator;
-import io.trino.sql.planner.IrExpressionInterpreter;
-import io.trino.sql.planner.IrTypeAnalyzer;
-import io.trino.sql.planner.LiteralEncoder;
-import io.trino.sql.planner.NoOpSymbolResolver;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.SymbolsExtractor;
-import io.trino.sql.planner.TypeProvider;
 
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.OptionalInt;
 import java.util.Set;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -138,18 +127,18 @@ public final class IrUtils
     public static Expression combinePredicates(Metadata metadata, LogicalExpression.Operator operator, Collection<Expression> expressions)
     {
         if (operator == LogicalExpression.Operator.AND) {
-            return combineConjuncts(metadata, expressions);
+            return combineConjuncts(expressions);
         }
 
-        return combineDisjuncts(metadata, expressions);
+        return combineDisjuncts(expressions);
     }
 
-    public static Expression combineConjuncts(Metadata metadata, Expression... expressions)
+    public static Expression combineConjuncts(Expression... expressions)
     {
-        return combineConjuncts(metadata, Arrays.asList(expressions));
+        return combineConjuncts(Arrays.asList(expressions));
     }
 
-    public static Expression combineConjuncts(Metadata metadata, Collection<Expression> expressions)
+    public static Expression combineConjuncts(Collection<Expression> expressions)
     {
         requireNonNull(expressions, "expressions is null");
 
@@ -158,7 +147,7 @@ public final class IrUtils
                 .filter(e -> !e.equals(TRUE_LITERAL))
                 .collect(toList());
 
-        conjuncts = removeDuplicates(metadata, conjuncts);
+        conjuncts = removeDuplicates(conjuncts);
 
         if (conjuncts.contains(FALSE_LITERAL)) {
             return FALSE_LITERAL;
@@ -183,17 +172,17 @@ public final class IrUtils
         return and(conjuncts);
     }
 
-    public static Expression combineDisjuncts(Metadata metadata, Expression... expressions)
+    public static Expression combineDisjuncts(Expression... expressions)
     {
-        return combineDisjuncts(metadata, Arrays.asList(expressions));
+        return combineDisjuncts(Arrays.asList(expressions));
     }
 
-    public static Expression combineDisjuncts(Metadata metadata, Collection<Expression> expressions)
+    public static Expression combineDisjuncts(Collection<Expression> expressions)
     {
-        return combineDisjunctsWithDefault(metadata, expressions, FALSE_LITERAL);
+        return combineDisjunctsWithDefault(expressions, FALSE_LITERAL);
     }
 
-    public static Expression combineDisjunctsWithDefault(Metadata metadata, Collection<Expression> expressions, Expression emptyDefault)
+    public static Expression combineDisjunctsWithDefault(Collection<Expression> expressions, Expression emptyDefault)
     {
         requireNonNull(expressions, "expressions is null");
 
@@ -202,7 +191,7 @@ public final class IrUtils
                 .filter(e -> !e.equals(FALSE_LITERAL))
                 .collect(toList());
 
-        disjuncts = removeDuplicates(metadata, disjuncts);
+        disjuncts = removeDuplicates(disjuncts);
 
         if (disjuncts.contains(TRUE_LITERAL)) {
             return TRUE_LITERAL;
@@ -213,21 +202,21 @@ public final class IrUtils
 
     public static Expression filterDeterministicConjuncts(Metadata metadata, Expression expression)
     {
-        return filterConjuncts(metadata, expression, expression1 -> DeterminismEvaluator.isDeterministic(expression1, metadata));
+        return filterConjuncts(expression, expression1 -> DeterminismEvaluator.isDeterministic(expression1));
     }
 
     public static Expression filterNonDeterministicConjuncts(Metadata metadata, Expression expression)
     {
-        return filterConjuncts(metadata, expression, not(testExpression -> DeterminismEvaluator.isDeterministic(testExpression, metadata)));
+        return filterConjuncts(expression, not(testExpression -> DeterminismEvaluator.isDeterministic(testExpression)));
     }
 
-    public static Expression filterConjuncts(Metadata metadata, Expression expression, Predicate<Expression> predicate)
+    public static Expression filterConjuncts(Expression expression, Predicate<Expression> predicate)
     {
         List<Expression> conjuncts = extractConjuncts(expression).stream()
                 .filter(predicate)
                 .collect(toList());
 
-        return combineConjuncts(metadata, conjuncts);
+        return combineConjuncts(conjuncts);
     }
 
     @SafeVarargs
@@ -259,43 +248,16 @@ public final class IrUtils
     }
 
     /**
-     * Returns whether expression is effectively literal. An effectively literal expression is a simple constant value, or null,
-     * in either {@link Literal} form, or other form returned by {@link LiteralEncoder}. In particular, other constant expressions
-     * like a deterministic function call with constant arguments are not considered effectively literal.
-     */
-    public static boolean isEffectivelyLiteral(PlannerContext plannerContext, Session session, Expression expression)
-    {
-        if (expression instanceof Literal) {
-            return true;
-        }
-        if (expression instanceof Cast) {
-            return ((Cast) expression).getExpression() instanceof Literal
-                    // a Cast(Literal(...)) can fail, so this requires verification
-                    && constantExpressionEvaluatesSuccessfully(plannerContext, session, expression);
-        }
-
-        return false;
-    }
-
-    private static boolean constantExpressionEvaluatesSuccessfully(PlannerContext plannerContext, Session session, Expression constantExpression)
-    {
-        Map<NodeRef<Expression>, Type> types = new IrTypeAnalyzer(plannerContext).getTypes(session, TypeProvider.empty(), constantExpression);
-        IrExpressionInterpreter interpreter = new IrExpressionInterpreter(constantExpression, plannerContext, session, types);
-        Object literalValue = interpreter.optimize(NoOpSymbolResolver.INSTANCE);
-        return !(literalValue instanceof Expression);
-    }
-
-    /**
      * Removes duplicate deterministic expressions. Preserves the relative order
      * of the expressions in the list.
      */
-    private static List<Expression> removeDuplicates(Metadata metadata, List<Expression> expressions)
+    private static List<Expression> removeDuplicates(List<Expression> expressions)
     {
         Set<Expression> seen = new HashSet<>();
 
         ImmutableList.Builder<Expression> result = ImmutableList.builder();
         for (Expression expression : expressions) {
-            if (!DeterminismEvaluator.isDeterministic(expression, metadata)) {
+            if (!DeterminismEvaluator.isDeterministic(expression)) {
                 result.add(expression);
             }
             else if (!seen.contains(expression)) {
@@ -312,60 +274,5 @@ public final class IrUtils
         return stream(
                 Traverser.forTree((SuccessorsFunction<Expression>) Expression::getChildren)
                         .depthFirstPreOrder(requireNonNull(node, "node is null")));
-    }
-
-    /**
-     * <p>Compares two AST trees recursively by applying the provided comparator to each pair of nodes.</p>
-     *
-     * <p>The comparator can perform a hybrid shallow/deep comparison. If it returns true or false, the
-     * nodes and any subtrees are considered equal or different, respectively. If it returns null,
-     * the nodes are considered shallowly-equal and their children will be compared recursively.</p>
-     */
-    public static boolean treeEqual(Expression left, Expression right, BiFunction<Expression, Expression, Boolean> subtreeComparator)
-    {
-        Boolean equal = subtreeComparator.apply(left, right);
-
-        if (equal != null) {
-            return equal;
-        }
-
-        List<? extends Expression> leftChildren = left.getChildren();
-        List<? extends Expression> rightChildren = right.getChildren();
-
-        if (leftChildren.size() != rightChildren.size()) {
-            return false;
-        }
-
-        for (int i = 0; i < leftChildren.size(); i++) {
-            if (!treeEqual(leftChildren.get(i), rightChildren.get(i), subtreeComparator)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * <p>Computes a hash of the given AST by applying the provided subtree hasher at each level.</p>
-     *
-     * <p>If the hasher returns a non-empty {@link OptionalInt}, the value is treated as the hash for
-     * the subtree at that node. Otherwise, the hashes of its children are computed and combined.</p>
-     */
-    public static int treeHash(Expression node, Function<Expression, OptionalInt> subtreeHasher)
-    {
-        OptionalInt hash = subtreeHasher.apply(node);
-
-        if (hash.isPresent()) {
-            return hash.getAsInt();
-        }
-
-        List<? extends Expression> children = node.getChildren();
-
-        int result = node.getClass().hashCode();
-        for (Expression element : children) {
-            result = 31 * result + treeHash(element, subtreeHasher);
-        }
-
-        return result;
     }
 }

@@ -22,15 +22,13 @@ import io.trino.matching.Pattern;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.spi.type.Type;
-import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NotExpression;
-import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.planner.OrderingScheme;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.iterative.Rule;
@@ -402,10 +400,10 @@ public class ImplementTableFunctionSource
                                 new ComparisonExpression(EQUAL, leftRowNumber, rightRowNumber),
                                 new LogicalExpression(AND, ImmutableList.of(
                                         new ComparisonExpression(GREATER_THAN, leftRowNumber, rightPartitionSize),
-                                        new ComparisonExpression(EQUAL, rightRowNumber, GenericLiteral.constant(BIGINT, 1L)))),
+                                        new ComparisonExpression(EQUAL, rightRowNumber, new Constant(BIGINT, 1L)))),
                                 new LogicalExpression(AND, ImmutableList.of(
                                         new ComparisonExpression(GREATER_THAN, rightRowNumber, leftPartitionSize),
-                                        new ComparisonExpression(EQUAL, leftRowNumber, GenericLiteral.constant(BIGINT, 1L)))))))
+                                        new ComparisonExpression(EQUAL, leftRowNumber, new Constant(BIGINT, 1L)))))))
                         .build());
 
         // The join type depends on the prune when empty property of the sources.
@@ -502,8 +500,8 @@ public class ImplementTableFunctionSource
         Expression rowNumberExpression = new IfExpression(
                 new ComparisonExpression(
                         GREATER_THAN,
-                        new CoalesceExpression(leftRowNumber, GenericLiteral.constant(BIGINT, -1L)),
-                        new CoalesceExpression(rightRowNumber, GenericLiteral.constant(BIGINT, -1L))),
+                        new CoalesceExpression(leftRowNumber, new Constant(BIGINT, -1L)),
+                        new CoalesceExpression(rightRowNumber, new Constant(BIGINT, -1L))),
                 leftRowNumber,
                 rightRowNumber);
 
@@ -512,8 +510,8 @@ public class ImplementTableFunctionSource
         Expression partitionSizeExpression = new IfExpression(
                 new ComparisonExpression(
                         GREATER_THAN,
-                        new CoalesceExpression(leftPartitionSize, GenericLiteral.constant(BIGINT, -1L)),
-                        new CoalesceExpression(rightPartitionSize, GenericLiteral.constant(BIGINT, -1L))),
+                        new CoalesceExpression(leftPartitionSize, new Constant(BIGINT, -1L)),
+                        new CoalesceExpression(rightPartitionSize, new Constant(BIGINT, -1L))),
                 leftPartitionSize,
                 rightPartitionSize);
 
@@ -573,10 +571,10 @@ public class ImplementTableFunctionSource
                 new ComparisonExpression(EQUAL, leftRowNumber, rightRowNumber),
                 new LogicalExpression(AND, ImmutableList.of(
                         new ComparisonExpression(GREATER_THAN, leftRowNumber, rightPartitionSize),
-                        new ComparisonExpression(EQUAL, rightRowNumber, GenericLiteral.constant(BIGINT, 1L)))),
+                        new ComparisonExpression(EQUAL, rightRowNumber, new Constant(BIGINT, 1L)))),
                 new LogicalExpression(AND, ImmutableList.of(
                         new ComparisonExpression(GREATER_THAN, rightRowNumber, leftPartitionSize),
-                        new ComparisonExpression(EQUAL, leftRowNumber, GenericLiteral.constant(BIGINT, 1L))))));
+                        new ComparisonExpression(EQUAL, leftRowNumber, new Constant(BIGINT, 1L))))));
 
         JoinType joinType;
         if (left.pruneWhenEmpty() && right.pruneWhenEmpty()) {
@@ -633,8 +631,8 @@ public class ImplementTableFunctionSource
         Expression rowNumberExpression = new IfExpression(
                 new ComparisonExpression(
                         GREATER_THAN,
-                        new CoalesceExpression(leftRowNumber, GenericLiteral.constant(BIGINT, -1L)),
-                        new CoalesceExpression(rightRowNumber, GenericLiteral.constant(BIGINT, -1L))),
+                        new CoalesceExpression(leftRowNumber, new Constant(BIGINT, -1L)),
+                        new CoalesceExpression(rightRowNumber, new Constant(BIGINT, -1L))),
                 leftRowNumber,
                 rightRowNumber);
 
@@ -643,8 +641,8 @@ public class ImplementTableFunctionSource
         Expression partitionSizeExpression = new IfExpression(
                 new ComparisonExpression(
                         GREATER_THAN,
-                        new CoalesceExpression(leftPartitionSize, GenericLiteral.constant(BIGINT, -1L)),
-                        new CoalesceExpression(rightPartitionSize, GenericLiteral.constant(BIGINT, -1L))),
+                        new CoalesceExpression(leftPartitionSize, new Constant(BIGINT, -1L)),
+                        new CoalesceExpression(rightPartitionSize, new Constant(BIGINT, -1L))),
                 leftPartitionSize,
                 rightPartitionSize);
 
@@ -684,7 +682,7 @@ public class ImplementTableFunctionSource
             symbolsToMarkers.put(symbol, marker);
             Expression actual = symbol.toSymbolReference();
             Expression reference = referenceSymbol.toSymbolReference();
-            assignments.put(marker, new IfExpression(new ComparisonExpression(EQUAL, actual, reference), actual, new Cast(new NullLiteral(), BIGINT)));
+            assignments.put(marker, new IfExpression(new ComparisonExpression(EQUAL, actual, reference), actual, new Constant(BIGINT, null)));
         }
 
         PlanNode project = new ProjectNode(

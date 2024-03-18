@@ -56,9 +56,9 @@ import io.trino.sql.analyzer.Scope;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.IrUtils;
 import io.trino.sql.ir.Row;
@@ -1365,9 +1365,9 @@ class RelationPlanner
         planBuilder = coerced.getSubPlan();
 
         // apply the input function to the input expression
-        GenericLiteral failOnError = GenericLiteral.constant(BOOLEAN, jsonTable.getErrorBehavior().orElse(JsonTable.ErrorBehavior.EMPTY) == JsonTable.ErrorBehavior.ERROR);
+        Constant failOnError = new Constant(BOOLEAN, jsonTable.getErrorBehavior().orElse(JsonTable.ErrorBehavior.EMPTY) == JsonTable.ErrorBehavior.ERROR);
         ResolvedFunction inputToJson = analysis.getJsonInputFunction(inputExpression);
-        Expression inputJson = new FunctionCall(inputToJson.toQualifiedName(), ImmutableList.of(coerced.get(inputExpression).toSymbolReference(), failOnError));
+        Expression inputJson = new FunctionCall(inputToJson, ImmutableList.of(coerced.get(inputExpression).toSymbolReference(), failOnError));
 
         // apply the input functions to the JSON path parameters having FORMAT,
         // and collect all JSON path parameters in a Row
@@ -1495,10 +1495,10 @@ class RelationPlanner
             Symbol properOutput = properOutputs.get(i);
             if (orderedColumns.get(i).getNode() instanceof QueryColumn queryColumn) {
                 // apply output function
-                GenericLiteral errorBehavior = GenericLiteral.constant(TINYINT, (long) queryColumn.getErrorBehavior().orElse(defaultErrorOnError ? ERROR : NULL).ordinal());
-                GenericLiteral omitQuotes = GenericLiteral.constant(BOOLEAN, queryColumn.getQuotesBehavior().orElse(KEEP) == OMIT);
+                Constant errorBehavior = new Constant(TINYINT, (long) queryColumn.getErrorBehavior().orElse(defaultErrorOnError ? ERROR : NULL).ordinal());
+                Constant omitQuotes = new Constant(BOOLEAN, queryColumn.getQuotesBehavior().orElse(KEEP) == OMIT);
                 ResolvedFunction outputFunction = analysis.getJsonOutputFunction(queryColumn);
-                Expression result = new FunctionCall(outputFunction.toQualifiedName(), ImmutableList.of(properOutput.toSymbolReference(), errorBehavior, omitQuotes));
+                Expression result = new FunctionCall(outputFunction, ImmutableList.of(properOutput.toSymbolReference(), errorBehavior, omitQuotes));
 
                 // cast to declared returned type
                 Type expectedType = jsonTableRelationType.getFieldByIndex(i).getType();

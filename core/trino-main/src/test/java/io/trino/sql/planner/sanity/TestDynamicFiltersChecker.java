@@ -26,7 +26,7 @@ import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.ComparisonExpression;
-import io.trino.sql.ir.GenericLiteral;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.SymbolReference;
@@ -95,7 +95,7 @@ public class TestDynamicFiltersChecker
     {
         PlanNode root = builder.join(
                 INNER,
-                builder.filter(new ComparisonExpression(GREATER_THAN, new SymbolReference("ORDERS_OK"), GenericLiteral.constant(INTEGER, 0L)), ordersTableScanNode),
+                builder.filter(new ComparisonExpression(GREATER_THAN, new SymbolReference("ORDERS_OK"), new Constant(INTEGER, 0L)), ordersTableScanNode),
                 lineitemTableScanNode,
                 ImmutableList.of(new JoinNode.EquiJoinClause(ordersOrderKeySymbol, lineitemOrderKeySymbol)),
                 ImmutableList.of(ordersOrderKeySymbol),
@@ -143,8 +143,7 @@ public class TestDynamicFiltersChecker
                         ordersTableScanNode,
                         builder.filter(
                                 combineConjuncts(
-                                        metadata,
-                                        new ComparisonExpression(GREATER_THAN, new SymbolReference("LINEITEM_OK"), GenericLiteral.constant(INTEGER, 0L)),
+                                        new ComparisonExpression(GREATER_THAN, new SymbolReference("LINEITEM_OK"), new Constant(INTEGER, 0L)),
                                         createDynamicFilterExpression(metadata, new DynamicFilterId("DF"), BIGINT, lineitemOrderKeySymbol.toSymbolReference())),
                                 lineitemTableScanNode),
                         ImmutableList.of(new JoinNode.EquiJoinClause(ordersOrderKeySymbol, lineitemOrderKeySymbol)),
@@ -169,8 +168,7 @@ public class TestDynamicFiltersChecker
                         INNER,
                         builder.filter(
                                 combineConjuncts(
-                                        metadata,
-                                        new ComparisonExpression(GREATER_THAN, new SymbolReference("LINEITEM_OK"), GenericLiteral.constant(INTEGER, 0L)),
+                                        new ComparisonExpression(GREATER_THAN, new SymbolReference("LINEITEM_OK"), new Constant(INTEGER, 0L)),
                                         createDynamicFilterExpression(metadata, new DynamicFilterId("DF"), BIGINT, ordersOrderKeySymbol.toSymbolReference())),
                                 builder.values(lineitemOrderKeySymbol)),
                         ordersTableScanNode,
@@ -197,13 +195,10 @@ public class TestDynamicFiltersChecker
                         ordersTableScanNode,
                         builder.filter(
                                 combineConjuncts(
-                                        metadata,
                                         combineDisjuncts(
-                                                metadata,
                                                 new IsNullPredicate(new SymbolReference("LINEITEM_OK")),
                                                 createDynamicFilterExpression(metadata, new DynamicFilterId("DF"), BIGINT, lineitemOrderKeySymbol.toSymbolReference())),
                                         combineDisjuncts(
-                                                metadata,
                                                 new IsNotNullPredicate(new SymbolReference("LINEITEM_OK")),
                                                 createDynamicFilterExpression(metadata, new DynamicFilterId("DF"), BIGINT, lineitemOrderKeySymbol.toSymbolReference()))),
                                 lineitemTableScanNode),
@@ -226,7 +221,7 @@ public class TestDynamicFiltersChecker
                 builder.join(
                         INNER,
                         builder.filter(
-                                createDynamicFilterExpression(metadata, new DynamicFilterId("DF"), BIGINT, new ArithmeticBinaryExpression(ADD, new SymbolReference("LINEITEM_OK"), GenericLiteral.constant(BIGINT, 1L))),
+                                createDynamicFilterExpression(metadata, new DynamicFilterId("DF"), BIGINT, new ArithmeticBinaryExpression(ADD, new SymbolReference("LINEITEM_OK"), new Constant(BIGINT, 1L))),
                                 lineitemTableScanNode),
                         ordersTableScanNode,
                         ImmutableList.of(new JoinNode.EquiJoinClause(lineitemOrderKeySymbol, ordersOrderKeySymbol)),
@@ -238,7 +233,7 @@ public class TestDynamicFiltersChecker
                         ImmutableMap.of(new DynamicFilterId("DF"), ordersOrderKeySymbol)));
         assertThatThrownBy(() -> validatePlan(root))
                 .isInstanceOf(VerifyException.class)
-                .hasMessageMatching("Dynamic filter expression \\+\\(LINEITEM_OK, Literal\\[bigint, 1]\\) must be a SymbolReference or a CAST of SymbolReference.");
+                .hasMessageMatching("Dynamic filter expression \\+\\(LINEITEM_OK, Constant\\[bigint, 1]\\) must be a SymbolReference or a CAST of SymbolReference.");
     }
 
     @Test
@@ -265,7 +260,7 @@ public class TestDynamicFiltersChecker
     public void testUnconsumedDynamicFilterInSemiJoin()
     {
         PlanNode root = builder.semiJoin(
-                builder.filter(new ComparisonExpression(GREATER_THAN, new SymbolReference("ORDERS_OK"), GenericLiteral.constant(INTEGER, 0L)), ordersTableScanNode),
+                builder.filter(new ComparisonExpression(GREATER_THAN, new SymbolReference("ORDERS_OK"), new Constant(INTEGER, 0L)), ordersTableScanNode),
                 lineitemTableScanNode,
                 ordersOrderKeySymbol,
                 lineitemOrderKeySymbol,
@@ -285,14 +280,12 @@ public class TestDynamicFiltersChecker
         PlanNode root = builder.semiJoin(
                 builder.filter(
                         combineConjuncts(
-                                metadata,
-                                new ComparisonExpression(GREATER_THAN, new SymbolReference("ORDERS_OK"), GenericLiteral.constant(INTEGER, 0L)),
+                                new ComparisonExpression(GREATER_THAN, new SymbolReference("ORDERS_OK"), new Constant(INTEGER, 0L)),
                                 createDynamicFilterExpression(metadata, new DynamicFilterId("DF"), BIGINT, lineitemOrderKeySymbol.toSymbolReference())),
                         ordersTableScanNode),
                 builder.filter(
                         combineConjuncts(
-                                metadata,
-                                new ComparisonExpression(GREATER_THAN, new SymbolReference("LINEITEM_OK"), GenericLiteral.constant(INTEGER, 0L)),
+                                new ComparisonExpression(GREATER_THAN, new SymbolReference("LINEITEM_OK"), new Constant(INTEGER, 0L)),
                                 createDynamicFilterExpression(metadata, new DynamicFilterId("DF"), BIGINT, lineitemOrderKeySymbol.toSymbolReference())),
                         lineitemTableScanNode),
                 ordersOrderKeySymbol,
@@ -316,8 +309,7 @@ public class TestDynamicFiltersChecker
                 builder.semiJoin(
                         builder.filter(
                                 combineConjuncts(
-                                        metadata,
-                                        new ComparisonExpression(GREATER_THAN, new SymbolReference("ORDERS_OK"), GenericLiteral.constant(INTEGER, 0L)),
+                                        new ComparisonExpression(GREATER_THAN, new SymbolReference("ORDERS_OK"), new Constant(INTEGER, 0L)),
                                         createDynamicFilterExpression(metadata, new DynamicFilterId("DF"), BIGINT, ordersOrderKeySymbol.toSymbolReference())),
                                 ordersTableScanNode),
                         lineitemTableScanNode,
@@ -339,8 +331,7 @@ public class TestDynamicFiltersChecker
         PlanNode root = builder.semiJoin(
                 builder.filter(
                         combineConjuncts(
-                                metadata,
-                                new ComparisonExpression(GREATER_THAN, new SymbolReference("ORDERS_OK"), GenericLiteral.constant(INTEGER, 0L)),
+                                new ComparisonExpression(GREATER_THAN, new SymbolReference("ORDERS_OK"), new Constant(INTEGER, 0L)),
                                 createDynamicFilterExpression(metadata, new DynamicFilterId("DF"), BIGINT, ordersOrderKeySymbol.toSymbolReference())),
                         builder.values(ordersOrderKeySymbol)),
                 lineitemTableScanNode,

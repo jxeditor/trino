@@ -16,12 +16,6 @@ package io.trino.sql.planner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import io.trino.Session;
-import io.trino.execution.warnings.WarningCollector;
-import io.trino.metadata.FunctionResolver;
-import io.trino.metadata.ResolvedFunction;
-import io.trino.security.AccessControl;
-import io.trino.security.AllowAllAccessControl;
 import io.trino.spi.function.BoundSignature;
 import io.trino.spi.function.OperatorType;
 import io.trino.spi.type.ArrayType;
@@ -37,9 +31,9 @@ import io.trino.sql.ir.BindExpression;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrVisitor;
@@ -50,7 +44,6 @@ import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NodeRef;
 import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.NullIfExpression;
-import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.ir.Row;
 import io.trino.sql.ir.SearchedCaseExpression;
 import io.trino.sql.ir.SimpleCaseExpression;
@@ -86,9 +79,9 @@ public class IrTypeAnalyzer
         this.plannerContext = requireNonNull(plannerContext, "plannerContext is null");
     }
 
-    public Map<NodeRef<Expression>, Type> getTypes(Session session, TypeProvider inputTypes, Iterable<Expression> expressions)
+    public Map<NodeRef<Expression>, Type> getTypes(TypeProvider inputTypes, Iterable<Expression> expressions)
     {
-        Visitor visitor = new Visitor(plannerContext, session, inputTypes);
+        Visitor visitor = new Visitor(plannerContext, inputTypes);
 
         for (Expression expression : expressions) {
             visitor.process(expression, new Context(ImmutableMap.of()));
@@ -97,34 +90,28 @@ public class IrTypeAnalyzer
         return visitor.getTypes();
     }
 
-    public Map<NodeRef<Expression>, Type> getTypes(Session session, TypeProvider inputTypes, Expression expression)
+    public Map<NodeRef<Expression>, Type> getTypes(TypeProvider inputTypes, Expression expression)
     {
-        return getTypes(session, inputTypes, ImmutableList.of(expression));
+        return getTypes(inputTypes, ImmutableList.of(expression));
     }
 
-    public Type getType(Session session, TypeProvider inputTypes, Expression expression)
+    public Type getType(TypeProvider inputTypes, Expression expression)
     {
-        return getTypes(session, inputTypes, expression).get(NodeRef.of(expression));
+        return getTypes(inputTypes, expression).get(NodeRef.of(expression));
     }
 
     private static class Visitor
             extends IrVisitor<Type, Context>
     {
-        private static final AccessControl ALLOW_ALL_ACCESS_CONTROL = new AllowAllAccessControl();
-
         private final PlannerContext plannerContext;
-        private final Session session;
         private final TypeProvider symbolTypes;
-        private final FunctionResolver functionResolver;
 
         private final Map<NodeRef<Expression>, Type> expressionTypes = new LinkedHashMap<>();
 
-        public Visitor(PlannerContext plannerContext, Session session, TypeProvider symbolTypes)
+        public Visitor(PlannerContext plannerContext, TypeProvider symbolTypes)
         {
             this.plannerContext = requireNonNull(plannerContext, "plannerContext is null");
-            this.session = requireNonNull(session, "session is null");
             this.symbolTypes = requireNonNull(symbolTypes, "symbolTypes is null");
-            this.functionResolver = plannerContext.getFunctionResolver(WarningCollector.NOOP);
         }
 
         public Map<NodeRef<Expression>, Type> getTypes()
@@ -325,7 +312,7 @@ public class IrTypeAnalyzer
             return setExpressionType(
                     node,
                     switch (baseType) {
-                        case RowType rowType -> rowType.getFields().get((int) (long) ((GenericLiteral) node.getIndex()).getRawValue() - 1).getType();
+                        case RowType rowType -> rowType.getFields().get((int) (long) ((Constant) node.getIndex()).getValue() - 1).getType();
                         case ArrayType arrayType -> arrayType.getElementType();
                         case MapType mapType -> mapType.getValueType();
                         default -> throw new IllegalStateException("Unexpected type: " + baseType);
@@ -348,24 +335,15 @@ public class IrTypeAnalyzer
         }
 
         @Override
-        protected Type visitGenericLiteral(GenericLiteral node, Context context)
+        protected Type visitConstant(Constant node, Context context)
         {
             return setExpressionType(node, node.getType());
         }
 
         @Override
-        protected Type visitNullLiteral(NullLiteral node, Context context)
-        {
-            return setExpressionType(node, UNKNOWN);
-        }
-
-        @Override
         protected Type visitFunctionCall(FunctionCall node, Context context)
         {
-            // Function should already be resolved in IR
-            ResolvedFunction function = functionResolver.resolveFunction(session, node.getName(), null, ALLOW_ALL_ACCESS_CONTROL);
-
-            BoundSignature signature = function.getSignature();
+            BoundSignature signature = node.getFunction().getSignature();
             for (int i = 0; i < node.getArguments().size(); i++) {
                 Expression argument = node.getArguments().get(i);
                 Type formalType = signature.getArgumentTypes().get(i);

@@ -19,8 +19,8 @@ import com.google.common.collect.ImmutableSet;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.OrderingScheme;
 import io.trino.sql.planner.Symbol;
@@ -37,7 +37,6 @@ import io.trino.sql.planner.rowpattern.LogicalIndexPointer;
 import io.trino.sql.planner.rowpattern.MatchNumberValuePointer;
 import io.trino.sql.planner.rowpattern.ScalarValuePointer;
 import io.trino.sql.planner.rowpattern.ir.IrLabel;
-import io.trino.sql.tree.QualifiedName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -105,18 +104,18 @@ public class TestMergePatternRecognitionNodes
                 .doesNotFire();
 
         // aggregations in variable definitions do not match
-        QualifiedName count = tester().getMetadata().resolveBuiltinFunction("count", fromTypes(BIGINT)).toQualifiedName();
+        ResolvedFunction count = tester().getMetadata().resolveBuiltinFunction("count", fromTypes(BIGINT));
         tester().assertThat(new MergePatternRecognitionNodesWithoutProject())
                 .on(p -> p.patternRecognition(parentBuilder -> parentBuilder
                         .pattern(new IrLabel("X"))
                         .addVariableDefinition(
                                 new IrLabel("X"),
-                                new ComparisonExpression(GREATER_THAN, new FunctionCall(count, ImmutableList.of(new SymbolReference("a"))), GenericLiteral.constant(INTEGER, 5L)))
+                                new ComparisonExpression(GREATER_THAN, new FunctionCall(count, ImmutableList.of(new SymbolReference("a"))), new Constant(INTEGER, 5L)))
                         .source(p.patternRecognition(childBuilder -> childBuilder
                                 .pattern(new IrLabel("X"))
                                 .addVariableDefinition(
                                         new IrLabel("X"),
-                                        new ComparisonExpression(GREATER_THAN, new FunctionCall(count, ImmutableList.of(new SymbolReference("b"))), GenericLiteral.constant(INTEGER, 5L)))
+                                        new ComparisonExpression(GREATER_THAN, new FunctionCall(count, ImmutableList.of(new SymbolReference("b"))), new Constant(INTEGER, 5L)))
                                 .source(p.values(p.symbol("a"), p.symbol("b")))))))
                 .doesNotFire();
     }
@@ -723,7 +722,7 @@ public class TestMergePatternRecognitionNodes
                         .pattern(new IrLabel("X"))
                         .addVariableDefinition(
                                 new IrLabel("X"),
-                                new ComparisonExpression(GREATER_THAN, new SymbolReference("c"), GenericLiteral.constant(INTEGER, 5L)),
+                                new ComparisonExpression(GREATER_THAN, new SymbolReference("c"), new Constant(INTEGER, 5L)),
                                 ImmutableMap.of("c", new AggregationValuePointer(
                                         count,
                                         new AggregatedSetDescriptor(ImmutableSet.of(), true),
@@ -734,7 +733,7 @@ public class TestMergePatternRecognitionNodes
                                 .pattern(new IrLabel("X"))
                                 .addVariableDefinition(
                                         new IrLabel("X"),
-                                        new ComparisonExpression(GREATER_THAN, new SymbolReference("c"), GenericLiteral.constant(INTEGER, 5L)),
+                                        new ComparisonExpression(GREATER_THAN, new SymbolReference("c"), new Constant(INTEGER, 5L)),
                                         ImmutableMap.of("c", new AggregationValuePointer(
                                                 count,
                                                 new AggregatedSetDescriptor(ImmutableSet.of(), true),
@@ -747,7 +746,7 @@ public class TestMergePatternRecognitionNodes
                                         .pattern(new IrLabel("X"))
                                         .addVariableDefinition(
                                                 new IrLabel("X"),
-                                                new ComparisonExpression(GREATER_THAN, new SymbolReference("c"), GenericLiteral.constant(INTEGER, 5L)),
+                                                new ComparisonExpression(GREATER_THAN, new SymbolReference("c"), new Constant(INTEGER, 5L)),
                                                 ImmutableMap.of("c", new AggregationValuePointer(
                                                         count,
                                                         new AggregatedSetDescriptor(ImmutableSet.of(), true),

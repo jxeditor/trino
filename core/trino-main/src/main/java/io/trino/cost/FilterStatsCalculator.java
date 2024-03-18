@@ -23,11 +23,10 @@ import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.BetweenPredicate;
 import io.trino.sql.ir.BooleanLiteral;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.InPredicate;
-import io.trino.sql.ir.IrUtils;
 import io.trino.sql.ir.IrVisitor;
 import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
@@ -37,7 +36,6 @@ import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.IrExpressionInterpreter;
 import io.trino.sql.planner.IrTypeAnalyzer;
-import io.trino.sql.planner.LiteralEncoder;
 import io.trino.sql.planner.NoOpSymbolResolver;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.TypeProvider;
@@ -53,7 +51,6 @@ import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.SystemSessionProperties.getFilterConjunctionIndependenceFactor;
 import static io.trino.cost.ComparisonStatsCalculator.estimateExpressionToExpressionComparison;
@@ -112,15 +109,20 @@ public class FilterStatsCalculator
     {
         // TODO reuse io.trino.sql.planner.iterative.rule.SimplifyExpressions.rewrite
 
-        Map<NodeRef<Expression>, Type> expressionTypes = typeAnalyzer.getTypes(session, types, predicate);
+        Map<NodeRef<Expression>, Type> expressionTypes = typeAnalyzer.getTypes(types, predicate);
         IrExpressionInterpreter interpreter = new IrExpressionInterpreter(predicate, plannerContext, session, expressionTypes);
         Object value = interpreter.optimize(NoOpSymbolResolver.INSTANCE);
+
+        if (value instanceof Expression expression) {
+            return expression;
+        }
 
         if (value == null) {
             // Expression evaluates to SQL null, which in Filter is equivalent to false. This assumes the expression is a top-level expression (eg. not in NOT).
             value = false;
         }
-        return LiteralEncoder.toExpression(value, BOOLEAN);
+
+        return new Constant(BOOLEAN, value);
     }
 
     private class FilterExpressionStatsCalculatingVisitor
@@ -261,10 +263,10 @@ public class FilterStatsCalculator
         }
 
         @Override
-        protected PlanNodeStatsEstimate visitGenericLiteral(GenericLiteral node, Void context)
+        protected PlanNodeStatsEstimate visitConstant(Constant node, Void context)
         {
-            if (node.getType().equals(BOOLEAN)) {
-                if ((boolean) node.getRawValue()) {
+            if (node.getType().equals(BOOLEAN) && node.getValue() != null) {
+                if ((boolean) node.getValue()) {
                     return input;
                 }
 
@@ -274,7 +276,7 @@ public class FilterStatsCalculator
                 return result.build();
             }
 
-            return super.visitGenericLiteral(node, context);
+            return super.visitConstant(node, context);
         }
 
         @Override
@@ -385,15 +387,14 @@ public class FilterStatsCalculator
             Expression left = node.getLeft();
             Expression right = node.getRight();
 
-            checkArgument(!(isEffectivelyLiteral(left) && isEffectivelyLiteral(right)), "Literal-to-literal not supported here, should be eliminated earlier");
+            checkArgument(!(left instanceof Constant && right instanceof Constant), "Literal-to-literal not supported here, should be eliminated earlier");
 
             if (!(left instanceof SymbolReference) && right instanceof SymbolReference) {
                 // normalize so that symbol is on the left
                 return process(new ComparisonExpression(operator.flip(), right, left));
             }
 
-            if (isEffectivelyLiteral(left)) {
-                verify(!isEffectivelyLiteral(right));
+            if (left instanceof Constant) {
                 // normalize so that literal is on the right
                 return process(new ComparisonExpression(operator.flip(), right, left));
             }
@@ -404,7 +405,7 @@ public class FilterStatsCalculator
 
             SymbolStatsEstimate leftStats = getExpressionStats(left);
             Optional<Symbol> leftSymbol = left instanceof SymbolReference ? Optional.of(Symbol.from(left)) : Optional.empty();
-            if (isEffectivelyLiteral(right)) {
+            if (right instanceof Constant) {
                 Type type = getType(left);
                 Object literalValue = evaluateConstantExpression(right, plannerContext, session);
                 if (literalValue == null) {
@@ -441,7 +442,7 @@ public class FilterStatsCalculator
                 return requireNonNull(types.get(symbol), () -> format("No type for symbol %s", symbol));
             }
 
-            return typeAnalyzer.getType(session, types, expression);
+            return typeAnalyzer.getType(types, expression);
         }
 
         private SymbolStatsEstimate getExpressionStats(Expression expression)
@@ -451,11 +452,6 @@ public class FilterStatsCalculator
                 return requireNonNull(input.getSymbolStatistics(symbol), () -> format("No statistics for symbol %s", symbol));
             }
             return scalarStatsCalculator.calculate(expression, input, session, types);
-        }
-
-        private boolean isEffectivelyLiteral(Expression expression)
-        {
-            return IrUtils.isEffectivelyLiteral(plannerContext, session, expression);
         }
     }
 

@@ -16,15 +16,14 @@ package io.trino.sql.planner.iterative.rule;
 import com.google.common.collect.ImmutableList;
 import io.trino.matching.Captures;
 import io.trino.matching.Pattern;
-import io.trino.metadata.Metadata;
 import io.trino.sql.ir.Cast;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.NullIfExpression;
-import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.ir.SearchedCaseExpression;
 import io.trino.sql.ir.SimpleCaseExpression;
 import io.trino.sql.ir.WhenClause;
@@ -56,13 +55,6 @@ public class SimplifyFilterPredicate
 {
     private static final Pattern<FilterNode> PATTERN = filter();
 
-    private final Metadata metadata;
-
-    public SimplifyFilterPredicate(Metadata metadata)
-    {
-        this.metadata = metadata;
-    }
-
     @Override
     public Pattern<FilterNode> getPattern()
     {
@@ -93,7 +85,7 @@ public class SimplifyFilterPredicate
         return Result.ofPlanNode(new FilterNode(
                 node.getId(),
                 node.getSource(),
-                combineConjuncts(metadata, newConjuncts.build())));
+                combineConjuncts(newConjuncts.build())));
     }
 
     private Optional<Expression> simplifyFilterExpression(Expression expression)
@@ -109,7 +101,7 @@ public class SimplifyFilterPredicate
             if (isNotTrue(trueValue) && falseValue.isPresent() && falseValue.get().equals(TRUE_LITERAL)) {
                 return Optional.of(isFalseOrNullPredicate(condition));
             }
-            if (falseValue.isPresent() && falseValue.get().equals(trueValue) && isDeterministic(trueValue, metadata)) {
+            if (falseValue.isPresent() && falseValue.get().equals(trueValue) && isDeterministic(trueValue)) {
                 return Optional.of(trueValue);
             }
             if (isNotTrue(trueValue) && (falseValue.isEmpty() || isNotTrue(falseValue.get()))) {
@@ -163,7 +155,7 @@ public class SimplifyFilterPredicate
                     }
                     else {
                         builder.add(operand);
-                        return Optional.of(combineConjuncts(metadata, builder.build()));
+                        return Optional.of(combineConjuncts(builder.build()));
                     }
                 }
             }
@@ -171,7 +163,7 @@ public class SimplifyFilterPredicate
             if (notTrueResultsCount == results.size() && defaultValue.isPresent() && defaultValue.get().equals(TRUE_LITERAL)) {
                 ImmutableList.Builder<Expression> builder = ImmutableList.builder();
                 operands.forEach(operand -> builder.add(isFalseOrNullPredicate(operand)));
-                return Optional.of(combineConjuncts(metadata, builder.build()));
+                return Optional.of(combineConjuncts(builder.build()));
             }
             // skip clauses with not true conditions
             List<WhenClause> whenClauses = new ArrayList<>();
@@ -199,7 +191,7 @@ public class SimplifyFilterPredicate
         if (expression instanceof SimpleCaseExpression caseExpression) {
             Optional<Expression> defaultValue = caseExpression.getDefaultValue();
 
-            if (caseExpression.getOperand() instanceof NullLiteral) {
+            if (caseExpression.getOperand() instanceof Constant literal && literal.getValue() == null) {
                 return Optional.of(defaultValue.orElse(FALSE_LITERAL));
             }
 
@@ -221,7 +213,7 @@ public class SimplifyFilterPredicate
     private static boolean isNotTrue(Expression expression)
     {
         return expression.equals(FALSE_LITERAL) ||
-                expression instanceof NullLiteral ||
+                expression instanceof Constant literal && literal.getValue() == null ||
                 expression instanceof Cast && isNotTrue(((Cast) expression).getExpression());
     }
 

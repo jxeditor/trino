@@ -44,21 +44,19 @@ import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
 import io.trino.sql.ir.ComparisonExpression;
 import io.trino.sql.ir.ComparisonExpression.Operator;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrVisitor;
 import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LambdaExpression;
-import io.trino.sql.ir.Literal;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NodeRef;
 import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.NullIfExpression;
-import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.ir.Row;
 import io.trino.sql.ir.SearchedCaseExpression;
 import io.trino.sql.ir.SimpleCaseExpression;
@@ -104,7 +102,6 @@ import static io.trino.spi.type.TypeUtils.writeNativeValue;
 import static io.trino.sql.DynamicFilters.isDynamicFilter;
 import static io.trino.sql.gen.VarArgsToMapAdapterGenerator.generateVarArgsToMapAdapter;
 import static io.trino.sql.ir.ArithmeticUnaryExpression.Sign.MINUS;
-import static io.trino.sql.ir.IrUtils.isEffectivelyLiteral;
 import static io.trino.sql.planner.DeterminismEvaluator.isDeterministic;
 import static io.trino.util.Failures.checkCondition;
 import static java.lang.Math.toIntExact;
@@ -118,7 +115,6 @@ public class IrExpressionInterpreter
     private final Expression expression;
     private final PlannerContext plannerContext;
     private final Metadata metadata;
-    private final Session session;
     private final ConnectorSession connectorSession;
     private final Map<NodeRef<Expression>, Type> expressionTypes;
     private final InterpretedFunctionInvoker functionInvoker;
@@ -131,7 +127,6 @@ public class IrExpressionInterpreter
         this.expression = requireNonNull(expression, "expression is null");
         this.plannerContext = requireNonNull(plannerContext, "plannerContext is null");
         this.metadata = plannerContext.getMetadata();
-        this.session = requireNonNull(session, "session is null");
         this.connectorSession = session.toConnectorSession();
         this.expressionTypes = ImmutableMap.copyOf(requireNonNull(expressionTypes, "expressionTypes is null"));
         verify(expressionTypes.containsKey(NodeRef.of(expression)));
@@ -141,7 +136,7 @@ public class IrExpressionInterpreter
 
     public static Object evaluateConstantExpression(Expression expression, PlannerContext plannerContext, Session session)
     {
-        Map<NodeRef<Expression>, Type> types = new IrTypeAnalyzer(plannerContext).getTypes(session, TypeProvider.empty(), expression);
+        Map<NodeRef<Expression>, Type> types = new IrTypeAnalyzer(plannerContext).getTypes(TypeProvider.empty(), expression);
         return new IrExpressionInterpreter(expression, plannerContext, session, types).evaluate();
     }
 
@@ -203,12 +198,9 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitLiteral(Literal node, Object context)
+        protected Object visitConstant(Constant node, Object context)
         {
-            return switch (node) {
-                case GenericLiteral value -> value.getRawValue();
-                case NullLiteral value -> null;
-            };
+            return node.getValue();
         }
 
         @Override
@@ -379,22 +371,18 @@ public class IrExpressionInterpreter
                     // The nested CoalesceExpression was recursively processed. It does not contain null.
                     for (Expression nestedOperand : ((CoalesceExpression) value).getOperands()) {
                         // Skip duplicates unless they are non-deterministic.
-                        if (!isDeterministic(nestedOperand, metadata) || uniqueNewOperands.add(nestedOperand)) {
+                        if (!isDeterministic(nestedOperand) || uniqueNewOperands.add(nestedOperand)) {
                             newOperands.add(nestedOperand);
                         }
                         // This operand can be evaluated to a non-null value. Remaining operands can be skipped.
-                        if (isEffectivelyLiteral(plannerContext, session, nestedOperand)) {
-                            verify(
-                                    !(nestedOperand instanceof NullLiteral) && !(nestedOperand instanceof Cast && ((Cast) nestedOperand).getExpression() instanceof NullLiteral),
-                                    "Null operand should have been removed by recursive coalesce processing");
+                        if (nestedOperand instanceof Constant constant && constant.getValue() != null) {
                             return newOperands;
                         }
                     }
                 }
                 else if (value instanceof Expression expression) {
-                    verify(!(value instanceof NullLiteral), "Null value is expected to be represented as null, not NullLiteral");
                     // Skip duplicates unless they are non-deterministic.
-                    if (!isDeterministic(expression, metadata) || uniqueNewOperands.add(expression)) {
+                    if (!isDeterministic(expression) || uniqueNewOperands.add(expression)) {
                         newOperands.add(expression);
                     }
                 }
@@ -429,8 +417,12 @@ public class IrExpressionInterpreter
                 // the analysis below. If the value is null, it means that we can't apply the HashSet
                 // optimization
                 if (!inListCache.containsKey(valueList)) {
-                    if (valueList.stream().allMatch(Literal.class::isInstance) &&
-                            valueList.stream().noneMatch(NullLiteral.class::isInstance)) {
+                    boolean nonNullConstants = valueList.stream().allMatch(Constant.class::isInstance) &&
+                            valueList.stream()
+                                    .map(Constant.class::cast)
+                                    .map(Constant::getValue)
+                                    .noneMatch(Objects::isNull);
+                    if (nonNullConstants) {
                         Set<Object> objectSet = valueList.stream().map(expression -> processWithExceptionHandling(expression, context)).collect(Collectors.toSet());
                         set = FastutilSetHelper.toFastutilHashSet(
                                 objectSet,
@@ -454,7 +446,7 @@ public class IrExpressionInterpreter
 
             ResolvedFunction equalsOperator = metadata.resolveOperator(OperatorType.EQUAL, types(node.getValue(), node.getValue()));
             for (Expression expression : valueList) {
-                if (value instanceof Expression && expression instanceof Literal) {
+                if (value instanceof Expression && expression instanceof Constant) {
                     // skip interpreting of literal IN term since it cannot be compared
                     // with unresolved "value" and it cannot be simplified further
                     values.add(expression);
@@ -497,10 +489,10 @@ public class IrExpressionInterpreter
                 List<Expression> expressionValues = toExpressions(values, types);
                 List<Expression> simplifiedExpressionValues = Stream.concat(
                                 expressionValues.stream()
-                                        .filter(expression -> isDeterministic(expression, metadata))
+                                        .filter(expression -> isDeterministic(expression))
                                         .distinct(),
                                 expressionValues.stream()
-                                        .filter(expression -> !isDeterministic(expression, metadata)))
+                                        .filter(expression -> !isDeterministic(expression)))
                         .collect(toImmutableList());
 
                 if (simplifiedExpressionValues.size() == 1) {
@@ -816,7 +808,7 @@ public class IrExpressionInterpreter
                 argumentTypes.add(type);
             }
 
-            ResolvedFunction resolvedFunction = metadata.decodeFunction(node.getName());
+            ResolvedFunction resolvedFunction = node.getFunction();
             FunctionNullability functionNullability = resolvedFunction.getFunctionNullability();
             for (int i = 0; i < argumentValues.size(); i++) {
                 Object value = argumentValues.get(i);
@@ -1043,12 +1035,25 @@ public class IrExpressionInterpreter
 
         private Expression toExpression(Object base, Type type)
         {
-            return LiteralEncoder.toExpression(base, type);
+            if (base instanceof Expression expression) {
+                return expression;
+            }
+
+            return new Constant(type, base);
         }
 
         private List<Expression> toExpressions(List<Object> values, List<Type> types)
         {
-            return LiteralEncoder.toExpressions(values, types);
+            checkArgument(values.size() == types.size(), "values and types do not have the same size");
+
+            ImmutableList.Builder<Expression> expressions = ImmutableList.builder();
+            for (int i = 0; i < values.size(); i++) {
+                Object object = values.get(i);
+                expressions.add(object instanceof Expression expression ?
+                        expression :
+                        new Constant(types.get(i), object));
+            }
+            return expressions.build();
         }
     }
 

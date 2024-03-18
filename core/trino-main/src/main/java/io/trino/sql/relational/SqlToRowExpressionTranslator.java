@@ -30,9 +30,9 @@ import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
 import io.trino.sql.ir.ComparisonExpression;
 import io.trino.sql.ir.ComparisonExpression.Operator;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrVisitor;
@@ -43,7 +43,6 @@ import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NodeRef;
 import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.NullIfExpression;
-import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.ir.Row;
 import io.trino.sql.ir.SearchedCaseExpression;
 import io.trino.sql.ir.SimpleCaseExpression;
@@ -54,7 +53,6 @@ import io.trino.sql.planner.Symbol;
 import io.trino.sql.relational.SpecialForm.Form;
 import io.trino.sql.relational.optimizer.ExpressionOptimizer;
 import io.trino.type.TypeCoercion;
-import io.trino.type.UnknownType;
 
 import java.util.List;
 import java.util.Map;
@@ -150,15 +148,9 @@ public final class SqlToRowExpressionTranslator
         }
 
         @Override
-        protected RowExpression visitNullLiteral(NullLiteral node, Void context)
+        protected RowExpression visitConstant(Constant node, Void context)
         {
-            return constantNull(UnknownType.UNKNOWN);
-        }
-
-        @Override
-        protected RowExpression visitGenericLiteral(GenericLiteral node, Void context)
-        {
-            return constant(node.getRawValue(), node.getType());
+            return constant(node.getValue(), node.getType());
         }
 
         @Override
@@ -197,7 +189,7 @@ public final class SqlToRowExpressionTranslator
                     .map(value -> process(value, context))
                     .collect(toImmutableList());
 
-            return new CallExpression(metadata.decodeFunction(node.getName()), arguments);
+            return new CallExpression(node.getFunction(), arguments);
         }
 
         @Override

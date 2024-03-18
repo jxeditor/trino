@@ -18,18 +18,20 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.slice.Slices;
 import io.trino.metadata.ResolvedFunction;
-import io.trino.spi.type.VarcharType;
+import io.trino.metadata.TestingFunctionResolution;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.assertions.PlanMatchPattern;
 import io.trino.sql.planner.iterative.rule.test.BaseRuleTest;
 import io.trino.sql.planner.rowpattern.AggregatedSetDescriptor;
 import io.trino.sql.planner.rowpattern.AggregationValuePointer;
+import io.trino.sql.planner.rowpattern.ClassifierValuePointer;
+import io.trino.sql.planner.rowpattern.LogicalIndexPointer;
+import io.trino.sql.planner.rowpattern.MatchNumberValuePointer;
 import io.trino.sql.planner.rowpattern.ir.IrLabel;
-import io.trino.sql.tree.QualifiedName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -37,6 +39,7 @@ import java.util.Optional;
 import static io.trino.metadata.MetadataManager.createTestMetadataManager;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.IntegerType.INTEGER;
+import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static io.trino.sql.ir.ArithmeticBinaryExpression.Operator.ADD;
 import static io.trino.sql.ir.ArithmeticBinaryExpression.Operator.MULTIPLY;
@@ -50,7 +53,9 @@ import static io.trino.sql.planner.assertions.PlanMatchPattern.values;
 public class TestPushDownProjectionsFromPatternRecognition
         extends BaseRuleTest
 {
-    private static final QualifiedName MAX_BY = createTestMetadataManager().resolveBuiltinFunction("max_by", fromTypes(BIGINT, BIGINT)).toQualifiedName();
+    private static final TestingFunctionResolution FUNCTIONS = new TestingFunctionResolution();
+    private static final ResolvedFunction CONCAT = FUNCTIONS.resolveFunction("concat", fromTypes(VARCHAR, VARCHAR));
+    private static final ResolvedFunction MAX_BY = createTestMetadataManager().resolveBuiltinFunction("max_by", fromTypes(BIGINT, BIGINT));
 
     @Test
     public void testNoAggregations()
@@ -72,9 +77,12 @@ public class TestPushDownProjectionsFromPatternRecognition
                         .addVariableDefinition(
                                 new IrLabel("X"),
                                 new ComparisonExpression(GREATER_THAN, new FunctionCall(MAX_BY, ImmutableList.of(
-                                        new ArithmeticBinaryExpression(ADD, GenericLiteral.constant(INTEGER, 1L), new FunctionCall(QualifiedName.of("match_number"), ImmutableList.of())),
-                                        new FunctionCall(QualifiedName.of("concat"), ImmutableList.of(GenericLiteral.constant(VarcharType.VARCHAR, Slices.utf8Slice("x")), new FunctionCall(QualifiedName.of("classifier"), ImmutableList.of()))))),
-                                        GenericLiteral.constant(INTEGER, 5L)))
+                                        new ArithmeticBinaryExpression(ADD, new Constant(INTEGER, 1L), new SymbolReference("match")),
+                                        new FunctionCall(CONCAT, ImmutableList.of(new Constant(VARCHAR, Slices.utf8Slice("x")), new SymbolReference("classifier"))))),
+                                        new Constant(INTEGER, 5L)),
+                                ImmutableMap.of(
+                                        "classifier", new ClassifierValuePointer(new LogicalIndexPointer(ImmutableSet.of(), true, true, 0, 0)),
+                                        "match", new MatchNumberValuePointer()))
                         .source(p.values(p.symbol("a")))))
                 .doesNotFire();
     }
@@ -87,7 +95,7 @@ public class TestPushDownProjectionsFromPatternRecognition
                         .pattern(new IrLabel("X"))
                         .addVariableDefinition(
                                 new IrLabel("X"),
-                                new ComparisonExpression(GREATER_THAN, new FunctionCall(MAX_BY, ImmutableList.of(new SymbolReference("a"), new SymbolReference("b"))), GenericLiteral.constant(INTEGER, 5L)))
+                                new ComparisonExpression(GREATER_THAN, new FunctionCall(MAX_BY, ImmutableList.of(new SymbolReference("a"), new SymbolReference("b"))), new Constant(INTEGER, 5L)))
                         .source(p.values(p.symbol("a"), p.symbol("b")))))
                 .doesNotFire();
     }
@@ -101,11 +109,11 @@ public class TestPushDownProjectionsFromPatternRecognition
                         .pattern(new IrLabel("X"))
                         .addVariableDefinition(
                                 new IrLabel("X"),
-                                new ComparisonExpression(LESS_THAN, new SymbolReference("agg"), GenericLiteral.constant(INTEGER, 5L)),
+                                new ComparisonExpression(LESS_THAN, new SymbolReference("agg"), new Constant(INTEGER, 5L)),
                                 ImmutableMap.of("agg", new AggregationValuePointer(
                                         maxBy,
                                         new AggregatedSetDescriptor(ImmutableSet.of(), true),
-                                        ImmutableList.of(new ArithmeticBinaryExpression(ADD, new SymbolReference("a"), GenericLiteral.constant(INTEGER, 1L)), new ArithmeticBinaryExpression(MULTIPLY, new SymbolReference("b"), GenericLiteral.constant(INTEGER, 2L))),
+                                        ImmutableList.of(new ArithmeticBinaryExpression(ADD, new SymbolReference("a"), new Constant(INTEGER, 1L)), new ArithmeticBinaryExpression(MULTIPLY, new SymbolReference("b"), new Constant(INTEGER, 2L))),
                                         Optional.empty(),
                                         Optional.empty())))
                         .source(p.values(p.symbol("a"), p.symbol("b")))))
@@ -114,7 +122,7 @@ public class TestPushDownProjectionsFromPatternRecognition
                                         .pattern(new IrLabel("X"))
                                         .addVariableDefinition(
                                                 new IrLabel("X"),
-                                                new ComparisonExpression(LESS_THAN, new SymbolReference("agg"), GenericLiteral.constant(INTEGER, 5L)),
+                                                new ComparisonExpression(LESS_THAN, new SymbolReference("agg"), new Constant(INTEGER, 5L)),
                                                 ImmutableMap.of("agg", new AggregationValuePointer(
                                                         maxBy,
                                                         new AggregatedSetDescriptor(ImmutableSet.of(), true),
@@ -123,8 +131,8 @@ public class TestPushDownProjectionsFromPatternRecognition
                                                         Optional.empty()))),
                                 project(
                                         ImmutableMap.of(
-                                                "expr_1", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("a"), GenericLiteral.constant(INTEGER, 1L))),
-                                                "expr_2", PlanMatchPattern.expression(new ArithmeticBinaryExpression(MULTIPLY, new SymbolReference("b"), GenericLiteral.constant(INTEGER, 2L))),
+                                                "expr_1", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("a"), new Constant(INTEGER, 1L))),
+                                                "expr_2", PlanMatchPattern.expression(new ArithmeticBinaryExpression(MULTIPLY, new SymbolReference("b"), new Constant(INTEGER, 2L))),
                                                 "a", PlanMatchPattern.expression(new SymbolReference("a")),
                                                 "b", PlanMatchPattern.expression(new SymbolReference("b"))),
                                         values("a", "b"))));

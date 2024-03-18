@@ -28,17 +28,16 @@ import io.trino.spi.connector.Assignment;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ProjectionApplicationResult;
 import io.trino.spi.expression.ConnectorExpression;
-import io.trino.spi.expression.Constant;
 import io.trino.spi.expression.Variable;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.Type;
 import io.trino.sql.PlannerContext;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.NodeRef;
 import io.trino.sql.planner.ConnectorExpressionTranslator;
 import io.trino.sql.planner.IrExpressionInterpreter;
 import io.trino.sql.planner.IrTypeAnalyzer;
-import io.trino.sql.planner.LiteralEncoder;
 import io.trino.sql.planner.NoOpSymbolResolver;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.iterative.Rule;
@@ -112,10 +111,10 @@ public class PushProjectionIntoTableScan
                                 expression.getValue(),
                                 session,
                                 typeAnalyzer,
-                                context.getSymbolAllocator().getTypes(),
-                                plannerContext).entrySet().stream())
+                                context.getSymbolAllocator().getTypes()
+                        ).entrySet().stream())
                 // Filter out constant expressions. Constant expressions should not be pushed to the connector.
-                .filter(entry -> !(entry.getValue() instanceof Constant))
+                .filter(entry -> !(entry.getValue() instanceof io.trino.spi.expression.Constant))
                 // Avoid duplicates
                 .collect(toImmutableMap(Map.Entry::getKey, Map.Entry::getValue, (first, ignore) -> first));
 
@@ -156,12 +155,13 @@ public class PushProjectionIntoTableScan
                     Expression translated = ConnectorExpressionTranslator.translate(session, expression, plannerContext, variableMappings);
                     // ConnectorExpressionTranslator may or may not preserve optimized form of expressions during round-trip. Avoid potential optimizer loop
                     // by ensuring expression is optimized.
-                    Map<NodeRef<Expression>, Type> translatedExpressionTypes = typeAnalyzer.getTypes(session, context.getSymbolAllocator().getTypes(), translated);
-                    translated = LiteralEncoder.toExpression(
-                            new IrExpressionInterpreter(translated, plannerContext, session, translatedExpressionTypes)
-                                    .optimize(NoOpSymbolResolver.INSTANCE),
-                            translatedExpressionTypes.get(NodeRef.of(translated)));
-                    return translated;
+                    Map<NodeRef<Expression>, Type> translatedExpressionTypes = typeAnalyzer.getTypes(context.getSymbolAllocator().getTypes(), translated);
+                    Object optimized = new IrExpressionInterpreter(translated, plannerContext, session, translatedExpressionTypes)
+                            .optimize(NoOpSymbolResolver.INSTANCE);
+
+                    return optimized instanceof Expression optimizedExpression ?
+                            optimizedExpression :
+                            new Constant(translatedExpressionTypes.get(NodeRef.of(translated)), optimized);
                 })
                 .collect(toImmutableList());
 

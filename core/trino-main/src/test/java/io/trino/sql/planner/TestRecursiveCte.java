@@ -17,16 +17,17 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.slice.Slices;
 import io.trino.Session;
+import io.trino.metadata.ResolvedFunction;
+import io.trino.metadata.TestingFunctionResolution;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.assertions.BasePlanTest;
 import io.trino.sql.planner.assertions.PlanMatchPattern;
-import io.trino.sql.tree.QualifiedName;
 import io.trino.testing.PlanTester;
 import org.intellij.lang.annotations.Language;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,7 @@ import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.VarcharType.VARCHAR;
+import static io.trino.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static io.trino.sql.ir.ArithmeticBinaryExpression.Operator.ADD;
 import static io.trino.sql.ir.BooleanLiteral.TRUE_LITERAL;
 import static io.trino.sql.ir.ComparisonExpression.Operator.GREATER_THAN_OR_EQUAL;
@@ -55,6 +57,9 @@ import static io.trino.testing.TestingSession.testSessionBuilder;
 public class TestRecursiveCte
         extends BasePlanTest
 {
+    private static final TestingFunctionResolution FUNCTIONS = new TestingFunctionResolution();
+    private static final ResolvedFunction FAIL = FUNCTIONS.resolveFunction("fail", fromTypes(INTEGER, VARCHAR));
+
     @Override
     protected PlanTester createPlanTester()
     {
@@ -79,38 +84,38 @@ public class TestRecursiveCte
                         union(
                                 // base term
                                 project(project(project(
-                                        ImmutableMap.of("expr", expression(GenericLiteral.constant(INTEGER, 1L))),
+                                        ImmutableMap.of("expr", expression(new Constant(INTEGER, 1L))),
                                         values()))),
                                 // first recursion step
                                 project(project(project(
-                                        ImmutableMap.of("expr_0", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), GenericLiteral.constant(INTEGER, 2L)))),
+                                        ImmutableMap.of("expr_0", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), new Constant(INTEGER, 2L)))),
                                         filter(
-                                                new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), GenericLiteral.constant(INTEGER, 6L)),
+                                                new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), new Constant(INTEGER, 6L)),
                                                 project(project(project(
-                                                        ImmutableMap.of("expr", expression(GenericLiteral.constant(INTEGER, 1L))),
+                                                        ImmutableMap.of("expr", expression(new Constant(INTEGER, 1L))),
                                                         values()))))))),
                                 // "post-recursion" step with convergence assertion
                                 filter(
                                         new IfExpression(
-                                                new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("count"), GenericLiteral.constant(BIGINT, 0L)),
-                                                new Cast(new FunctionCall(QualifiedName.of("fail"), ImmutableList.of(GenericLiteral.constant(INTEGER, (long) NOT_SUPPORTED.toErrorCode().getCode()), GenericLiteral.constant(VARCHAR, Slices.utf8Slice("Recursion depth limit exceeded (1). Use 'max_recursion_depth' session property to modify the limit.")))), BOOLEAN),
+                                                new ComparisonExpression(GREATER_THAN_OR_EQUAL, new SymbolReference("count"), new Constant(BIGINT, 0L)),
+                                                new Cast(new FunctionCall(FAIL, ImmutableList.of(new Constant(INTEGER, (long) NOT_SUPPORTED.toErrorCode().getCode()), new Constant(VARCHAR, Slices.utf8Slice("Recursion depth limit exceeded (1). Use 'max_recursion_depth' session property to modify the limit.")))), BOOLEAN),
                                                 TRUE_LITERAL),
                                         window(windowBuilder -> windowBuilder
                                                         .addFunction(
                                                                 "count",
                                                                 windowFunction("count", ImmutableList.of(), DEFAULT_FRAME)),
                                                 project(project(project(
-                                                        ImmutableMap.of("expr_1", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), GenericLiteral.constant(INTEGER, 2L)))),
+                                                        ImmutableMap.of("expr_1", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), new Constant(INTEGER, 2L)))),
                                                         filter(
-                                                                new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), GenericLiteral.constant(INTEGER, 6L)),
+                                                                new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), new Constant(INTEGER, 6L)),
                                                                 project(
                                                                         ImmutableMap.of("expr", expression(new SymbolReference("expr_0"))),
                                                                         project(project(project(
-                                                                                ImmutableMap.of("expr_0", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), GenericLiteral.constant(INTEGER, 2L)))),
+                                                                                ImmutableMap.of("expr_0", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("expr"), new Constant(INTEGER, 2L)))),
                                                                                 filter(
-                                                                                        new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), GenericLiteral.constant(INTEGER, 6L)),
+                                                                                        new ComparisonExpression(LESS_THAN, new SymbolReference("expr"), new Constant(INTEGER, 6L)),
                                                                                         project(project(project(
-                                                                                                ImmutableMap.of("expr", expression(GenericLiteral.constant(INTEGER, 1L))),
+                                                                                                ImmutableMap.of("expr", expression(new Constant(INTEGER, 1L))),
                                                                                                 values()))))))))))))))));
 
         assertPlan(sql, CREATED, pattern);

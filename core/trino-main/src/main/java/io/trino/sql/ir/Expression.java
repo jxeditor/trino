@@ -32,7 +32,7 @@ import java.util.List;
         @JsonSubTypes.Type(value = CoalesceExpression.class, name = "coalesce"),
         @JsonSubTypes.Type(value = ComparisonExpression.class, name = "comparison"),
         @JsonSubTypes.Type(value = FunctionCall.class, name = "call"),
-        @JsonSubTypes.Type(value = GenericLiteral.class, name = "constant"),
+        @JsonSubTypes.Type(value = Constant.class, name = "constant"),
         @JsonSubTypes.Type(value = IfExpression.class, name = "if"),
         @JsonSubTypes.Type(value = InPredicate.class, name = "in"),
         @JsonSubTypes.Type(value = IsNotNullPredicate.class, name = "isNotNull"),
@@ -41,7 +41,6 @@ import java.util.List;
         @JsonSubTypes.Type(value = LogicalExpression.class, name = "logicalBinary"),
         @JsonSubTypes.Type(value = NotExpression.class, name = "not"),
         @JsonSubTypes.Type(value = NullIfExpression.class, name = "nullif"),
-        @JsonSubTypes.Type(value = NullLiteral.class, name = "null"),
         @JsonSubTypes.Type(value = Row.class, name = "row"),
         @JsonSubTypes.Type(value = SearchedCaseExpression.class, name = "searchedCase"),
         @JsonSubTypes.Type(value = SimpleCaseExpression.class, name = "simpleCase"),
@@ -53,7 +52,7 @@ public abstract sealed class Expression
         permits ArithmeticBinaryExpression, ArithmeticUnaryExpression, Array, BetweenPredicate,
         BindExpression, Cast, CoalesceExpression, ComparisonExpression, FunctionCall,
         IfExpression, InPredicate, IsNotNullPredicate, IsNullPredicate,
-        LambdaExpression, Literal, LogicalExpression,
+        LambdaExpression, Constant, LogicalExpression,
         NotExpression, NullIfExpression, Row, SearchedCaseExpression, SimpleCaseExpression,
         SubscriptExpression, SymbolReference, WhenClause
 {

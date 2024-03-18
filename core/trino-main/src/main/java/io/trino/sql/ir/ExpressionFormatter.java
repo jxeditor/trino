@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
-import static io.trino.sql.SqlFormatter.formatName;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.joining;
 
@@ -36,11 +35,11 @@ public final class ExpressionFormatter
     public static class Formatter
             extends IrVisitor<String, Void>
     {
-        private final Optional<Function<Literal, String>> literalFormatter;
+        private final Optional<Function<Constant, String>> literalFormatter;
         private final Optional<Function<SymbolReference, String>> symbolReferenceFormatter;
 
         public Formatter(
-                Optional<Function<Literal, String>> literalFormatter,
+                Optional<Function<Constant, String>> literalFormatter,
                 Optional<Function<SymbolReference, String>> symbolReferenceFormatter)
         {
             this.literalFormatter = requireNonNull(literalFormatter, "literalFormatter is null");
@@ -76,25 +75,24 @@ public final class ExpressionFormatter
         }
 
         @Override
-        protected String visitGenericLiteral(GenericLiteral node, Void context)
+        protected String visitConstant(Constant node, Void context)
         {
             return literalFormatter
                     .map(formatter -> formatter.apply(node))
-                    .orElseGet(() -> node.getType() + " '" + node.getType().getObjectValue(null, node.getRawValueAsBlock(), 0) + "'");
-        }
-
-        @Override
-        protected String visitNullLiteral(NullLiteral node, Void context)
-        {
-            return literalFormatter
-                    .map(formatter -> formatter.apply(node))
-                    .orElse("null");
+                    .orElseGet(() -> {
+                        if (node.getValue() == null) {
+                            return "null::" + node.getType();
+                        }
+                        else {
+                            return node.getType() + " '" + node.getType().getObjectValue(null, node.getValueAsBlock(), 0) + "'";
+                        }
+                    });
         }
 
         @Override
         protected String visitFunctionCall(FunctionCall node, Void context)
         {
-            return formatName(node.getName()) + '(' + joinExpressions(node.getArguments()) + ')';
+            return node.getFunction().getName().toString() + '(' + joinExpressions(node.getArguments()) + ')';
         }
 
         @Override

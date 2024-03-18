@@ -23,12 +23,10 @@ import io.trino.metadata.TableHandle;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.connector.TestingColumnHandle;
-import io.trino.spi.expression.Constant;
-import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.Row;
 import io.trino.sql.planner.IrTypeAnalyzer;
 import io.trino.sql.planner.Symbol;
@@ -67,7 +65,7 @@ public class TestPushMergeWriterUpdateIntoConnector
                         Symbol rowId = p.symbol("row_id");
                         Symbol rowCount = p.symbol("row_count");
                         // set column name and constant update
-                        Expression updateMergeRowExpression = new Row(ImmutableList.of(p.symbol("column_1").toSymbolReference(), GenericLiteral.constant(INTEGER, 1L), TRUE_LITERAL, GenericLiteral.constant(INTEGER, 1L), GenericLiteral.constant(INTEGER, 1L)));
+                        Expression updateMergeRowExpression = new Row(ImmutableList.of(p.symbol("column_1").toSymbolReference(), new Constant(INTEGER, 1L), TRUE_LITERAL, new Constant(INTEGER, 1L), new Constant(INTEGER, 1L)));
 
                         return p.tableFinish(
                                 p.merge(
@@ -106,7 +104,7 @@ public class TestPushMergeWriterUpdateIntoConnector
                         Symbol rowCount = p.symbol("row_count");
                         // set arithmetic expression which we don't support yet
                         Expression updateMergeRowExpression = new Row(ImmutableList.of(p.symbol("column_1").toSymbolReference(),
-                                new ArithmeticBinaryExpression(ArithmeticBinaryExpression.Operator.MULTIPLY, p.symbol("col1").toSymbolReference(), GenericLiteral.constant(INTEGER, 5L))));
+                                new ArithmeticBinaryExpression(ArithmeticBinaryExpression.Operator.MULTIPLY, p.symbol("col1").toSymbolReference(), new Constant(INTEGER, 5L))));
 
                         return p.tableFinish(
                                 p.merge(
@@ -145,8 +143,8 @@ public class TestPushMergeWriterUpdateIntoConnector
                         Symbol rowCount = p.symbol("row_count");
                         // set function call, which represents update all columns statement
                         Expression updateMergeRowExpression = new Row(ImmutableList.of(new FunctionCall(
-                                ruleTester.getMetadata().resolveBuiltinFunction("from_base64", fromTypes(VARCHAR)).toQualifiedName(),
-                                ImmutableList.of(GenericLiteral.constant(VARCHAR, Slices.utf8Slice(""))))));
+                                ruleTester.getMetadata().resolveBuiltinFunction("from_base64", fromTypes(VARCHAR)),
+                                ImmutableList.of(new Constant(VARCHAR, Slices.utf8Slice(""))))));
 
                         return p.tableFinish(
                                 p.merge(
@@ -174,15 +172,13 @@ public class TestPushMergeWriterUpdateIntoConnector
 
     private static PushMergeWriterUpdateIntoConnector createRule(RuleTester tester)
     {
-        PlannerContext plannerContext = tester.getPlannerContext();
         IrTypeAnalyzer typeAnalyzer = tester.getTypeAnalyzer();
         return new PushMergeWriterUpdateIntoConnector(
-                plannerContext,
                 typeAnalyzer,
                 new AbstractMockMetadata()
                 {
                     @Override
-                    public Optional<TableHandle> applyUpdate(Session session, TableHandle tableHandle, Map<ColumnHandle, Constant> assignments)
+                    public Optional<TableHandle> applyUpdate(Session session, TableHandle tableHandle, Map<ColumnHandle, io.trino.spi.expression.Constant> assignments)
                     {
                         return Optional.of(tableHandle);
                     }

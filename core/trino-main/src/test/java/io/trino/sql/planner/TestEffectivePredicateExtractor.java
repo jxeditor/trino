@@ -43,15 +43,14 @@ import io.trino.sql.analyzer.TypeSignatureProvider;
 import io.trino.sql.ir.BetweenPredicate;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.ExpressionTreeRewriter;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrUtils;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.NotExpression;
-import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.ir.Row;
 import io.trino.sql.planner.plan.AggregationNode;
 import io.trino.sql.planner.plan.AggregationNode.Aggregation;
@@ -171,8 +170,8 @@ public class TestEffectivePredicateExtractor
     private final PlannerContext plannerContext = plannerContextBuilder().withMetadata(metadata).build();
 
     private final IrTypeAnalyzer typeAnalyzer = new IrTypeAnalyzer(plannerContext);
-    private final EffectivePredicateExtractor effectivePredicateExtractor = new EffectivePredicateExtractor(new DomainTranslator(plannerContext), plannerContext, true);
-    private final EffectivePredicateExtractor effectivePredicateExtractorWithoutTableProperties = new EffectivePredicateExtractor(new DomainTranslator(plannerContext), plannerContext, false);
+    private final EffectivePredicateExtractor effectivePredicateExtractor = new EffectivePredicateExtractor(new DomainTranslator(), plannerContext, true);
+    private final EffectivePredicateExtractor effectivePredicateExtractorWithoutTableProperties = new EffectivePredicateExtractor(new DomainTranslator(), plannerContext, false);
 
     private Map<Symbol, ColumnHandle> scanAssignments;
     private TableScanNode baseTableScan;
@@ -569,7 +568,7 @@ public class TestEffectivePredicateExtractor
                         ImmutableList.of(
                                 new Row(ImmutableList.of(bigintLiteral(1))),
                                 new Row(ImmutableList.of(bigintLiteral(2))),
-                                new Row(ImmutableList.of(new Cast(new NullLiteral(), BIGINT))))),
+                                new Row(ImmutableList.of(new Constant(BIGINT, null))))),
                 types,
                 typeAnalyzer))
                 .isEqualTo(or(
@@ -582,7 +581,7 @@ public class TestEffectivePredicateExtractor
                 new ValuesNode(
                         newId(),
                         ImmutableList.of(A),
-                        ImmutableList.of(new Row(ImmutableList.of(new Cast(new NullLiteral(), BIGINT))))),
+                        ImmutableList.of(new Row(ImmutableList.of(new Constant(BIGINT, null))))),
                 types,
                 typeAnalyzer))
                 .isEqualTo(new IsNullPredicate(AE));
@@ -593,7 +592,7 @@ public class TestEffectivePredicateExtractor
                 new ValuesNode(
                         newId(),
                         ImmutableList.of(R),
-                        ImmutableList.of(new Row(ImmutableList.of(new Row(ImmutableList.of(bigintLiteral(1), new NullLiteral())))))),
+                        ImmutableList.of(new Row(ImmutableList.of(new Row(ImmutableList.of(bigintLiteral(1), new Constant(UNKNOWN, null))))))),
                 types,
                 typeAnalyzer))
                 .isEqualTo(TRUE_LITERAL);
@@ -630,7 +629,7 @@ public class TestEffectivePredicateExtractor
                         newId(),
                         ImmutableList.of(D),
                         ImmutableList.of(
-                                new Row(ImmutableList.of(new Cast(new NullLiteral(), DOUBLE))),
+                                new Row(ImmutableList.of(new Constant(DOUBLE, null))),
                                 new Row(ImmutableList.of(doubleLiteral(Double.NaN))))),
                 types,
                 typeAnalyzer)).isEqualTo(TRUE_LITERAL);
@@ -679,8 +678,8 @@ public class TestEffectivePredicateExtractor
                         newId(),
                         ImmutableList.of(A, B),
                         ImmutableList.of(
-                                new Row(ImmutableList.of(bigintLiteral(1), new Cast(new NullLiteral(), BIGINT))),
-                                new Row(ImmutableList.of(new Cast(new NullLiteral(), BIGINT), bigintLiteral(200))))),
+                                new Row(ImmutableList.of(bigintLiteral(1), new Constant(BIGINT, null))),
+                                new Row(ImmutableList.of(new Constant(BIGINT, null), bigintLiteral(200))))),
                 types,
                 typeAnalyzer)).isEqualTo(and(
                 or(new ComparisonExpression(EQUAL, AE, bigintLiteral(1)), new IsNullPredicate(AE)),
@@ -691,7 +690,7 @@ public class TestEffectivePredicateExtractor
         ValuesNode node = new ValuesNode(
                 newId(),
                 ImmutableList.of(A, B),
-                ImmutableList.of(new Row(ImmutableList.of(bigintLiteral(1), new FunctionCall(rand.toQualifiedName(), ImmutableList.of())))));
+                ImmutableList.of(new Row(ImmutableList.of(bigintLiteral(1), new FunctionCall(rand, ImmutableList.of())))));
         assertThat(extract(types, node)).isEqualTo(new ComparisonExpression(EQUAL, AE, bigintLiteral(1)));
 
         // non-constant
@@ -1107,12 +1106,12 @@ public class TestEffectivePredicateExtractor
 
     private static Expression bigintLiteral(long number)
     {
-        return GenericLiteral.constant(BIGINT, number);
+        return new Constant(BIGINT, number);
     }
 
     private static Expression doubleLiteral(double value)
     {
-        return GenericLiteral.constant(DOUBLE, value);
+        return new Constant(DOUBLE, value);
     }
 
     private static ComparisonExpression equals(Expression expression1, Expression expression2)
@@ -1161,7 +1160,7 @@ public class TestEffectivePredicateExtractor
 
     private Set<Expression> normalizeConjuncts(Collection<Expression> conjuncts)
     {
-        return normalizeConjuncts(combineConjuncts(metadata, conjuncts));
+        return normalizeConjuncts(combineConjuncts(conjuncts));
     }
 
     private Set<Expression> normalizeConjuncts(Expression predicate)
@@ -1171,10 +1170,10 @@ public class TestEffectivePredicateExtractor
         predicate = expressionNormalizer.normalize(predicate);
 
         // Equality inference rewrites and equality generation will always be stable across multiple runs in the same JVM
-        EqualityInference inference = new EqualityInference(metadata, predicate);
+        EqualityInference inference = new EqualityInference(predicate);
 
         Set<Symbol> scope = SymbolsExtractor.extractUnique(predicate);
-        Set<Expression> rewrittenSet = EqualityInference.nonInferrableConjuncts(metadata, predicate)
+        Set<Expression> rewrittenSet = EqualityInference.nonInferrableConjuncts(predicate)
                 .map(expression -> inference.rewrite(expression, scope))
                 .peek(rewritten -> checkState(rewritten != null, "Rewrite with full symbol scope should always be possible"))
                 .collect(Collectors.toSet());

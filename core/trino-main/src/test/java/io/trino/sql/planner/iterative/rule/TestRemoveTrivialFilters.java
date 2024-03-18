@@ -14,10 +14,8 @@
 package io.trino.sql.planner.iterative.rule;
 
 import com.google.common.collect.ImmutableList;
-import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.ComparisonExpression;
-import io.trino.sql.ir.GenericLiteral;
-import io.trino.sql.ir.NullLiteral;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.planner.iterative.rule.test.BaseRuleTest;
 import org.junit.jupiter.api.Test;
 
@@ -36,7 +34,7 @@ public class TestRemoveTrivialFilters
     {
         tester().assertThat(new RemoveTrivialFilters())
                 .on(p -> p.filter(
-                        new ComparisonExpression(EQUAL, GenericLiteral.constant(INTEGER, 1L), GenericLiteral.constant(INTEGER, 1L)),
+                        new ComparisonExpression(EQUAL, new Constant(INTEGER, 1L), new Constant(INTEGER, 1L)),
                         p.values()))
                 .doesNotFire();
     }
@@ -57,7 +55,7 @@ public class TestRemoveTrivialFilters
                         FALSE_LITERAL,
                         p.values(
                                 ImmutableList.of(p.symbol("a")),
-                                ImmutableList.of(ImmutableList.of(GenericLiteral.constant(INTEGER, 1L))))))
+                                ImmutableList.of(ImmutableList.of(new Constant(INTEGER, 1L))))))
                 .matches(values("a"));
     }
 
@@ -66,10 +64,10 @@ public class TestRemoveTrivialFilters
     {
         tester().assertThat(new RemoveTrivialFilters())
                 .on(p -> p.filter(
-                        new Cast(new NullLiteral(), BOOLEAN),
+                        new Constant(BOOLEAN, null),
                         p.values(
                                 ImmutableList.of(p.symbol("a")),
-                                ImmutableList.of(ImmutableList.of(GenericLiteral.constant(INTEGER, 1L))))))
+                                ImmutableList.of(ImmutableList.of(new Constant(INTEGER, 1L))))))
                 .matches(values(
                         ImmutableList.of("a"),
                         ImmutableList.of()));

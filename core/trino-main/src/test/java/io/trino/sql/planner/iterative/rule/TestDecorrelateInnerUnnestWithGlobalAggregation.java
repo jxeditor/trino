@@ -16,10 +16,12 @@ package io.trino.sql.planner.iterative.rule;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.slice.Slices;
+import io.trino.metadata.ResolvedFunction;
+import io.trino.metadata.TestingFunctionResolution;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
 import io.trino.sql.ir.ArithmeticUnaryExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.SymbolReference;
@@ -28,7 +30,6 @@ import io.trino.sql.planner.iterative.rule.test.BaseRuleTest;
 import io.trino.sql.planner.iterative.rule.test.PlanBuilder;
 import io.trino.sql.planner.plan.Assignments;
 import io.trino.sql.planner.plan.UnnestNode;
-import io.trino.sql.tree.QualifiedName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -58,6 +59,9 @@ import static io.trino.sql.planner.plan.JoinType.LEFT;
 public class TestDecorrelateInnerUnnestWithGlobalAggregation
         extends BaseRuleTest
 {
+    private static final TestingFunctionResolution FUNCTIONS = new TestingFunctionResolution();
+    private static final ResolvedFunction REGEXP_EXTRACT_ALL = FUNCTIONS.resolveFunction("regexp_extract_all", fromTypes(VARCHAR, VARCHAR));
+
     @Test
     public void doesNotFireWithoutGlobalAggregation()
     {
@@ -275,7 +279,7 @@ public class TestDecorrelateInnerUnnestWithGlobalAggregation
                         ImmutableList.of(p.symbol("corr")),
                         p.values(p.symbol("corr")),
                         p.project(
-                                Assignments.of(p.symbol("sum_1"), new ArithmeticBinaryExpression(ADD, new SymbolReference("sum"), GenericLiteral.constant(INTEGER, 1L))),
+                                Assignments.of(p.symbol("sum_1"), new ArithmeticBinaryExpression(ADD, new SymbolReference("sum"), new Constant(INTEGER, 1L))),
                                 p.aggregation(innerBuilder -> innerBuilder
                                         .globalGrouping()
                                         .addAggregation(p.symbol("sum"), PlanBuilder.aggregation("sum", ImmutableList.of(new SymbolReference("unnested_corr"))), ImmutableList.of(BIGINT))
@@ -288,7 +292,7 @@ public class TestDecorrelateInnerUnnestWithGlobalAggregation
                 .matches(
                         project(
                                 strictProject(
-                                        ImmutableMap.of("corr", expression(new SymbolReference("corr")), "unique", expression(new SymbolReference("unique")), "sum_1", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("sum"), GenericLiteral.constant(INTEGER, 1L)))),
+                                        ImmutableMap.of("corr", expression(new SymbolReference("corr")), "unique", expression(new SymbolReference("unique")), "sum_1", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("sum"), new Constant(INTEGER, 1L)))),
                                         aggregation(
                                                 singleGroupingSet("unique", "corr"),
                                                 ImmutableMap.of(Optional.of("sum"), aggregationFunction("sum", ImmutableList.of("unnested_corr"))),
@@ -313,8 +317,8 @@ public class TestDecorrelateInnerUnnestWithGlobalAggregation
                 .on(p -> {
                     Symbol corr = p.symbol("corr", VARCHAR);
                     FunctionCall regexpExtractAll = new FunctionCall(
-                            tester().getMetadata().resolveBuiltinFunction("regexp_extract_all", fromTypes(VARCHAR, VARCHAR)).toQualifiedName(),
-                            ImmutableList.of(corr.toSymbolReference(), GenericLiteral.constant(VARCHAR, Slices.utf8Slice("."))));
+                            tester().getMetadata().resolveBuiltinFunction("regexp_extract_all", fromTypes(VARCHAR, VARCHAR)),
+                            ImmutableList.of(corr.toSymbolReference(), new Constant(VARCHAR, Slices.utf8Slice("."))));
 
                     return p.correlatedJoin(
                             ImmutableList.of(corr),
@@ -348,7 +352,7 @@ public class TestDecorrelateInnerUnnestWithGlobalAggregation
                                                         Optional.of("ordinality"),
                                                         LEFT,
                                                         project(
-                                                                ImmutableMap.of("char_array", expression(new FunctionCall(QualifiedName.of("regexp_extract_all"), ImmutableList.of(new SymbolReference("corr"), GenericLiteral.constant(VARCHAR, Slices.utf8Slice(".")))))),
+                                                                ImmutableMap.of("char_array", expression(new FunctionCall(REGEXP_EXTRACT_ALL, ImmutableList.of(new SymbolReference("corr"), new Constant(VARCHAR, Slices.utf8Slice(".")))))),
                                                                 assignUniqueId("unique", values("corr"))))))));
     }
 
@@ -362,7 +366,7 @@ public class TestDecorrelateInnerUnnestWithGlobalAggregation
                         ImmutableList.of(p.symbol("groups"), p.symbol("numbers")),
                         p.values(p.symbol("groups"), p.symbol("numbers")),
                         p.project(
-                                Assignments.of(p.symbol("sum_1"), new ArithmeticBinaryExpression(ADD, new SymbolReference("sum"), GenericLiteral.constant(INTEGER, 1L))),
+                                Assignments.of(p.symbol("sum_1"), new ArithmeticBinaryExpression(ADD, new SymbolReference("sum"), new Constant(INTEGER, 1L))),
                                 p.aggregation(globalBuilder -> globalBuilder
                                         .globalGrouping()
                                         .addAggregation(p.symbol("sum"), PlanBuilder.aggregation("sum", ImmutableList.of(new SymbolReference("negate"))), ImmutableList.of(BIGINT))
@@ -377,7 +381,7 @@ public class TestDecorrelateInnerUnnestWithGlobalAggregation
                                                                 p.project(
                                                                         Assignments.builder()
                                                                                 .putIdentities(ImmutableList.of(p.symbol("group"), p.symbol("number")))
-                                                                                .put(p.symbol("modulo"), new ArithmeticBinaryExpression(MODULUS, new SymbolReference("number"), GenericLiteral.constant(INTEGER, 10L)))
+                                                                                .put(p.symbol("modulo"), new ArithmeticBinaryExpression(MODULUS, new SymbolReference("number"), new Constant(INTEGER, 10L)))
                                                                                 .build(),
                                                                         p.unnest(
                                                                                 ImmutableList.of(),
@@ -390,7 +394,7 @@ public class TestDecorrelateInnerUnnestWithGlobalAggregation
                 .matches(
                         project(
                                 project(
-                                        ImmutableMap.of("sum_1", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("sum"), GenericLiteral.constant(INTEGER, 1L)))),
+                                        ImmutableMap.of("sum_1", expression(new ArithmeticBinaryExpression(ADD, new SymbolReference("sum"), new Constant(INTEGER, 1L)))),
                                         aggregation(
                                                 singleGroupingSet("groups", "numbers", "unique"),
                                                 ImmutableMap.of(Optional.of("sum"), aggregationFunction("sum", ImmutableList.of("negated"))),
@@ -408,7 +412,7 @@ public class TestDecorrelateInnerUnnestWithGlobalAggregation
                                                                 Optional.empty(),
                                                                 SINGLE,
                                                                 project(
-                                                                        ImmutableMap.of("modulo", expression(new ArithmeticBinaryExpression(MODULUS, new SymbolReference("number"), GenericLiteral.constant(INTEGER, 10L)))),
+                                                                        ImmutableMap.of("modulo", expression(new ArithmeticBinaryExpression(MODULUS, new SymbolReference("number"), new Constant(INTEGER, 10L)))),
                                                                         project(
                                                                                 ImmutableMap.of("mask", expression(new IsNotNullPredicate(new SymbolReference("ordinality")))),
                                                                                 unnest(

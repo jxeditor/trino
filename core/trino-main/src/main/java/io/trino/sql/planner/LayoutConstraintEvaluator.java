@@ -20,7 +20,6 @@ import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.predicate.NullableValue;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.Expression;
-import io.trino.sql.ir.NullLiteral;
 
 import java.util.Map;
 import java.util.Set;
@@ -38,7 +37,7 @@ public class LayoutConstraintEvaluator
     public LayoutConstraintEvaluator(PlannerContext plannerContext, IrTypeAnalyzer typeAnalyzer, Session session, TypeProvider types, Map<Symbol, ColumnHandle> assignments, Expression expression)
     {
         this.assignments = ImmutableMap.copyOf(requireNonNull(assignments, "assignments is null"));
-        evaluator = new IrExpressionInterpreter(expression, plannerContext, session, typeAnalyzer.getTypes(session, types, expression));
+        evaluator = new IrExpressionInterpreter(expression, plannerContext, session, typeAnalyzer.getTypes(types, expression));
         arguments = SymbolsExtractor.extractUnique(expression).stream()
                 .map(assignments::get)
                 .collect(toImmutableSet());
@@ -61,6 +60,6 @@ public class LayoutConstraintEvaluator
         Object optimized = TryFunction.evaluate(() -> evaluator.optimize(inputs), true);
 
         // If any conjuncts evaluate to FALSE or null, then the whole predicate will never be true and so the partition should be pruned
-        return !(Boolean.FALSE.equals(optimized) || optimized == null || optimized instanceof NullLiteral);
+        return !(Boolean.FALSE.equals(optimized) || optimized == null);
     }
 }

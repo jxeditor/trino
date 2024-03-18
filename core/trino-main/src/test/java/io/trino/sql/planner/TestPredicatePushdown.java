@@ -17,15 +17,16 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.slice.Slices;
 import io.trino.Session;
+import io.trino.metadata.ResolvedFunction;
+import io.trino.metadata.TestingFunctionResolution;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.plan.ExchangeNode;
-import io.trino.sql.tree.QualifiedName;
 import org.junit.jupiter.api.Test;
 
 import static io.trino.SystemSessionProperties.JOIN_REORDERING_STRATEGY;
@@ -33,6 +34,7 @@ import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.spi.type.VarcharType.createVarcharType;
+import static io.trino.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static io.trino.sql.ir.ComparisonExpression.Operator.EQUAL;
 import static io.trino.sql.planner.assertions.PlanMatchPattern.anyTree;
 import static io.trino.sql.planner.assertions.PlanMatchPattern.filter;
@@ -46,6 +48,9 @@ import static io.trino.sql.planner.plan.JoinType.INNER;
 public class TestPredicatePushdown
         extends AbstractPredicatePushdownTest
 {
+    private static final TestingFunctionResolution FUNCTIONS = new TestingFunctionResolution();
+    private static final ResolvedFunction RANDOM = FUNCTIONS.resolveFunction("random", fromTypes(INTEGER));
+
     public TestPredicatePushdown()
     {
         super(true);
@@ -73,13 +78,13 @@ public class TestPredicatePushdown
                                 .left(
                                         project(
                                                 filter(
-                                                        new ComparisonExpression(EQUAL, GenericLiteral.constant(createVarcharType(4), Slices.utf8Slice("x")), new Cast(new SymbolReference("t_v"), createVarcharType(4))),
+                                                        new ComparisonExpression(EQUAL, new Constant(createVarcharType(4), Slices.utf8Slice("x")), new Cast(new SymbolReference("t_v"), createVarcharType(4))),
                                                         tableScan("nation", ImmutableMap.of("t_k", "nationkey", "t_v", "name")))))
                                 .right(
                                         anyTree(
                                                 project(
                                                         filter(
-                                                                new ComparisonExpression(EQUAL, GenericLiteral.constant(createVarcharType(4), Slices.utf8Slice("x")), new Cast(new SymbolReference("u_v"), createVarcharType(4))),
+                                                                new ComparisonExpression(EQUAL, new Constant(createVarcharType(4), Slices.utf8Slice("x")), new Cast(new SymbolReference("u_v"), createVarcharType(4))),
                                                                 tableScan("nation", ImmutableMap.of("u_k", "nationkey", "u_v", "name")))))))));
 
         // values have different types (varchar(4) vs varchar(5)) in each table
@@ -97,13 +102,13 @@ public class TestPredicatePushdown
                                 .left(
                                         project(
                                                 filter(
-                                                        new ComparisonExpression(EQUAL, GenericLiteral.constant(createVarcharType(4), Slices.utf8Slice("x")), new Cast(new SymbolReference("t_v"), createVarcharType(4))),
+                                                        new ComparisonExpression(EQUAL, new Constant(createVarcharType(4), Slices.utf8Slice("x")), new Cast(new SymbolReference("t_v"), createVarcharType(4))),
                                                         tableScan("nation", ImmutableMap.of("t_k", "nationkey", "t_v", "name")))))
                                 .right(
                                         anyTree(
                                                 project(
                                                         filter(
-                                                                new ComparisonExpression(EQUAL, GenericLiteral.constant(createVarcharType(5), Slices.utf8Slice("x")), new Cast(new SymbolReference("u_v"), createVarcharType(5))),
+                                                                new ComparisonExpression(EQUAL, new Constant(createVarcharType(5), Slices.utf8Slice("x")), new Cast(new SymbolReference("u_v"), createVarcharType(5))),
                                                                 tableScan("nation", ImmutableMap.of("u_k", "nationkey", "u_v", "name")))))))));
     }
 
@@ -173,7 +178,7 @@ public class TestPredicatePushdown
                                                 "LINE_ORDER_KEY", "orderkey"))),
                                 node(ExchangeNode.class,
                                         filter(
-                                                new ComparisonExpression(EQUAL, new SymbolReference("ORDERS_ORDER_KEY"), new Cast(new FunctionCall(QualifiedName.of("random"), ImmutableList.of(GenericLiteral.constant(INTEGER, 5L))), BIGINT)),
+                                                new ComparisonExpression(EQUAL, new SymbolReference("ORDERS_ORDER_KEY"), new Cast(new FunctionCall(RANDOM, ImmutableList.of(new Constant(INTEGER, 5L))), BIGINT)),
                                                 tableScan("orders", ImmutableMap.of("ORDERS_ORDER_KEY", "orderkey")))))));
     }
 
@@ -187,7 +192,7 @@ public class TestPredicatePushdown
                                 .equiCriteria("LINEITEM_OK", "ORDERS_OK")
                                 .left(
                                         filter(
-                                                new ComparisonExpression(EQUAL, new Cast(new SymbolReference("LINEITEM_LINENUMBER"), VARCHAR), GenericLiteral.constant(VARCHAR, Slices.utf8Slice("2"))),
+                                                new ComparisonExpression(EQUAL, new Cast(new SymbolReference("LINEITEM_LINENUMBER"), VARCHAR), new Constant(VARCHAR, Slices.utf8Slice("2"))),
                                                 tableScan("lineitem", ImmutableMap.of(
                                                         "LINEITEM_OK", "orderkey",
                                                         "LINEITEM_LINENUMBER", "linenumber"))))

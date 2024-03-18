@@ -13,16 +13,15 @@
  */
 package io.trino.sql.planner.assertions;
 
-import io.trino.spi.function.CatalogSchemaFunctionName;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
 import io.trino.sql.ir.ArithmeticUnaryExpression;
 import io.trino.sql.ir.BetweenPredicate;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
 import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.GenericLiteral;
 import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrVisitor;
@@ -31,7 +30,6 @@ import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LambdaExpression;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NotExpression;
-import io.trino.sql.ir.NullLiteral;
 import io.trino.sql.ir.Row;
 import io.trino.sql.ir.SearchedCaseExpression;
 import io.trino.sql.ir.SimpleCaseExpression;
@@ -40,12 +38,9 @@ import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.ir.WhenClause;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static io.trino.metadata.GlobalFunctionCatalog.builtinFunctionName;
-import static io.trino.metadata.ResolvedFunction.extractFunctionName;
-import static io.trino.metadata.ResolvedFunction.isResolved;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -83,20 +78,14 @@ public final class ExpressionVerifier
     }
 
     @Override
-    protected Boolean visitGenericLiteral(GenericLiteral actual, Expression expectedExpression)
+    protected Boolean visitConstant(Constant actual, Expression expectedExpression)
     {
-        if (!(expectedExpression instanceof GenericLiteral expected)) {
+        if (!(expectedExpression instanceof Constant expected)) {
             return false;
         }
 
-        return actual.getRawValue().equals(expected.getRawValue()) &&
+        return Objects.equals(actual.getValue(), expected.getValue()) &&
                 actual.getType().equals(expected.getType());
-    }
-
-    @Override
-    protected Boolean visitNullLiteral(NullLiteral node, Expression expectedExpression)
-    {
-        return expectedExpression instanceof NullLiteral;
     }
 
     @Override
@@ -320,16 +309,7 @@ public final class ExpressionVerifier
             return false;
         }
 
-        CatalogSchemaFunctionName expectedFunctionName;
-        if (isResolved(expected.getName())) {
-            expectedFunctionName = extractFunctionName(expected.getName());
-        }
-        else {
-            checkArgument(expected.getName().getParts().size() == 1, "Unresolved function call name must not be qualified: %s", expected.getName());
-            expectedFunctionName = builtinFunctionName(expected.getName().getSuffix());
-        }
-
-        return extractFunctionName(actual.getName()).equals(expectedFunctionName) &&
+        return actual.getFunction().getName().equals(expected.getFunction().getName()) &&
                 process(actual.getArguments(), expected.getArguments());
     }
 

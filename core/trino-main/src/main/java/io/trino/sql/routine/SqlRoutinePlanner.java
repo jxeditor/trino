@@ -26,10 +26,10 @@ import io.trino.sql.analyzer.Field;
 import io.trino.sql.analyzer.RelationId;
 import io.trino.sql.analyzer.RelationType;
 import io.trino.sql.analyzer.Scope;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.planner.IrExpressionInterpreter;
 import io.trino.sql.planner.IrTypeAnalyzer;
-import io.trino.sql.planner.LiteralEncoder;
 import io.trino.sql.planner.NoOpSymbolResolver;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.SymbolAllocator;
@@ -338,14 +338,18 @@ public final class SqlRoutinePlanner
             // The expression tree has been rewritten which breaks all the identity maps, so redo the analysis
             // to re-analyze coercions that might be necessary
             IrTypeAnalyzer analyzer = new IrTypeAnalyzer(plannerContext);
-            Map<io.trino.sql.ir.NodeRef<io.trino.sql.ir.Expression>, Type> types = analyzer.getTypes(session, typeProvider, lambdaCaptureDesugared);
+            Map<io.trino.sql.ir.NodeRef<io.trino.sql.ir.Expression>, Type> types = analyzer.getTypes(typeProvider, lambdaCaptureDesugared);
 
             // optimize the expression
             IrExpressionInterpreter interpreter = new IrExpressionInterpreter(lambdaCaptureDesugared, plannerContext, session, types);
-            io.trino.sql.ir.Expression optimized = LiteralEncoder.toExpression(interpreter.optimize(NoOpSymbolResolver.INSTANCE), types.get(io.trino.sql.ir.NodeRef.of(lambdaCaptureDesugared)));
+            Object value = interpreter.optimize(NoOpSymbolResolver.INSTANCE);
+
+            io.trino.sql.ir.Expression optimized = value instanceof io.trino.sql.ir.Expression optimizedExpression ?
+                    optimizedExpression :
+                    new Constant(types.get(io.trino.sql.ir.NodeRef.of(lambdaCaptureDesugared)), value);
 
             // Analyze again after optimization
-            types = analyzer.getTypes(session, typeProvider, optimized);
+            types = analyzer.getTypes(typeProvider, optimized);
 
             // translate to RowExpression
             TranslationVisitor translator = new TranslationVisitor(plannerContext.getMetadata(), plannerContext.getTypeManager(), types, ImmutableMap.of(), context.variables());

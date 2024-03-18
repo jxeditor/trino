@@ -28,9 +28,9 @@ import io.trino.spi.type.Int128;
 import io.trino.spi.type.Type;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.Cast;
+import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.IfExpression;
-import io.trino.sql.ir.Literal;
 import io.trino.sql.ir.NodeRef;
 import io.trino.sql.ir.SearchedCaseExpression;
 import io.trino.sql.ir.SymbolReference;
@@ -302,7 +302,7 @@ public class PreAggregateCaseAggregations
                             }
 
                             // Wrap the preProjection with IF to retain the conditional nature on the CASE aggregation(s) during pre-aggregation
-                            if (!(preProjection instanceof SymbolReference || preProjection instanceof Literal)) {
+                            if (!(preProjection instanceof SymbolReference || preProjection instanceof Constant)) {
                                 Expression unionConditions = or(caseAggregations.stream()
                                         .map(CaseAggregation::getOperand)
                                         .collect(toImmutableSet()));
@@ -427,12 +427,12 @@ public class PreAggregateCaseAggregations
 
     private Type getType(Context context, Expression expression)
     {
-        return typeAnalyzer.getType(context.getSession(), context.getSymbolAllocator().getTypes(), expression);
+        return typeAnalyzer.getType(context.getSymbolAllocator().getTypes(), expression);
     }
 
     private Object optimizeExpression(Expression expression, Context context)
     {
-        Map<NodeRef<Expression>, Type> expressionTypes = typeAnalyzer.getTypes(context.getSession(), context.getSymbolAllocator().getTypes(), expression);
+        Map<NodeRef<Expression>, Type> expressionTypes = typeAnalyzer.getTypes(context.getSymbolAllocator().getTypes(), expression);
         IrExpressionInterpreter expressionInterpreter = new IrExpressionInterpreter(expression, plannerContext, context.getSession(), expressionTypes);
         return expressionInterpreter.optimize(Symbol::toSymbolReference);
     }

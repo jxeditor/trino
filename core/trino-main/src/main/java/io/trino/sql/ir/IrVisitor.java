@@ -52,14 +52,9 @@ public abstract class IrVisitor<R, C>
         return visitExpression(node, context);
     }
 
-    protected R visitLiteral(Literal node, C context)
+    protected R visitConstant(Constant node, C context)
     {
         return visitExpression(node, context);
-    }
-
-    protected R visitGenericLiteral(GenericLiteral node, C context)
-    {
-        return visitLiteral(node, context);
     }
 
     protected R visitWhenClause(WhenClause node, C context)
@@ -95,11 +90,6 @@ public abstract class IrVisitor<R, C>
     protected R visitIfExpression(IfExpression node, C context)
     {
         return visitExpression(node, context);
-    }
-
-    protected R visitNullLiteral(NullLiteral node, C context)
-    {
-        return visitLiteral(node, context);
     }
 
     protected R visitArithmeticUnary(ArithmeticUnaryExpression node, C context)
