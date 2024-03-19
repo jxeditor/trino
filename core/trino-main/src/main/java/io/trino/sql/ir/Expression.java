@@ -23,19 +23,15 @@ import java.util.List;
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME)
 @JsonSubTypes({
         @JsonSubTypes.Type(value = ArithmeticBinaryExpression.class, name = "arithmeticBinary"),
-        @JsonSubTypes.Type(value = ArithmeticUnaryExpression.class, name = "arithmeticUnary"),
-        @JsonSubTypes.Type(value = Array.class, name = "array"),
+        @JsonSubTypes.Type(value = ArithmeticNegation.class, name = "arithmeticUnary"),
         @JsonSubTypes.Type(value = BetweenPredicate.class, name = "between"),
         @JsonSubTypes.Type(value = BindExpression.class, name = "bind"),
-        @JsonSubTypes.Type(value = BooleanLiteral.class, name = "boolean"),
         @JsonSubTypes.Type(value = Cast.class, name = "cast"),
         @JsonSubTypes.Type(value = CoalesceExpression.class, name = "coalesce"),
         @JsonSubTypes.Type(value = ComparisonExpression.class, name = "comparison"),
         @JsonSubTypes.Type(value = FunctionCall.class, name = "call"),
         @JsonSubTypes.Type(value = Constant.class, name = "constant"),
-        @JsonSubTypes.Type(value = IfExpression.class, name = "if"),
         @JsonSubTypes.Type(value = InPredicate.class, name = "in"),
-        @JsonSubTypes.Type(value = IsNotNullPredicate.class, name = "isNotNull"),
         @JsonSubTypes.Type(value = IsNullPredicate.class, name = "isNull"),
         @JsonSubTypes.Type(value = LambdaExpression.class, name = "lambda"),
         @JsonSubTypes.Type(value = LogicalExpression.class, name = "logicalBinary"),
@@ -46,15 +42,13 @@ import java.util.List;
         @JsonSubTypes.Type(value = SimpleCaseExpression.class, name = "simpleCase"),
         @JsonSubTypes.Type(value = SubscriptExpression.class, name = "subscript"),
         @JsonSubTypes.Type(value = SymbolReference.class, name = "symbol"),
-        @JsonSubTypes.Type(value = WhenClause.class, name = "when"),
 })
 public abstract sealed class Expression
-        permits ArithmeticBinaryExpression, ArithmeticUnaryExpression, Array, BetweenPredicate,
-        BindExpression, Cast, CoalesceExpression, ComparisonExpression, FunctionCall,
-        IfExpression, InPredicate, IsNotNullPredicate, IsNullPredicate,
-        LambdaExpression, Constant, LogicalExpression,
+        permits ArithmeticBinaryExpression, ArithmeticNegation, BetweenPredicate,
+        BindExpression, Cast, CoalesceExpression, ComparisonExpression, FunctionCall, InPredicate,
+        IsNullPredicate, LambdaExpression, Constant, LogicalExpression,
         NotExpression, NullIfExpression, Row, SearchedCaseExpression, SimpleCaseExpression,
-        SubscriptExpression, SymbolReference, WhenClause
+        SubscriptExpression, SymbolReference
 {
     /**
      * Accessible for {@link IrVisitor}, use {@link IrVisitor#process(Expression, Object)} instead.

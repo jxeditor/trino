@@ -46,15 +46,15 @@ public class SimplifyExpressions
             return expression;
         }
         Map<NodeRef<Expression>, Type> expressionTypes = typeAnalyzer.getTypes(symbolAllocator.getTypes(), expression);
-        expression = pushDownNegations(plannerContext.getMetadata(), expression, expressionTypes);
-        expression = extractCommonPredicates(plannerContext.getMetadata(), expression);
+        expression = pushDownNegations(expression, expressionTypes);
+        expression = extractCommonPredicates(expression);
         expression = normalizeOrExpression(expression);
         expressionTypes = typeAnalyzer.getTypes(symbolAllocator.getTypes(), expression);
         IrExpressionInterpreter interpreter = new IrExpressionInterpreter(expression, plannerContext, session, expressionTypes);
         Object optimized = interpreter.optimize(NoOpSymbolResolver.INSTANCE);
 
-        return optimized instanceof Expression optimizedExpresion ?
-                optimizedExpresion :
+        return optimized instanceof Expression optimizedExpression ?
+                optimizedExpression :
                 new Constant(expressionTypes.get(NodeRef.of(expression)), optimized);
     }
 

@@ -98,7 +98,7 @@ public final class ExpressionTreeRewriter<C>
         }
 
         @Override
-        protected Expression visitArithmeticUnary(ArithmeticUnaryExpression node, Context<C> context)
+        protected Expression visitArithmeticNegation(ArithmeticNegation node, Context<C> context)
         {
             if (!context.isDefaultRewrite()) {
                 Expression result = rewriter.rewriteArithmeticUnary(node, context.get(), ExpressionTreeRewriter.this);
@@ -109,7 +109,7 @@ public final class ExpressionTreeRewriter<C>
 
             Expression child = rewrite(node.getValue(), context.get());
             if (child != node.getValue()) {
-                return new ArithmeticUnaryExpression(node.getSign(), child);
+                return new ArithmeticNegation(child);
             }
 
             return node;
@@ -130,25 +130,6 @@ public final class ExpressionTreeRewriter<C>
 
             if (left != node.getLeft() || right != node.getRight()) {
                 return new ArithmeticBinaryExpression(node.getFunction(), node.getOperator(), left, right);
-            }
-
-            return node;
-        }
-
-        @Override
-        protected Expression visitArray(Array node, Context<C> context)
-        {
-            if (!context.isDefaultRewrite()) {
-                Expression result = rewriter.rewriteArray(node, context.get(), ExpressionTreeRewriter.this);
-                if (result != null) {
-                    return result;
-                }
-            }
-
-            List<Expression> values = rewrite(node.getValues(), context);
-
-            if (!sameElements(node.getValues(), values)) {
-                return new Array(values);
             }
 
             return node;
@@ -272,25 +253,6 @@ public final class ExpressionTreeRewriter<C>
         }
 
         @Override
-        protected Expression visitIsNotNullPredicate(IsNotNullPredicate node, Context<C> context)
-        {
-            if (!context.isDefaultRewrite()) {
-                Expression result = rewriter.rewriteIsNotNullPredicate(node, context.get(), ExpressionTreeRewriter.this);
-                if (result != null) {
-                    return result;
-                }
-            }
-
-            Expression value = rewrite(node.getValue(), context.get());
-
-            if (value != node.getValue()) {
-                return new IsNotNullPredicate(value);
-            }
-
-            return node;
-        }
-
-        @Override
         protected Expression visitNullIfExpression(NullIfExpression node, Context<C> context)
         {
             if (!context.isDefaultRewrite()) {
@@ -311,30 +273,6 @@ public final class ExpressionTreeRewriter<C>
         }
 
         @Override
-        protected Expression visitIfExpression(IfExpression node, Context<C> context)
-        {
-            if (!context.isDefaultRewrite()) {
-                Expression result = rewriter.rewriteIfExpression(node, context.get(), ExpressionTreeRewriter.this);
-                if (result != null) {
-                    return result;
-                }
-            }
-
-            Expression condition = rewrite(node.getCondition(), context.get());
-            Expression trueValue = rewrite(node.getTrueValue(), context.get());
-            Expression falseValue = null;
-            if (node.getFalseValue().isPresent()) {
-                falseValue = rewrite(node.getFalseValue().get(), context.get());
-            }
-
-            if ((condition != node.getCondition()) || (trueValue != node.getTrueValue()) || (falseValue != node.getFalseValue().orElse(null))) {
-                return new IfExpression(condition, trueValue, falseValue);
-            }
-
-            return node;
-        }
-
-        @Override
         protected Expression visitSearchedCaseExpression(SearchedCaseExpression node, Context<C> context)
         {
             if (!context.isDefaultRewrite()) {
@@ -346,7 +284,7 @@ public final class ExpressionTreeRewriter<C>
 
             ImmutableList.Builder<WhenClause> builder = ImmutableList.builder();
             for (WhenClause expression : node.getWhenClauses()) {
-                builder.add(rewrite(expression, context.get()));
+                builder.add(rewriteWhenClause(expression, context));
             }
 
             Optional<Expression> defaultValue = node.getDefaultValue()
@@ -373,7 +311,7 @@ public final class ExpressionTreeRewriter<C>
 
             ImmutableList.Builder<WhenClause> builder = ImmutableList.builder();
             for (WhenClause expression : node.getWhenClauses()) {
-                builder.add(rewrite(expression, context.get()));
+                builder.add(rewriteWhenClause(expression, context));
             }
 
             Optional<Expression> defaultValue = node.getDefaultValue()
@@ -388,16 +326,8 @@ public final class ExpressionTreeRewriter<C>
             return node;
         }
 
-        @Override
-        protected Expression visitWhenClause(WhenClause node, Context<C> context)
+        protected WhenClause rewriteWhenClause(WhenClause node, Context<C> context)
         {
-            if (!context.isDefaultRewrite()) {
-                Expression result = rewriter.rewriteWhenClause(node, context.get(), ExpressionTreeRewriter.this);
-                if (result != null) {
-                    return result;
-                }
-            }
-
             Expression operand = rewrite(node.getOperand(), context.get());
             Expression result = rewrite(node.getResult(), context.get());
 

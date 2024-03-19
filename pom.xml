@@ -188,7 +188,7 @@
         <dep.confluent.version>7.5.1</dep.confluent.version>
         <dep.docker.images.version>92</dep.docker.images.version>
         <dep.drift.version>1.21</dep.drift.version>
-        <dep.errorprone.version>2.25.0</dep.errorprone.version>
+        <dep.errorprone.version>2.26.1</dep.errorprone.version>
         <dep.flyway.version>10.10.0</dep.flyway.version>
         <dep.google.http.client.version>1.44.1</dep.google.http.client.version>
         <dep.iceberg.version>1.5.0</dep.iceberg.version>
@@ -279,7 +279,7 @@
             <dependency>
                 <groupId>org.jdbi</groupId>
                 <artifactId>jdbi3-bom</artifactId>
-                <version>3.45.0</version>
+                <version>3.45.1</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -303,7 +303,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>2.25.9</version>
+                <version>2.25.10</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -2152,7 +2152,7 @@
             <dependency>
                 <groupId>org.postgresql</groupId>
                 <artifactId>postgresql</artifactId>
-                <version>42.7.2</version>
+                <version>42.7.3</version>
             </dependency>
 
             <dependency>

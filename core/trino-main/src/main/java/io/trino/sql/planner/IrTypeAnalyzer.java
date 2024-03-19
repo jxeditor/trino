@@ -24,8 +24,7 @@ import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
-import io.trino.sql.ir.ArithmeticUnaryExpression;
-import io.trino.sql.ir.Array;
+import io.trino.sql.ir.ArithmeticNegation;
 import io.trino.sql.ir.BetweenPredicate;
 import io.trino.sql.ir.BindExpression;
 import io.trino.sql.ir.Cast;
@@ -34,10 +33,8 @@ import io.trino.sql.ir.ComparisonExpression;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrVisitor;
-import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LambdaExpression;
 import io.trino.sql.ir.LogicalExpression;
@@ -61,7 +58,6 @@ import java.util.stream.Collectors;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
-import static io.trino.type.UnknownType.UNKNOWN;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -192,13 +188,6 @@ public class IrTypeAnalyzer
         }
 
         @Override
-        protected Type visitIsNotNullPredicate(IsNotNullPredicate node, Context context)
-        {
-            process(node.getValue(), context);
-            return setExpressionType(node, BOOLEAN);
-        }
-
-        @Override
         protected Type visitNullIfExpression(NullIfExpression node, Context context)
         {
             Type firstType = process(node.getFirst(), context);
@@ -215,28 +204,13 @@ public class IrTypeAnalyzer
         }
 
         @Override
-        protected Type visitIfExpression(IfExpression node, Context context)
-        {
-            Type conditionType = process(node.getCondition(), context);
-            checkArgument(conditionType.equals(BOOLEAN), "Condition must be boolean: %s", conditionType);
-
-            Type trueType = process(node.getTrueValue(), context);
-            if (node.getFalseValue().isPresent()) {
-                Type falseType = process(node.getFalseValue().get(), context);
-                checkArgument(trueType.equals(falseType), "Types must be equal: %s vs %s", trueType, falseType);
-            }
-
-            return setExpressionType(node, trueType);
-        }
-
-        @Override
         protected Type visitSearchedCaseExpression(SearchedCaseExpression node, Context context)
         {
             Set<Type> resultTypes = node.getWhenClauses().stream()
                     .map(clause -> {
                         Type operandType = process(clause.getOperand(), context);
                         checkArgument(operandType.equals(BOOLEAN), "When clause operand must be boolean: %s", operandType);
-                        return setExpressionType(clause, process(clause.getResult(), context));
+                        return process(clause.getResult(), context);
                     })
                     .collect(Collectors.toSet());
 
@@ -259,7 +233,7 @@ public class IrTypeAnalyzer
                     .map(clause -> {
                         Type clauseOperandType = process(clause.getOperand(), context);
                         checkArgument(clauseOperandType.equals(operandType), "WHEN clause operand type must match CASE operand type: %s vs %s", clauseOperandType, operandType);
-                        return setExpressionType(clause, process(clause.getResult(), context));
+                        return process(clause.getResult(), context);
                     })
                     .collect(Collectors.toSet());
 
@@ -285,7 +259,7 @@ public class IrTypeAnalyzer
         }
 
         @Override
-        protected Type visitArithmeticUnary(ArithmeticUnaryExpression node, Context context)
+        protected Type visitArithmeticNegation(ArithmeticNegation node, Context context)
         {
             return setExpressionType(node, process(node.getValue(), context));
         }
@@ -317,21 +291,6 @@ public class IrTypeAnalyzer
                         case MapType mapType -> mapType.getValueType();
                         default -> throw new IllegalStateException("Unexpected type: " + baseType);
                     });
-        }
-
-        @Override
-        protected Type visitArray(Array node, Context context)
-        {
-            Set<Type> types = node.getValues().stream()
-                    .map(entry -> process(entry, context))
-                    .collect(Collectors.toSet());
-
-            if (types.isEmpty()) {
-                return setExpressionType(node, new ArrayType(UNKNOWN));
-            }
-
-            checkArgument(types.size() == 1, "All entries must have the same type: %s", types);
-            return setExpressionType(node, new ArrayType(types.iterator().next()));
         }
 
         @Override

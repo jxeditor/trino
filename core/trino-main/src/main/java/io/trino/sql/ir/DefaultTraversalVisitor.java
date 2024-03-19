@@ -53,16 +53,6 @@ public abstract class DefaultTraversalVisitor<C>
     }
 
     @Override
-    protected Void visitArray(Array node, C context)
-    {
-        for (Expression expression : node.getValues()) {
-            process(expression, context);
-        }
-
-        return null;
-    }
-
-    @Override
     protected Void visitSubscriptExpression(SubscriptExpression node, C context)
     {
         process(node.getBase(), context);
@@ -76,15 +66,6 @@ public abstract class DefaultTraversalVisitor<C>
     {
         process(node.getLeft(), context);
         process(node.getRight(), context);
-
-        return null;
-    }
-
-    @Override
-    protected Void visitWhenClause(WhenClause node, C context)
-    {
-        process(node.getOperand(), context);
-        process(node.getResult(), context);
 
         return null;
     }
@@ -115,7 +96,8 @@ public abstract class DefaultTraversalVisitor<C>
     {
         process(node.getOperand(), context);
         for (WhenClause clause : node.getWhenClauses()) {
-            process(clause, context);
+            process(clause.getOperand(), context);
+            process(clause.getResult(), context);
         }
 
         node.getDefaultValue()
@@ -134,18 +116,6 @@ public abstract class DefaultTraversalVisitor<C>
     }
 
     @Override
-    protected Void visitIfExpression(IfExpression node, C context)
-    {
-        process(node.getCondition(), context);
-        process(node.getTrueValue(), context);
-        if (node.getFalseValue().isPresent()) {
-            process(node.getFalseValue().get(), context);
-        }
-
-        return null;
-    }
-
-    @Override
     protected Void visitBindExpression(BindExpression node, C context)
     {
         for (Expression value : node.getValues()) {
@@ -157,7 +127,7 @@ public abstract class DefaultTraversalVisitor<C>
     }
 
     @Override
-    protected Void visitArithmeticUnary(ArithmeticUnaryExpression node, C context)
+    protected Void visitArithmeticNegation(ArithmeticNegation node, C context)
     {
         process(node.getValue(), context);
         return null;
@@ -174,18 +144,12 @@ public abstract class DefaultTraversalVisitor<C>
     protected Void visitSearchedCaseExpression(SearchedCaseExpression node, C context)
     {
         for (WhenClause clause : node.getWhenClauses()) {
-            process(clause, context);
+            process(clause.getOperand(), context);
+            process(clause.getResult(), context);
         }
         node.getDefaultValue()
                 .ifPresent(value -> process(value, context));
 
-        return null;
-    }
-
-    @Override
-    protected Void visitIsNotNullPredicate(IsNotNullPredicate node, C context)
-    {
-        process(node.getValue(), context);
         return null;
     }
 

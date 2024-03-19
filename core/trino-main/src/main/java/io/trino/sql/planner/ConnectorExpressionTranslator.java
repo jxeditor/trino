@@ -38,7 +38,7 @@ import io.trino.spi.type.Type;
 import io.trino.spi.type.VarcharType;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
-import io.trino.sql.ir.ArithmeticUnaryExpression;
+import io.trino.sql.ir.ArithmeticNegation;
 import io.trino.sql.ir.BetweenPredicate;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.ComparisonExpression;
@@ -47,7 +47,6 @@ import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrVisitor;
-import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NodeRef;
@@ -286,7 +285,7 @@ public final class ConnectorExpressionTranslator
 
             // arithmetic unary
             if (NEGATE_FUNCTION_NAME.equals(call.getFunctionName()) && call.getArguments().size() == 1) {
-                return translate(getOnlyElement(call.getArguments())).map(argument -> new ArithmeticUnaryExpression(ArithmeticUnaryExpression.Sign.MINUS, argument));
+                return translate(getOnlyElement(call.getArguments())).map(argument -> new ArithmeticNegation(argument));
             }
 
             if (StandardFunctions.LIKE_FUNCTION_NAME.equals(call.getFunctionName())) {
@@ -338,7 +337,7 @@ public final class ConnectorExpressionTranslator
         {
             Optional<Expression> translatedArgument = translate(argument);
             if (translatedArgument.isPresent()) {
-                return Optional.of(new IsNotNullPredicate(translatedArgument.get()));
+                return Optional.of(new NotExpression(new IsNullPredicate(translatedArgument.get())));
             }
 
             return Optional.empty();
@@ -622,15 +621,12 @@ public final class ConnectorExpressionTranslator
         }
 
         @Override
-        protected Optional<ConnectorExpression> visitArithmeticUnary(ArithmeticUnaryExpression node, Void context)
+        protected Optional<ConnectorExpression> visitArithmeticNegation(ArithmeticNegation node, Void context)
         {
             if (!isComplexExpressionPushdown(session)) {
                 return Optional.empty();
             }
-            return switch (node.getSign()) {
-                case PLUS -> process(node.getValue());
-                case MINUS -> process(node.getValue()).map(value -> new Call(typeOf(node), NEGATE_FUNCTION_NAME, ImmutableList.of(value)));
-            };
+            return process(node.getValue()).map(value -> new Call(typeOf(node), NEGATE_FUNCTION_NAME, ImmutableList.of(value)));
         }
 
         @Override
@@ -746,18 +742,6 @@ public final class ConnectorExpressionTranslator
             Optional<ConnectorExpression> translatedValue = process(node.getValue());
             if (translatedValue.isPresent()) {
                 return Optional.of(new Call(BOOLEAN, IS_NULL_FUNCTION_NAME, ImmutableList.of(translatedValue.get())));
-            }
-            return Optional.empty();
-        }
-
-        @Override
-        protected Optional<ConnectorExpression> visitIsNotNullPredicate(IsNotNullPredicate node, Void context)
-        {
-            // IS NOT NULL is translated to $not($is_null(..))
-            Optional<ConnectorExpression> translatedValue = process(node.getValue());
-            if (translatedValue.isPresent()) {
-                Call isNullCall = new Call(typeOf(node), IS_NULL_FUNCTION_NAME, List.of(translatedValue.get()));
-                return Optional.of(new Call(BOOLEAN, NOT_FUNCTION_NAME, List.of(isNullCall)));
             }
             return Optional.empty();
         }

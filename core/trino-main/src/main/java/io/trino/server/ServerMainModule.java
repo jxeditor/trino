@@ -13,7 +13,6 @@
  */
 package io.trino.server;
 
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Binder;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
@@ -86,6 +85,7 @@ import io.trino.metadata.TypeRegistry;
 import io.trino.operator.DirectExchangeClientConfig;
 import io.trino.operator.DirectExchangeClientFactory;
 import io.trino.operator.DirectExchangeClientSupplier;
+import io.trino.operator.FlatHashStrategyCompiler;
 import io.trino.operator.ForExchange;
 import io.trino.operator.GroupByHashPageIndexerFactory;
 import io.trino.operator.PagesIndex;
@@ -151,9 +151,7 @@ import io.trino.type.TypeSignatureDeserializer;
 import io.trino.type.TypeSignatureKeyDeserializer;
 import io.trino.util.EmbedVersion;
 import io.trino.util.FinalizerService;
-import jakarta.annotation.PreDestroy;
 
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -173,6 +171,7 @@ import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static io.trino.execution.scheduler.NodeSchedulerConfig.NodeSchedulerPolicy.TOPOLOGY;
 import static io.trino.execution.scheduler.NodeSchedulerConfig.NodeSchedulerPolicy.UNIFORM;
 import static io.trino.operator.RetryPolicy.TASK;
+import static io.trino.plugin.base.ClosingBinder.closingBinder;
 import static io.trino.server.InternalCommunicationHttpClientModule.internalHttpClientModule;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newCachedThreadPool;
@@ -342,6 +341,8 @@ public class ServerMainModule
         newExporter(binder).export(JoinFilterFunctionCompiler.class).withGeneratedName();
         binder.bind(JoinCompiler.class).in(Scopes.SINGLETON);
         newExporter(binder).export(JoinCompiler.class).withGeneratedName();
+        binder.bind(FlatHashStrategyCompiler.class).in(Scopes.SINGLETON);
+        newExporter(binder).export(FlatHashStrategyCompiler.class).withGeneratedName();
         binder.bind(OrderingCompiler.class).in(Scopes.SINGLETON);
         newExporter(binder).export(OrderingCompiler.class).withGeneratedName();
         binder.bind(PagesIndex.Factory.class).to(PagesIndex.DefaultFactory.class);
@@ -493,7 +494,10 @@ public class ServerMainModule
         newOptionalBinder(binder, RuleStatsRecorder.class);
 
         // cleanup
-        binder.bind(ExecutorCleanup.class).in(Scopes.SINGLETON);
+        closingBinder(binder)
+                .registerExecutor(ScheduledExecutorService.class, ForExchange.class)
+                .registerExecutor(ExecutorService.class, ForAsyncHttp.class)
+                .registerExecutor(ScheduledExecutorService.class, ForAsyncHttp.class);
     }
 
     private static class RegisterFunctionBundles
@@ -585,28 +589,5 @@ public class ServerMainModule
     public static ScheduledExecutorService createAsyncHttpTimeoutExecutor(TaskManagerConfig config)
     {
         return newScheduledThreadPool(config.getHttpTimeoutThreads(), daemonThreadsNamed("async-http-timeout-%s"));
-    }
-
-    public static class ExecutorCleanup
-    {
-        private final List<ExecutorService> executors;
-
-        @Inject
-        public ExecutorCleanup(
-                @ForExchange ScheduledExecutorService exchangeExecutor,
-                @ForAsyncHttp ExecutorService httpResponseExecutor,
-                @ForAsyncHttp ScheduledExecutorService httpTimeoutExecutor)
-        {
-            executors = ImmutableList.of(
-                    exchangeExecutor,
-                    httpResponseExecutor,
-                    httpTimeoutExecutor);
-        }
-
-        @PreDestroy
-        public void shutdown()
-        {
-            executors.forEach(ExecutorService::shutdownNow);
-        }
     }
 }

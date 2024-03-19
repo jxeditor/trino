@@ -15,7 +15,6 @@ package io.trino.sql.planner;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.io.BaseEncoding;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.trino.metadata.TestingFunctionResolution;
@@ -41,7 +40,6 @@ import io.trino.sql.ir.NotExpression;
 import io.trino.sql.planner.DomainTranslator.ExtractionResult;
 import io.trino.type.LikePattern;
 import io.trino.type.LikePatternType;
-import io.trino.type.Reals;
 import io.trino.type.TypeCoercion;
 import io.trino.util.DateTimeUtils;
 import org.joda.time.DateTime;
@@ -92,7 +90,7 @@ import static io.trino.testing.TestingConnectorSession.SESSION;
 import static io.trino.type.ColorType.COLOR;
 import static io.trino.type.LikeFunctions.LIKE_FUNCTION_NAME;
 import static io.trino.type.LikeFunctions.LIKE_PATTERN_FUNCTION_NAME;
-import static java.lang.Float.floatToIntBits;
+import static io.trino.type.Reals.toReal;
 import static java.lang.String.format;
 import static java.math.BigDecimal.ONE;
 import static java.math.BigDecimal.TWO;
@@ -397,8 +395,8 @@ public class TestDomainTranslator
         tupleDomain = tupleDomain(C_REAL, Domain.create(
                 ValueSet.ofRanges(
                         Range.lessThan(REAL, 0L),
-                        Range.range(REAL, 0L, false, (long) Float.floatToIntBits(1F), false),
-                        Range.greaterThan(REAL, (long) Float.floatToIntBits(1F))),
+                        Range.range(REAL, 0L, false, toReal(1F), false),
+                        Range.greaterThan(REAL, toReal(1F))),
                 false));
         assertThat(toPredicate(tupleDomain)).isEqualTo(or(
                 lessThan(C_REAL, realLiteral(0.0f)),
@@ -408,8 +406,8 @@ public class TestDomainTranslator
         tupleDomain = tupleDomain(C_REAL, Domain.create(
                 ValueSet.ofRanges(
                         Range.lessThan(REAL, 0L),
-                        Range.range(REAL, 0L, false, (long) Float.floatToIntBits(1F), false),
-                        Range.greaterThan(REAL, (long) Float.floatToIntBits(2F))),
+                        Range.range(REAL, 0L, false, toReal(1F), false),
+                        Range.greaterThan(REAL, toReal(2F))),
                 false));
         assertThat(toPredicate(tupleDomain)).isEqualTo(or(and(lessThan(C_REAL, realLiteral(1.0f)), notEqual(C_REAL, realLiteral(0.0f))), greaterThan(C_REAL, realLiteral(2.0f))));
 
@@ -808,7 +806,7 @@ public class TestDomainTranslator
         assertPredicateIsAlwaysFalse(not(notEqual(C_DOUBLE, nanDouble)));
         assertUnsupportedPredicate(not(isDistinctFrom(C_DOUBLE, nanDouble)));
 
-        Expression nanReal = new Constant(REAL, Reals.toReal(Float.NaN));
+        Expression nanReal = new Constant(REAL, toReal(Float.NaN));
 
         assertPredicateIsAlwaysFalse(equal(C_REAL, nanReal));
         assertPredicateIsAlwaysFalse(greaterThan(C_REAL, nanReal));
@@ -863,147 +861,11 @@ public class TestDomainTranslator
 
         assertUnsupportedPredicate(equal(
                 cast(C_BIGINT, REAL),
-                new Constant(REAL, realValue(12345.56f))));
+                new Constant(REAL, toReal(12345.56f))));
 
         assertUnsupportedPredicate(equal(
                 cast(C_INTEGER, REAL),
-                new Constant(REAL, realValue(12345.56f))));
-    }
-
-    @Test
-    public void testFromComparisonsWithCoercions()
-    {
-        // B is a double column. Check that it can be compared against longs
-        assertPredicateTranslates(
-                greaterThan(C_DOUBLE, cast(bigintLiteral(2L), DOUBLE)),
-                tupleDomain(C_DOUBLE, Domain.create(ValueSet.ofRanges(Range.greaterThan(DOUBLE, 2.0)), false)));
-
-        // C is a string column. Check that it can be compared.
-        assertPredicateTranslates(
-                greaterThan(C_VARCHAR, stringLiteral("test", VARCHAR)),
-                tupleDomain(C_VARCHAR, Domain.create(ValueSet.ofRanges(Range.greaterThan(VARCHAR, utf8Slice("test"))), false)));
-
-        // A is a integer column. Check that it can be compared against doubles
-        assertPredicateTranslates(
-                greaterThan(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.greaterThan(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                greaterThan(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.greaterThan(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                greaterThanOrEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.greaterThanOrEqual(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                greaterThanOrEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.greaterThan(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                lessThan(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThan(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                lessThan(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThanOrEqual(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                lessThanOrEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThanOrEqual(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                lessThanOrEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThanOrEqual(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                equal(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.equal(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                equal(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1)),
-                tupleDomain(C_INTEGER, Domain.none(INTEGER)));
-
-        assertPredicateTranslates(
-                notEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThan(INTEGER, 2L), Range.greaterThan(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                notEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1)),
-                tupleDomain(C_INTEGER, Domain.notNull(INTEGER)));
-
-        assertPredicateTranslates(
-                isDistinctFrom(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThan(INTEGER, 2L), Range.greaterThan(INTEGER, 2L)), true)));
-
-        assertPredicateIsAlwaysTrue(isDistinctFrom(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1)));
-
-        // Test complements
-
-        // B is a double column. Check that it can be compared against longs
-        assertPredicateTranslates(
-                greaterThan(C_DOUBLE, cast(bigintLiteral(2L), DOUBLE)),
-                tupleDomain(C_DOUBLE, Domain.create(ValueSet.ofRanges(Range.greaterThan(DOUBLE, 2.0)), false)));
-
-        // C is a string column. Check that it can be compared.
-        assertPredicateTranslates(
-                not(greaterThan(C_VARCHAR, stringLiteral("test", VARCHAR))),
-                tupleDomain(C_VARCHAR, Domain.create(ValueSet.ofRanges(Range.lessThanOrEqual(VARCHAR, utf8Slice("test"))), false)));
-
-        // A is a integer column. Check that it can be compared against doubles
-        assertPredicateTranslates(
-                not(greaterThan(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThanOrEqual(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(greaterThan(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThanOrEqual(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(greaterThanOrEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThan(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(greaterThanOrEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThanOrEqual(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(lessThan(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.greaterThanOrEqual(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(lessThan(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.greaterThan(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(lessThanOrEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.greaterThan(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(lessThanOrEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.greaterThan(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(equal(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThan(INTEGER, 2L), Range.greaterThan(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(equal(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1))),
-                tupleDomain(C_INTEGER, Domain.notNull(INTEGER)));
-
-        assertPredicateTranslates(
-                not(notEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.equal(INTEGER, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(notEqual(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1))),
-                tupleDomain(C_INTEGER, Domain.none(INTEGER)));
-
-        assertPredicateTranslates(
-                not(isDistinctFrom(cast(C_INTEGER, DOUBLE), doubleLiteral(2.0))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.equal(INTEGER, 2L)), false)));
-
-        assertPredicateIsAlwaysFalse(not(isDistinctFrom(cast(C_INTEGER, DOUBLE), doubleLiteral(2.1))));
+                new Constant(REAL, toReal(12345.56f))));
     }
 
     @Test
@@ -1153,7 +1015,7 @@ public class TestDomainTranslator
     @Test
     public void testInPredicateWithReal()
     {
-        testInPredicateWithFloatingPoint(C_REAL, C_REAL_1, REAL, (long) floatToIntBits(1), (long) floatToIntBits(2), (long) floatToIntBits(Float.NaN));
+        testInPredicateWithFloatingPoint(C_REAL, C_REAL_1, REAL, toReal(1), toReal(2), toReal(Float.NaN));
     }
 
     @Test
@@ -1383,45 +1245,15 @@ public class TestDomainTranslator
     }
 
     @Test
-    public void testInPredicateWithCasts()
-    {
-        assertPredicateTranslates(
-                new InPredicate(
-                        C_BIGINT.toSymbolReference(),
-                        ImmutableList.of(cast(new Constant(SMALLINT, 1L), BIGINT))),
-                tupleDomain(C_BIGINT, Domain.singleValue(BIGINT, 1L)));
-
-        assertPredicateTranslates(
-                new InPredicate(
-                        cast(C_SMALLINT, BIGINT),
-                        ImmutableList.of(new Constant(BIGINT, 1L))),
-                tupleDomain(C_SMALLINT, Domain.singleValue(SMALLINT, 1L)));
-
-        assertUnsupportedPredicate(new InPredicate(
-                cast(C_BIGINT, INTEGER),
-                ImmutableList.of(new Constant(INTEGER, 1L))));
-    }
-
-    @Test
     public void testFromInPredicateWithCastsAndNulls()
     {
         assertPredicateIsAlwaysFalse(new InPredicate(
                 C_BIGINT.toSymbolReference(),
-                ImmutableList.of(cast(new Constant(SMALLINT, null), BIGINT))));
+                ImmutableList.of(new Constant(BIGINT, null))));
 
         assertUnsupportedPredicate(not(new InPredicate(
                 cast(C_SMALLINT, BIGINT),
                 ImmutableList.of(new Constant(BIGINT, null)))));
-
-        assertPredicateTranslates(
-                new InPredicate(
-                        C_BIGINT.toSymbolReference(),
-                        ImmutableList.of(cast(new Constant(SMALLINT, null), BIGINT), new Constant(BIGINT, 1L))),
-                tupleDomain(C_BIGINT, Domain.create(ValueSet.ofRanges(Range.equal(BIGINT, 1L)), false)));
-
-        assertPredicateIsAlwaysFalse(not(new InPredicate(
-                C_BIGINT.toSymbolReference(),
-                ImmutableList.of(cast(new Constant(SMALLINT, null), BIGINT), new Constant(BIGINT, 1L)))));
     }
 
     @Test
@@ -1431,20 +1263,12 @@ public class TestDomainTranslator
                 between(C_BIGINT, bigintLiteral(1L), bigintLiteral(2L)),
                 tupleDomain(C_BIGINT, Domain.create(ValueSet.ofRanges(Range.range(BIGINT, 1L, true, 2L, true)), false)));
 
-        assertPredicateTranslates(
-                between(cast(C_INTEGER, DOUBLE), cast(bigintLiteral(1L), DOUBLE), doubleLiteral(2.1)),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.range(INTEGER, 1L, true, 2L, true)), false)));
-
         assertPredicateIsAlwaysFalse(between(C_BIGINT, bigintLiteral(1L), nullLiteral(BIGINT)));
 
         // Test complements
         assertPredicateTranslates(
                 not(between(C_BIGINT, bigintLiteral(1L), bigintLiteral(2L))),
                 tupleDomain(C_BIGINT, Domain.create(ValueSet.ofRanges(Range.lessThan(BIGINT, 1L), Range.greaterThan(BIGINT, 2L)), false)));
-
-        assertPredicateTranslates(
-                not(between(cast(C_INTEGER, DOUBLE), cast(bigintLiteral(1L), DOUBLE), doubleLiteral(2.1))),
-                tupleDomain(C_INTEGER, Domain.create(ValueSet.ofRanges(Range.lessThan(INTEGER, 1L), Range.greaterThan(INTEGER, 2L)), false)));
 
         assertPredicateTranslates(
                 not(between(C_BIGINT, bigintLiteral(1L), nullLiteral(BIGINT))),
@@ -1508,23 +1332,6 @@ public class TestDomainTranslator
     }
 
     @Test
-    public void testExpressionConstantFolding()
-    {
-        FunctionCall fromHex = functionResolution
-                .functionCallBuilder("from_hex")
-                .addArgument(VARCHAR, stringLiteral("123456"))
-                .build();
-        Expression originalExpression = comparison(GREATER_THAN, C_VARBINARY.toSymbolReference(), fromHex);
-        ExtractionResult result = fromPredicate(originalExpression);
-        assertThat(result.getRemainingExpression()).isEqualTo(TRUE_LITERAL);
-        Slice value = Slices.wrappedBuffer(BaseEncoding.base16().decode("123456"));
-        assertThat(result.getTupleDomain()).isEqualTo(tupleDomain(C_VARBINARY, Domain.create(ValueSet.ofRanges(Range.greaterThan(VARBINARY, value)), false)));
-
-        Expression expression = toPredicate(result.getTupleDomain());
-        assertThat(expression).isEqualTo(comparison(GREATER_THAN, C_VARBINARY.toSymbolReference(), varbinaryLiteral(value)));
-    }
-
-    @Test
     public void testConjunctExpression()
     {
         Expression expression = and(
@@ -1547,38 +1354,6 @@ public class TestDomainTranslator
         assertPredicateTranslates(
                 comparison(GREATER_THAN, cast(cast(C_SMALLINT, REAL), DOUBLE), doubleLiteral(3.7)),
                 tupleDomain(C_SMALLINT, Domain.create(ValueSet.ofRanges(Range.greaterThan(SMALLINT, 3L)), false)));
-    }
-
-    @Test
-    public void testNumericTypeTranslation()
-    {
-        testNumericTypeTranslationChain(
-                new NumericValues<>(C_DECIMAL_26_5, longDecimal("-999999999999999999999.99999"), longDecimal("-22.00000"), longDecimal("-44.55569"), longDecimal("23.00000"), longDecimal("44.55567"), longDecimal("999999999999999999999.99999")),
-                new NumericValues<>(C_DECIMAL_23_4, longDecimal("-9999999999999999999.9999"), longDecimal("-22.0000"), longDecimal("-44.5557"), longDecimal("23.0000"), longDecimal("44.5556"), longDecimal("9999999999999999999.9999")),
-                new NumericValues<>(C_BIGINT, Long.MIN_VALUE, -22L, -45L, 23L, 44L, Long.MAX_VALUE),
-                new NumericValues<>(C_DECIMAL_21_3, longDecimal("-999999999999999999.999"), longDecimal("-22.000"), longDecimal("-44.556"), longDecimal("23.000"), longDecimal("44.555"), longDecimal("999999999999999999.999")),
-                new NumericValues<>(C_DECIMAL_12_2, shortDecimal("-9999999999.99"), shortDecimal("-22.00"), shortDecimal("-44.56"), shortDecimal("23.00"), shortDecimal("44.55"), shortDecimal("9999999999.99")),
-                new NumericValues<>(C_INTEGER, (long) Integer.MIN_VALUE, -22L, -45L, 23L, 44L, (long) Integer.MAX_VALUE),
-                new NumericValues<>(C_DECIMAL_6_1, shortDecimal("-99999.9"), shortDecimal("-22.0"), shortDecimal("-44.6"), shortDecimal("23.0"), shortDecimal("44.5"), shortDecimal("99999.9")),
-                new NumericValues<>(C_SMALLINT, (long) Short.MIN_VALUE, -22L, -45L, 23L, 44L, (long) Short.MAX_VALUE),
-                new NumericValues<>(C_DECIMAL_3_0, shortDecimal("-999"), shortDecimal("-22"), shortDecimal("-45"), shortDecimal("23"), shortDecimal("44"), shortDecimal("999")),
-                new NumericValues<>(C_TINYINT, (long) Byte.MIN_VALUE, -22L, -45L, 23L, 44L, (long) Byte.MAX_VALUE),
-                new NumericValues<>(C_DECIMAL_2_0, shortDecimal("-99"), shortDecimal("-22"), shortDecimal("-45"), shortDecimal("23"), shortDecimal("44"), shortDecimal("99")));
-
-        testNumericTypeTranslationChain(
-                new NumericValues<>(C_DOUBLE, -1.0 * Double.MAX_VALUE, -22.0, -44.5556836, 23.0, 44.5556789, Double.MAX_VALUE),
-                new NumericValues<>(C_REAL, realValue(-1.0f * Float.MAX_VALUE), realValue(-22.0f), realValue(-44.555687f), realValue(23.0f), realValue(44.555676f), realValue(Float.MAX_VALUE)));
-    }
-
-    private void testNumericTypeTranslationChain(NumericValues<?>... translationChain)
-    {
-        for (int literalIndex = 0; literalIndex < translationChain.length; literalIndex++) {
-            for (int columnIndex = literalIndex + 1; columnIndex < translationChain.length; columnIndex++) {
-                NumericValues<?> literal = translationChain[literalIndex];
-                NumericValues<?> column = translationChain[columnIndex];
-                testNumericTypeTranslation(column, literal);
-            }
-        }
     }
 
     private void testNumericTypeTranslation(NumericValues<?> columnValues, NumericValues<?> literalValues)
@@ -2004,7 +1779,7 @@ public class TestDomainTranslator
     {
         Type charType = createCharType(10);
         // varchar literal is coerced to column (char) type
-        testSimpleComparison(equal(C_CHAR, cast(stringLiteral("abc"), charType)), C_CHAR, Range.equal(charType, Slices.utf8Slice("abc")));
+        testSimpleComparison(equal(C_CHAR, new Constant(charType, utf8Slice("abc"))), C_CHAR, Range.equal(charType, Slices.utf8Slice("abc")));
 
         // both sides got coerced to char(11)
         charType = createCharType(11);
@@ -2247,7 +2022,7 @@ public class TestDomainTranslator
 
     private static Expression realLiteral(float value)
     {
-        return new Constant(REAL, Reals.toReal(value));
+        return new Constant(REAL, toReal(value));
     }
 
     private static Constant stringLiteral(String value)
@@ -2293,11 +2068,6 @@ public class TestDomainTranslator
     private static Int128 longDecimal(String value)
     {
         return Decimals.valueOf(new BigDecimal(value));
-    }
-
-    private static Long realValue(float value)
-    {
-        return (long) Float.floatToIntBits(value);
     }
 
     private void testSimpleComparison(Expression expression, Symbol symbol, Range expectedDomainRange)

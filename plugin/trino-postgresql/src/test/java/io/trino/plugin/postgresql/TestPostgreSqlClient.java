@@ -39,12 +39,11 @@ import io.trino.spi.function.OperatorType;
 import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.type.Type;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
-import io.trino.sql.ir.ArithmeticUnaryExpression;
+import io.trino.sql.ir.ArithmeticNegation;
 import io.trino.sql.ir.ComparisonExpression;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.InPredicate;
-import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NotExpression;
@@ -362,9 +361,7 @@ public class TestPostgreSqlClient
         ParameterizedExpression converted = JDBC_CLIENT.convertPredicate(
                         SESSION,
                         translateToConnectorExpression(
-                                new ArithmeticUnaryExpression(
-                                        ArithmeticUnaryExpression.Sign.MINUS,
-                                        new SymbolReference("c_bigint_symbol")),
+                                new ArithmeticNegation(new SymbolReference("c_bigint_symbol")),
                                 Map.of("c_bigint_symbol", BIGINT)),
                         Map.of("c_bigint_symbol", BIGINT_COLUMN))
                 .orElseThrow();
@@ -394,8 +391,7 @@ public class TestPostgreSqlClient
         // c_varchar IS NOT NULL
         ParameterizedExpression converted = JDBC_CLIENT.convertPredicate(SESSION,
                         translateToConnectorExpression(
-                                new IsNotNullPredicate(
-                                        new SymbolReference("c_varchar_symbol")),
+                                new NotExpression(new IsNullPredicate(new SymbolReference("c_varchar_symbol"))),
                                 Map.of("c_varchar_symbol", VARCHAR_COLUMN.getColumnType())),
                         Map.of("c_varchar_symbol", VARCHAR_COLUMN))
                 .orElseThrow();
@@ -426,8 +422,7 @@ public class TestPostgreSqlClient
         ParameterizedExpression converted = JDBC_CLIENT.convertPredicate(SESSION,
                         translateToConnectorExpression(
                                 new NotExpression(
-                                        new IsNotNullPredicate(
-                                                new SymbolReference("c_varchar_symbol"))),
+                                        new NotExpression(new IsNullPredicate(new SymbolReference("c_varchar_symbol")))),
                                 Map.of("c_varchar_symbol", VARCHAR_COLUMN.getColumnType())),
                         Map.of("c_varchar_symbol", VARCHAR_COLUMN))
                 .orElseThrow();

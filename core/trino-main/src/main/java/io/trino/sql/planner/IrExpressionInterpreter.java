@@ -19,10 +19,8 @@ import com.google.common.primitives.Primitives;
 import io.trino.Session;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.ResolvedFunction;
-import io.trino.operator.scalar.ArrayConstructor;
 import io.trino.operator.scalar.ArraySubscriptOperator;
 import io.trino.spi.TrinoException;
-import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.SqlRow;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.function.CatalogSchemaFunctionName;
@@ -36,8 +34,7 @@ import io.trino.spi.type.Type;
 import io.trino.sql.InterpretedFunctionInvoker;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
-import io.trino.sql.ir.ArithmeticUnaryExpression;
-import io.trino.sql.ir.Array;
+import io.trino.sql.ir.ArithmeticNegation;
 import io.trino.sql.ir.BetweenPredicate;
 import io.trino.sql.ir.BindExpression;
 import io.trino.sql.ir.Cast;
@@ -47,10 +44,8 @@ import io.trino.sql.ir.ComparisonExpression.Operator;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrVisitor;
-import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LambdaExpression;
 import io.trino.sql.ir.LogicalExpression;
@@ -101,9 +96,7 @@ import static io.trino.spi.type.TypeUtils.readNativeValue;
 import static io.trino.spi.type.TypeUtils.writeNativeValue;
 import static io.trino.sql.DynamicFilters.isDynamicFilter;
 import static io.trino.sql.gen.VarArgsToMapAdapterGenerator.generateVarArgsToMapAdapter;
-import static io.trino.sql.ir.ArithmeticUnaryExpression.Sign.MINUS;
 import static io.trino.sql.planner.DeterminismEvaluator.isDeterministic;
-import static io.trino.util.Failures.checkCondition;
 import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
@@ -216,18 +209,6 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitIsNotNullPredicate(IsNotNullPredicate node, Object context)
-        {
-            Object value = processWithExceptionHandling(node.getValue(), context);
-
-            if (value instanceof Expression) {
-                return new IsNotNullPredicate(toExpression(value, type(node.getValue())));
-            }
-
-            return value != null;
-        }
-
-        @Override
         protected Object visitSearchedCaseExpression(SearchedCaseExpression node, Object context)
         {
             Object newDefault = null;
@@ -265,25 +246,6 @@ public class IrExpressionInterpreter
 
             Expression defaultExpression = (defaultResult == null) ? null : toExpression(defaultResult, type(node));
             return new SearchedCaseExpression(whenClauses, Optional.ofNullable(defaultExpression));
-        }
-
-        @Override
-        protected Object visitIfExpression(IfExpression node, Object context)
-        {
-            Object condition = processWithExceptionHandling(node.getCondition(), context);
-
-            if (condition instanceof Expression) {
-                Object trueValue = processWithExceptionHandling(node.getTrueValue(), context);
-                Object falseValue = processWithExceptionHandling(node.getFalseValue().orElse(null), context);
-                return new IfExpression(
-                        toExpression(condition, type(node.getCondition())),
-                        toExpression(trueValue, type(node.getTrueValue())),
-                        (falseValue == null) ? null : toExpression(falseValue, type(node.getFalseValue().get())));
-            }
-            if (Boolean.TRUE.equals(condition)) {
-                return processWithExceptionHandling(node.getTrueValue(), context);
-            }
-            return processWithExceptionHandling(node.getFalseValue().orElse(null), context);
         }
 
         @Override
@@ -508,7 +470,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitArithmeticUnary(ArithmeticUnaryExpression node, Object context)
+        protected Object visitArithmeticNegation(ArithmeticNegation node, Object context)
         {
             Object value = processWithExceptionHandling(node.getValue(), context);
             if (value == null) {
@@ -516,37 +478,27 @@ public class IrExpressionInterpreter
             }
             if (value instanceof Expression) {
                 Expression valueExpression = toExpression(value, type(node.getValue()));
-                return switch (node.getSign()) {
-                    case PLUS -> valueExpression;
-                    case MINUS -> {
-                        if (valueExpression instanceof ArithmeticUnaryExpression && ((ArithmeticUnaryExpression) valueExpression).getSign().equals(MINUS)) {
-                            yield ((ArithmeticUnaryExpression) valueExpression).getValue();
-                        }
-                        yield new ArithmeticUnaryExpression(MINUS, valueExpression);
-                    }
-                };
+                if (valueExpression instanceof ArithmeticNegation argument) {
+                    return argument.getValue();
+                }
+                return new ArithmeticNegation(valueExpression);
             }
 
-            return switch (node.getSign()) {
-                case PLUS -> value;
-                case MINUS -> {
-                    ResolvedFunction resolvedOperator = metadata.resolveOperator(OperatorType.NEGATION, types(node.getValue()));
-                    InvocationConvention invocationConvention = new InvocationConvention(ImmutableList.of(NEVER_NULL), FAIL_ON_NULL, true, false);
-                    MethodHandle handle = plannerContext.getFunctionManager().getScalarFunctionImplementation(resolvedOperator, invocationConvention).getMethodHandle();
+            ResolvedFunction resolvedOperator = metadata.resolveOperator(OperatorType.NEGATION, types(node.getValue()));
+            InvocationConvention invocationConvention = new InvocationConvention(ImmutableList.of(NEVER_NULL), FAIL_ON_NULL, true, false);
+            MethodHandle handle = plannerContext.getFunctionManager().getScalarFunctionImplementation(resolvedOperator, invocationConvention).getMethodHandle();
 
-                    if (handle.type().parameterCount() > 0 && handle.type().parameterType(0) == ConnectorSession.class) {
-                        handle = handle.bindTo(connectorSession);
-                    }
-                    try {
-                        yield handle.invokeWithArguments(value);
-                    }
-                    catch (Throwable throwable) {
-                        throwIfInstanceOf(throwable, RuntimeException.class);
-                        throwIfInstanceOf(throwable, Error.class);
-                        throw new RuntimeException(throwable.getMessage(), throwable);
-                    }
-                }
-            };
+            if (handle.type().parameterCount() > 0 && handle.type().parameterType(0) == ConnectorSession.class) {
+                handle = handle.bindTo(connectorSession);
+            }
+            try {
+                return handle.invokeWithArguments(value);
+            }
+            catch (Throwable throwable) {
+                throwIfInstanceOf(throwable, RuntimeException.class);
+                throwIfInstanceOf(throwable, Error.class);
+                throw new RuntimeException(throwable.getMessage(), throwable);
+            }
         }
 
         @Override
@@ -608,11 +560,11 @@ public class IrExpressionInterpreter
             Object right = processWithExceptionHandling(rightExpression, context);
 
             if (left == null && right instanceof Expression) {
-                return new IsNotNullPredicate((Expression) right);
+                return new NotExpression(new IsNullPredicate(((Expression) right)));
             }
 
             if (right == null && left instanceof Expression) {
-                return new IsNotNullPredicate((Expression) left);
+                return new NotExpression(new IsNullPredicate(((Expression) left)));
             }
 
             if (left instanceof Expression || right instanceof Expression) {
@@ -918,29 +870,6 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitArray(Array node, Object context)
-        {
-            Type elementType = ((ArrayType) type(node)).getElementType();
-            BlockBuilder arrayBlockBuilder = elementType.createBlockBuilder(null, node.getValues().size());
-
-            for (Expression expression : node.getValues()) {
-                Object value = processWithExceptionHandling(expression, context);
-                if (value instanceof Expression) {
-                    checkCondition(node.getValues().size() <= 254, NOT_SUPPORTED, "Too many arguments for array constructor");
-                    return visitFunctionCall(
-                            BuiltinFunctionCallBuilder.resolve(metadata)
-                                    .setName(ArrayConstructor.NAME)
-                                    .setArguments(types(node.getValues()), node.getValues())
-                                    .build(),
-                            context);
-                }
-                writeNativeValue(elementType, arrayBlockBuilder, value);
-            }
-
-            return arrayBlockBuilder.build();
-        }
-
-        @Override
         protected Object visitRow(Row node, Object context)
         {
             RowType rowType = (RowType) type(node);
@@ -1004,14 +933,6 @@ public class IrExpressionInterpreter
         private List<Type> types(Expression... expressions)
         {
             return Stream.of(expressions)
-                    .map(NodeRef::of)
-                    .map(expressionTypes::get)
-                    .collect(toImmutableList());
-        }
-
-        private List<Type> types(List<Expression> expressions)
-        {
-            return expressions.stream()
                     .map(NodeRef::of)
                     .map(expressionTypes::get)
                     .collect(toImmutableList());

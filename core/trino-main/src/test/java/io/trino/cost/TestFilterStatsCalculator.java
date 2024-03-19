@@ -29,7 +29,7 @@ import io.trino.spi.type.Type;
 import io.trino.spi.type.VarcharType;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
-import io.trino.sql.ir.ArithmeticUnaryExpression;
+import io.trino.sql.ir.ArithmeticNegation;
 import io.trino.sql.ir.BetweenPredicate;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
@@ -38,7 +38,6 @@ import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
 import io.trino.sql.ir.InPredicate;
-import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LogicalExpression;
 import io.trino.sql.ir.NotExpression;
@@ -63,7 +62,6 @@ import static io.trino.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static io.trino.sql.ir.ArithmeticBinaryExpression.Operator.ADD;
 import static io.trino.sql.ir.ArithmeticBinaryExpression.Operator.MULTIPLY;
 import static io.trino.sql.ir.ArithmeticBinaryExpression.Operator.SUBTRACT;
-import static io.trino.sql.ir.ArithmeticUnaryExpression.Sign.MINUS;
 import static io.trino.sql.ir.BooleanLiteral.FALSE_LITERAL;
 import static io.trino.sql.ir.BooleanLiteral.TRUE_LITERAL;
 import static io.trino.sql.ir.ComparisonExpression.Operator.EQUAL;
@@ -210,7 +208,7 @@ public class TestFilterStatsCalculator
                                 .distinctValuesCount(26)
                                 .nullsFraction(0.0));
 
-        assertExpression(new ComparisonExpression(GREATER_THAN, new ArithmeticUnaryExpression(MINUS, new SymbolReference("x")), new Constant(DOUBLE, -3.0)))
+        assertExpression(new ComparisonExpression(GREATER_THAN, new ArithmeticNegation(new SymbolReference("x")), new Constant(DOUBLE, -3.0)))
                 .outputRowsCount(lessThan3Rows);
 
         for (Expression minusThree : ImmutableList.of(
@@ -619,7 +617,7 @@ public class TestFilterStatsCalculator
     @Test
     public void testIsNotNullFilter()
     {
-        assertExpression(new IsNotNullPredicate(new SymbolReference("x")))
+        assertExpression(new NotExpression(new IsNullPredicate(new SymbolReference("x"))))
                 .outputRowsCount(750.0)
                 .symbolStats("x", symbolStats ->
                         symbolStats.distinctValuesCount(40.0)
@@ -627,7 +625,7 @@ public class TestFilterStatsCalculator
                                 .highValue(10.0)
                                 .nullsFraction(0.0));
 
-        assertExpression(new IsNotNullPredicate(new SymbolReference("emptyRange")))
+        assertExpression(new NotExpression(new IsNullPredicate(new SymbolReference("emptyRange"))))
                 .outputRowsCount(0.0)
                 .symbolStats("emptyRange", SymbolStatsAssertion::empty);
     }

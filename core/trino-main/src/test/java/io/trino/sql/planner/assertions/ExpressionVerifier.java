@@ -14,7 +14,7 @@
 package io.trino.sql.planner.assertions;
 
 import io.trino.sql.ir.ArithmeticBinaryExpression;
-import io.trino.sql.ir.ArithmeticUnaryExpression;
+import io.trino.sql.ir.ArithmeticNegation;
 import io.trino.sql.ir.BetweenPredicate;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.CoalesceExpression;
@@ -22,10 +22,8 @@ import io.trino.sql.ir.ComparisonExpression;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrVisitor;
-import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LambdaExpression;
 import io.trino.sql.ir.LogicalExpression;
@@ -99,18 +97,6 @@ public final class ExpressionVerifier
     }
 
     @Override
-    protected Boolean visitIfExpression(IfExpression actual, Expression expectedExpression)
-    {
-        if (!(expectedExpression instanceof IfExpression expected)) {
-            return false;
-        }
-
-        return process(actual.getCondition(), expected.getCondition())
-                && process(actual.getTrueValue(), expected.getTrueValue())
-                && process(actual.getFalseValue(), expected.getFalseValue());
-    }
-
-    @Override
     protected Boolean visitCast(Cast actual, Expression expectedExpression)
     {
         if (!(expectedExpression instanceof Cast expected)) {
@@ -132,16 +118,6 @@ public final class ExpressionVerifier
     protected Boolean visitIsNullPredicate(IsNullPredicate actual, Expression expectedExpression)
     {
         if (!(expectedExpression instanceof IsNullPredicate expected)) {
-            return false;
-        }
-
-        return process(actual.getValue(), expected.getValue());
-    }
-
-    @Override
-    protected Boolean visitIsNotNullPredicate(IsNotNullPredicate actual, Expression expectedExpression)
-    {
-        if (!(expectedExpression instanceof IsNotNullPredicate expected)) {
             return false;
         }
 
@@ -190,14 +166,13 @@ public final class ExpressionVerifier
     }
 
     @Override
-    protected Boolean visitArithmeticUnary(ArithmeticUnaryExpression actual, Expression expectedExpression)
+    protected Boolean visitArithmeticNegation(ArithmeticNegation actual, Expression expectedExpression)
     {
-        if (!(expectedExpression instanceof ArithmeticUnaryExpression expected)) {
+        if (!(expectedExpression instanceof ArithmeticNegation expected)) {
             return false;
         }
 
-        return actual.getSign() == expected.getSign() &&
-                process(actual.getValue(), expected.getValue());
+        return process(actual.getValue(), expected.getValue());
     }
 
     @Override
@@ -269,7 +244,7 @@ public final class ExpressionVerifier
         }
 
         return process(actual.getOperand(), expected.getOperand()) &&
-                process(actual.getWhenClauses(), expected.getWhenClauses()) &&
+                processWhenClauses(actual.getWhenClauses(), expected.getWhenClauses()) &&
                 process(actual.getDefaultValue(), expected.getDefaultValue());
     }
 
@@ -280,7 +255,7 @@ public final class ExpressionVerifier
             return false;
         }
 
-        if (!process(actual.getWhenClauses(), expectedCase.getWhenClauses())) {
+        if (!processWhenClauses(actual.getWhenClauses(), expectedCase.getWhenClauses())) {
             return false;
         }
 
@@ -291,13 +266,21 @@ public final class ExpressionVerifier
         return process(actual.getDefaultValue(), expectedCase.getDefaultValue());
     }
 
-    @Override
-    protected Boolean visitWhenClause(WhenClause actual, Expression expectedExpression)
+    private boolean processWhenClauses(List<WhenClause> actual, List<WhenClause> expected)
     {
-        if (!(expectedExpression instanceof WhenClause expected)) {
+        if (actual.size() != expected.size()) {
             return false;
         }
+        for (int i = 0; i < actual.size(); i++) {
+            if (!process(actual.get(i), expected.get(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
 
+    private boolean process(WhenClause actual, WhenClause expected)
+    {
         return process(actual.getOperand(), expected.getOperand()) &&
                 process(actual.getResult(), expected.getResult());
     }

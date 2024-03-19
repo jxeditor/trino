@@ -61,14 +61,6 @@ public final class ExpressionFormatter
         }
 
         @Override
-        protected String visitArray(Array node, Void context)
-        {
-            return node.getValues().stream()
-                    .map(ExpressionFormatter::formatExpression)
-                    .collect(joining(",", "ARRAY[", "]"));
-        }
-
-        @Override
         protected String visitSubscriptExpression(SubscriptExpression node, Void context)
         {
             return formatExpression(node.getBase()) + "[" + formatExpression(node.getIndex()) + "]";
@@ -118,7 +110,7 @@ public final class ExpressionFormatter
         {
             StringBuilder builder = new StringBuilder();
 
-            builder.append("\"$INTERNAL$BIND\"(");
+            builder.append("\"$bind\"(");
             for (Expression value : node.getValues()) {
                 builder.append(process(value, context))
                         .append(", ");
@@ -157,31 +149,9 @@ public final class ExpressionFormatter
         }
 
         @Override
-        protected String visitIsNotNullPredicate(IsNotNullPredicate node, Void context)
-        {
-            return "(" + process(node.getValue(), context) + " IS NOT NULL)";
-        }
-
-        @Override
         protected String visitNullIfExpression(NullIfExpression node, Void context)
         {
             return "NULLIF(" + process(node.getFirst(), context) + ", " + process(node.getSecond(), context) + ')';
-        }
-
-        @Override
-        protected String visitIfExpression(IfExpression node, Void context)
-        {
-            StringBuilder builder = new StringBuilder();
-            builder.append("IF(")
-                    .append(process(node.getCondition(), context))
-                    .append(", ")
-                    .append(process(node.getTrueValue(), context));
-            if (node.getFalseValue().isPresent()) {
-                builder.append(", ")
-                        .append(process(node.getFalseValue().get(), context));
-            }
-            builder.append(")");
-            return builder.toString();
         }
 
         @Override
@@ -191,16 +161,9 @@ public final class ExpressionFormatter
         }
 
         @Override
-        protected String visitArithmeticUnary(ArithmeticUnaryExpression node, Void context)
+        protected String visitArithmeticNegation(ArithmeticNegation node, Void context)
         {
-            String value = process(node.getValue(), context);
-
-            return switch (node.getSign()) {
-                // Unary is ambiguous with respect to negative numbers. "-1" parses as a number, but "-(1)" parses as "unaryMinus(number)"
-                // The parentheses are needed to ensure the parsing roundtrips properly.
-                case MINUS -> "-(" + value + ")";
-                case PLUS -> "+" + value;
-            };
+            return "-(" + process(node.getValue(), context) + ")";
         }
 
         @Override
@@ -222,7 +185,7 @@ public final class ExpressionFormatter
             ImmutableList.Builder<String> parts = ImmutableList.builder();
             parts.add("CASE");
             for (WhenClause whenClause : node.getWhenClauses()) {
-                parts.add(process(whenClause, context));
+                parts.add(format(whenClause, context));
             }
 
             node.getDefaultValue()
@@ -242,7 +205,7 @@ public final class ExpressionFormatter
                     .add(process(node.getOperand(), context));
 
             for (WhenClause whenClause : node.getWhenClauses()) {
-                parts.add(process(whenClause, context));
+                parts.add(format(whenClause, context));
             }
 
             node.getDefaultValue()
@@ -253,8 +216,7 @@ public final class ExpressionFormatter
             return "(" + Joiner.on(' ').join(parts.build()) + ")";
         }
 
-        @Override
-        protected String visitWhenClause(WhenClause node, Void context)
+        protected String format(WhenClause node, Void context)
         {
             return "WHEN " + process(node.getOperand(), context) + " THEN " + process(node.getResult(), context);
         }
@@ -283,10 +245,5 @@ public final class ExpressionFormatter
                     .map(e -> process(e, null))
                     .collect(joining(", "));
         }
-    }
-
-    static String formatStringLiteral(String s)
-    {
-        return "'" + s.replace("'", "''") + "'";
     }
 }

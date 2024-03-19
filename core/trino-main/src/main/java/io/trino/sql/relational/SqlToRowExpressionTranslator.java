@@ -23,7 +23,7 @@ import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeManager;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
-import io.trino.sql.ir.ArithmeticUnaryExpression;
+import io.trino.sql.ir.ArithmeticNegation;
 import io.trino.sql.ir.BetweenPredicate;
 import io.trino.sql.ir.BindExpression;
 import io.trino.sql.ir.Cast;
@@ -33,10 +33,8 @@ import io.trino.sql.ir.ComparisonExpression.Operator;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.InPredicate;
 import io.trino.sql.ir.IrVisitor;
-import io.trino.sql.ir.IsNotNullPredicate;
 import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LambdaExpression;
 import io.trino.sql.ir.LogicalExpression;
@@ -245,20 +243,12 @@ public final class SqlToRowExpressionTranslator
         }
 
         @Override
-        protected RowExpression visitArithmeticUnary(ArithmeticUnaryExpression node, Void context)
+        protected RowExpression visitArithmeticNegation(ArithmeticNegation node, Void context)
         {
             RowExpression expression = process(node.getValue(), context);
-
-            switch (node.getSign()) {
-                case PLUS:
-                    return expression;
-                case MINUS:
-                    return call(
-                            metadata.resolveOperator(NEGATION, ImmutableList.of(expression.getType())),
-                            expression);
-            }
-
-            throw new UnsupportedOperationException("Unsupported unary operator: " + node.getSign());
+            return call(
+                    metadata.resolveOperator(NEGATION, ImmutableList.of(expression.getType())),
+                    expression);
         }
 
         @Override
@@ -384,7 +374,7 @@ public final class SqlToRowExpressionTranslator
 
                 arguments.add(new SpecialForm(
                         WHEN,
-                        getType(clause),
+                        getType(clause.getResult()),
                         operand,
                         result));
             }
@@ -438,24 +428,6 @@ public final class SqlToRowExpressionTranslator
         }
 
         @Override
-        protected RowExpression visitIfExpression(IfExpression node, Void context)
-        {
-            ImmutableList.Builder<RowExpression> arguments = ImmutableList.builder();
-
-            arguments.add(process(node.getCondition(), context))
-                    .add(process(node.getTrueValue(), context));
-
-            if (node.getFalseValue().isPresent()) {
-                arguments.add(process(node.getFalseValue().get(), context));
-            }
-            else {
-                arguments.add(constantNull(getType(node)));
-            }
-
-            return new SpecialForm(IF, getType(node), arguments.build());
-        }
-
-        @Override
         protected RowExpression visitInPredicate(InPredicate node, Void context)
         {
             ImmutableList.Builder<RowExpression> arguments = ImmutableList.builder();
@@ -472,14 +444,6 @@ public final class SqlToRowExpressionTranslator
                     .build();
 
             return new SpecialForm(IN, BOOLEAN, arguments.build(), functionDependencies);
-        }
-
-        @Override
-        protected RowExpression visitIsNotNullPredicate(IsNotNullPredicate node, Void context)
-        {
-            RowExpression expression = process(node.getValue(), context);
-
-            return notExpression(new SpecialForm(IS_NULL, BOOLEAN, ImmutableList.of(expression)));
         }
 
         @Override

@@ -40,6 +40,7 @@ import io.trino.sql.analyzer.Analysis;
 import io.trino.sql.analyzer.ResolvedField;
 import io.trino.sql.analyzer.Scope;
 import io.trino.sql.analyzer.TypeSignatureTranslator;
+import io.trino.sql.ir.ArithmeticNegation;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.tree.ArithmeticBinaryExpression;
@@ -48,7 +49,6 @@ import io.trino.sql.tree.Array;
 import io.trino.sql.tree.AtTimeZone;
 import io.trino.sql.tree.BetweenPredicate;
 import io.trino.sql.tree.BinaryLiteral;
-import io.trino.sql.tree.BindExpression;
 import io.trino.sql.tree.BooleanLiteral;
 import io.trino.sql.tree.Cast;
 import io.trino.sql.tree.CoalesceExpression;
@@ -103,7 +103,6 @@ import io.trino.sql.tree.StringLiteral;
 import io.trino.sql.tree.SubscriptExpression;
 import io.trino.sql.tree.Trim;
 import io.trino.sql.tree.TryExpression;
-import io.trino.sql.tree.WhenClause;
 import io.trino.type.FunctionType;
 import io.trino.type.IntervalDayTimeType;
 import io.trino.type.IntervalYearMonthType;
@@ -133,6 +132,7 @@ import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.sql.analyzer.ExpressionAnalyzer.JSON_NO_PARAMETERS_ROW_TYPE;
 import static io.trino.sql.ir.BooleanLiteral.FALSE_LITERAL;
 import static io.trino.sql.ir.BooleanLiteral.TRUE_LITERAL;
+import static io.trino.sql.ir.IrExpressions.ifExpression;
 import static io.trino.sql.planner.ScopeAware.scopeAwareKey;
 import static io.trino.sql.tree.JsonQuery.EmptyOrErrorBehavior.ERROR;
 import static io.trino.sql.tree.JsonQuery.QuotesBehavior.KEEP;
@@ -346,9 +346,7 @@ public class TranslationMap
                 case InPredicate expression -> translate(expression);
                 case SimpleCaseExpression expression -> translate(expression);
                 case SearchedCaseExpression expression -> translate(expression);
-                case WhenClause expression -> translate(expression);
                 case NullIfExpression expression -> translate(expression);
-                case BindExpression expression -> translate(expression);
                 default -> throw new IllegalArgumentException("Unsupported expression (%s): %s".formatted(expr.getClass().getName(), expr));
             };
         }
@@ -356,15 +354,6 @@ public class TranslationMap
         // Don't add a coercion for the top-level expression. That depends on the context
         // the expression is used and it's the responsibility of the caller.
         return isRoot ? result : QueryPlanner.coerceIfNecessary(analysis, expr, result);
-    }
-
-    private io.trino.sql.ir.Expression translate(BindExpression expression)
-    {
-        return new io.trino.sql.ir.BindExpression(
-                expression.getValues().stream()
-                        .map(this::translateExpression)
-                        .collect(toImmutableList()),
-                translateExpression(expression.getFunction()));
     }
 
     private io.trino.sql.ir.Expression translate(NullIfExpression expression)
@@ -376,12 +365,10 @@ public class TranslationMap
 
     private io.trino.sql.ir.Expression translate(ArithmeticUnaryExpression expression)
     {
-        return new io.trino.sql.ir.ArithmeticUnaryExpression(
-                switch (expression.getSign()) {
-                    case PLUS -> io.trino.sql.ir.ArithmeticUnaryExpression.Sign.PLUS;
-                    case MINUS -> io.trino.sql.ir.ArithmeticUnaryExpression.Sign.MINUS;
-                },
-                translateExpression(expression.getValue()));
+        return switch (expression.getSign()) {
+            case PLUS -> translateExpression(expression.getValue());
+            case MINUS -> new ArithmeticNegation(translateExpression(expression.getValue()));
+        };
     }
 
     private io.trino.sql.ir.Expression translate(IntervalLiteral expression)
@@ -397,18 +384,13 @@ public class TranslationMap
                 });
     }
 
-    private io.trino.sql.ir.WhenClause translate(WhenClause expression)
-    {
-        return new io.trino.sql.ir.WhenClause(
-                translateExpression(expression.getOperand()),
-                translateExpression(expression.getResult()));
-    }
-
     private io.trino.sql.ir.Expression translate(SearchedCaseExpression expression)
     {
         return new io.trino.sql.ir.SearchedCaseExpression(
                 expression.getWhenClauses().stream()
-                        .map(this::translate)
+                        .map(clause -> new io.trino.sql.ir.WhenClause(
+                                translateExpression(clause.getOperand()),
+                                translateExpression(clause.getResult())))
                         .collect(toImmutableList()),
                 expression.getDefaultValue().map(this::translateExpression));
     }
@@ -418,7 +400,9 @@ public class TranslationMap
         return new io.trino.sql.ir.SimpleCaseExpression(
                 translateExpression(expression.getOperand()),
                 expression.getWhenClauses().stream()
-                        .map(this::translate)
+                        .map(clause -> new io.trino.sql.ir.WhenClause(
+                                translateExpression(clause.getOperand()),
+                                translateExpression(clause.getResult())))
                         .collect(toImmutableList()),
                 expression.getDefaultValue().map(this::translateExpression));
     }
@@ -434,10 +418,16 @@ public class TranslationMap
 
     private io.trino.sql.ir.Expression translate(IfExpression expression)
     {
-        return new io.trino.sql.ir.IfExpression(
+        if (expression.getFalseValue().isPresent()) {
+            return ifExpression(
+                    translateExpression(expression.getCondition()),
+                    translateExpression(expression.getTrueValue()),
+                    translateExpression(expression.getFalseValue().get()));
+        }
+
+        return ifExpression(
                 translateExpression(expression.getCondition()),
-                translateExpression(expression.getTrueValue()),
-                expression.getFalseValue().map(this::translateExpression));
+                translateExpression(expression.getTrueValue()));
     }
 
     private io.trino.sql.ir.Expression translate(BinaryLiteral expression)
@@ -460,7 +450,9 @@ public class TranslationMap
 
     private io.trino.sql.ir.Expression translate(IsNotNullPredicate expression)
     {
-        return new io.trino.sql.ir.IsNotNullPredicate(translateExpression(expression.getValue()));
+        return new io.trino.sql.ir.NotExpression(
+                new io.trino.sql.ir.IsNullPredicate(
+                        translateExpression(expression.getValue())));
     }
 
     private io.trino.sql.ir.Expression translate(CoalesceExpression expression)
@@ -1059,7 +1051,7 @@ public class TranslationMap
         checkArgument(resolvedFunction != null, "Function has not been analyzed: %s", node);
 
         //  apply the input function to the input expression
-        Constant failOnError = new Constant(BOOLEAN, node.getErrorBehavior() == JsonQuery.EmptyOrErrorBehavior.ERROR);
+        Constant failOnError = new Constant(BOOLEAN, node.getErrorBehavior() == ERROR);
         ResolvedFunction inputToJson = analysis.getJsonInputFunction(node.getJsonPathInvocation().getInputExpression());
         io.trino.sql.ir.Expression input = new io.trino.sql.ir.FunctionCall(inputToJson, ImmutableList.of(
                 translateExpression(node.getJsonPathInvocation().getInputExpression()),

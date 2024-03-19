@@ -23,19 +23,17 @@ import io.trino.metadata.TestingFunctionResolution;
 import io.trino.operator.scalar.TryFunction;
 import io.trino.spi.function.OperatorType;
 import io.trino.sql.ir.ArithmeticBinaryExpression;
-import io.trino.sql.ir.Array;
 import io.trino.sql.ir.Cast;
 import io.trino.sql.ir.ComparisonExpression;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
-import io.trino.sql.ir.IfExpression;
 import io.trino.sql.ir.InPredicate;
-import io.trino.sql.ir.IsNotNullPredicate;
+import io.trino.sql.ir.IsNullPredicate;
 import io.trino.sql.ir.LambdaExpression;
+import io.trino.sql.ir.NotExpression;
 import io.trino.sql.ir.NullIfExpression;
 import io.trino.sql.ir.SearchedCaseExpression;
 import io.trino.sql.ir.SimpleCaseExpression;
-import io.trino.sql.ir.SubscriptExpression;
 import io.trino.sql.ir.SymbolReference;
 import io.trino.sql.ir.WhenClause;
 import io.trino.type.FunctionType;
@@ -318,11 +316,9 @@ public class TestEqualityInference
                         .addArgument(new FunctionType(ImmutableList.of(), VARCHAR), new LambdaExpression(ImmutableList.of(), nameReference("b")))
                         .build(),
                 new NullIfExpression(nameReference("b"), number(1)),
-                new IfExpression(nameReference("b"), number(1), new Constant(UnknownType.UNKNOWN, null)),
                 new InPredicate(nameReference("b"), ImmutableList.of(new Constant(UnknownType.UNKNOWN, null))),
-                new SearchedCaseExpression(ImmutableList.of(new WhenClause(new IsNotNullPredicate(nameReference("b")), new Constant(UnknownType.UNKNOWN, null))), Optional.empty()),
-                new SimpleCaseExpression(nameReference("b"), ImmutableList.of(new WhenClause(number(1), new Constant(UnknownType.UNKNOWN, null))), Optional.empty()),
-                new SubscriptExpression(new Array(ImmutableList.of(new Constant(UnknownType.UNKNOWN, null))), nameReference("b")));
+                new SearchedCaseExpression(ImmutableList.of(new WhenClause(new NotExpression(new IsNullPredicate(nameReference("b"))), new Constant(UnknownType.UNKNOWN, null))), Optional.empty()),
+                new SimpleCaseExpression(nameReference("b"), ImmutableList.of(new WhenClause(number(1), new Constant(UnknownType.UNKNOWN, null))), Optional.empty()));
 
         for (Expression candidate : candidates) {
             EqualityInference inference = new EqualityInference(

@@ -57,11 +57,6 @@ public abstract class IrVisitor<R, C>
         return visitExpression(node, context);
     }
 
-    protected R visitWhenClause(WhenClause node, C context)
-    {
-        return visitExpression(node, context);
-    }
-
     protected R visitInPredicate(InPredicate node, C context)
     {
         return visitExpression(node, context);
@@ -87,12 +82,7 @@ public abstract class IrVisitor<R, C>
         return visitExpression(node, context);
     }
 
-    protected R visitIfExpression(IfExpression node, C context)
-    {
-        return visitExpression(node, context);
-    }
-
-    protected R visitArithmeticUnary(ArithmeticUnaryExpression node, C context)
+    protected R visitArithmeticNegation(ArithmeticNegation node, C context)
     {
         return visitExpression(node, context);
     }
@@ -107,17 +97,7 @@ public abstract class IrVisitor<R, C>
         return visitExpression(node, context);
     }
 
-    protected R visitIsNotNullPredicate(IsNotNullPredicate node, C context)
-    {
-        return visitExpression(node, context);
-    }
-
     protected R visitIsNullPredicate(IsNullPredicate node, C context)
-    {
-        return visitExpression(node, context);
-    }
-
-    protected R visitArray(Array node, C context)
     {
         return visitExpression(node, context);
     }
