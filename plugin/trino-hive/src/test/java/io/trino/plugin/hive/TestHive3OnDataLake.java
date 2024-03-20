@@ -56,7 +56,7 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static io.trino.plugin.hive.TestingThriftHiveMetastoreBuilder.testingThriftHiveMetastoreBuilder;
-import static io.trino.plugin.hive.metastore.thrift.ThriftMetastoreUtil.getHiveBasicStatistics;
+import static io.trino.plugin.hive.metastore.MetastoreUtil.getHiveBasicStatistics;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.testing.MaterializedResult.resultBuilder;
 import static io.trino.testing.TestingNames.randomNameSuffix;
@@ -2093,7 +2093,7 @@ public class TestHive3OnDataLake
                         "    comment varchar(152),  " +
                         "    nationkey bigint, " +
                         "    regionkey bigint) " +
-                        (propertiesEntries.size() < 1 ? "" : propertiesEntries
+                        (propertiesEntries.isEmpty() ? "" : propertiesEntries
                                 .stream()
                                 .collect(joining(",", "WITH (", ")"))),
                 tableName);
