@@ -15,60 +15,56 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.Type;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
 @JsonSerialize
-public record SimpleCaseExpression(Expression operand, List<WhenClause> whenClauses, Optional<Expression> defaultValue)
+public record Case(List<WhenClause> whenClauses, Optional<Expression> defaultValue)
         implements Expression
 {
-    public SimpleCaseExpression
+    public Case
     {
-        requireNonNull(operand, "operand is null");
         whenClauses = ImmutableList.copyOf(whenClauses);
         requireNonNull(defaultValue, "defaultValue is null");
     }
 
-    @Deprecated
-    public Expression getOperand()
+    @Override
+    public Type type()
     {
-        return operand;
-    }
-
-    @Deprecated
-    public List<WhenClause> getWhenClauses()
-    {
-        return whenClauses;
-    }
-
-    @Deprecated
-    public Optional<Expression> getDefaultValue()
-    {
-        return defaultValue;
+        return whenClauses.getFirst().getResult().type();
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitSimpleCaseExpression(this, context);
+        return visitor.visitCase(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        ImmutableList.Builder<Expression> builder = ImmutableList.<Expression>builder()
-                .add(operand);
-
+        ImmutableList.Builder<Expression> builder = ImmutableList.builder();
         whenClauses.forEach(clause -> {
             builder.add(clause.getOperand());
             builder.add(clause.getResult());
         });
-
         defaultValue.ifPresent(builder::add);
 
         return builder.build();
+    }
+
+    @Override
+    public String toString()
+    {
+        return "Case(%s, %s)".formatted(
+                whenClauses.stream()
+                        .map(WhenClause::toString)
+                        .collect(Collectors.joining(", ")),
+                defaultValue.map(Expression::toString).orElse("null"));
     }
 }

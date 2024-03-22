@@ -15,13 +15,15 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.Type;
 
 import java.util.List;
 
+import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static java.util.Objects.requireNonNull;
 
 @JsonSerialize
-public record ComparisonExpression(Operator operator, Expression left, Expression right)
+public record Comparison(Operator operator, Expression left, Expression right)
         implements Expression
 {
     public enum Operator
@@ -82,39 +84,27 @@ public record ComparisonExpression(Operator operator, Expression left, Expressio
         }
     }
 
-    public ComparisonExpression
+    public Comparison
     {
         requireNonNull(operator, "operator is null");
         requireNonNull(left, "left is null");
         requireNonNull(right, "right is null");
     }
 
-    @Deprecated
-    public Operator getOperator()
+    @Override
+    public Type type()
     {
-        return operator;
-    }
-
-    @Deprecated
-    public Expression getLeft()
-    {
-        return left;
-    }
-
-    @Deprecated
-    public Expression getRight()
-    {
-        return right;
+        return BOOLEAN;
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitComparisonExpression(this, context);
+        return visitor.visitComparison(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
         return ImmutableList.of(left, right);
     }

@@ -13,59 +13,44 @@
  */
 package io.trino.sql.ir;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.Type;
 
 import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
 @JsonSerialize
-public record BetweenPredicate(Expression value, Expression min, Expression max)
+public record Negation(Expression value)
         implements Expression
 {
-    @JsonCreator
-    public BetweenPredicate
+    public Negation
     {
         requireNonNull(value, "value is null");
-        requireNonNull(min, "min is null");
-        requireNonNull(max, "max is null");
     }
 
-    @Deprecated
-    public Expression getValue()
+    @Override
+    public Type type()
     {
-        return value;
-    }
-
-    @Deprecated
-    public Expression getMin()
-    {
-        return min;
-    }
-
-    @Deprecated
-    public Expression getMax()
-    {
-        return max;
+        return value.type();
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitBetweenPredicate(this, context);
+        return visitor.visitNegation(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        return ImmutableList.of(value, min, max);
+        return ImmutableList.of(value);
     }
 
     @Override
     public String toString()
     {
-        return "Between(%s, %s, %s)".formatted(value, min, max);
+        return "-(%s)".formatted(value);
     }
 }

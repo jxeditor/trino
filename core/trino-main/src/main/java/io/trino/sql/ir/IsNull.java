@@ -15,51 +15,37 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.Type;
 
 import java.util.List;
 
+import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static java.util.Objects.requireNonNull;
 
-/**
- * NULLIF(V1,V2): CASE WHEN V1=V2 THEN NULL ELSE V1 END
- */
 @JsonSerialize
-public record NullIfExpression(Expression first, Expression second)
+public record IsNull(Expression value)
         implements Expression
 {
-    public NullIfExpression
+    public IsNull
     {
-        requireNonNull(first, "first is null");
-        requireNonNull(second, "second is null");
+        requireNonNull(value, "value is null");
     }
 
-    @Deprecated
-    public Expression getFirst()
+    @Override
+    public Type type()
     {
-        return first;
-    }
-
-    @Deprecated
-    public Expression getSecond()
-    {
-        return second;
+        return BOOLEAN;
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitNullIfExpression(this, context);
+        return visitor.visitIsNull(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        return ImmutableList.of(first, second);
-    }
-
-    @Override
-    public String toString()
-    {
-        return "NullIf(%s, %s)".formatted(first, second);
+        return ImmutableList.of(value);
     }
 }

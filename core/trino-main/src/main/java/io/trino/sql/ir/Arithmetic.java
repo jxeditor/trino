@@ -16,53 +16,65 @@ package io.trino.sql.ir;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
 import io.trino.metadata.ResolvedFunction;
+import io.trino.spi.type.Type;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
 @JsonSerialize
-public record FunctionCall(ResolvedFunction function, List<Expression> arguments)
+public record Arithmetic(ResolvedFunction function, Operator operator, Expression left, Expression right)
         implements Expression
 {
-    public FunctionCall
+    public enum Operator
+    {
+        ADD("+"),
+        SUBTRACT("-"),
+        MULTIPLY("*"),
+        DIVIDE("/"),
+        MODULUS("%");
+        private final String value;
+
+        Operator(String value)
+        {
+            this.value = value;
+        }
+
+        public String getValue()
+        {
+            return value;
+        }
+    }
+
+    public Arithmetic
     {
         requireNonNull(function, "function is null");
-        arguments = ImmutableList.copyOf(arguments);
+        requireNonNull(operator, "operator is null");
+        requireNonNull(left, "left is null");
+        requireNonNull(right, "right is null");
     }
 
-    @Deprecated
-    public ResolvedFunction getFunction()
+    @Override
+    public Type type()
     {
-        return function;
-    }
-
-    @Deprecated
-    public List<Expression> getArguments()
-    {
-        return arguments;
+        return function.getSignature().getReturnType();
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitFunctionCall(this, context);
+        return visitor.visitArithmetic(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        return arguments;
+        return ImmutableList.of(left, right);
     }
 
     @Override
     public String toString()
     {
-        return "%s(%s)".formatted(
-                function.getName(),
-                arguments.stream()
-                        .map(Expression::toString)
-                        .collect(Collectors.joining(", ")));
+        return "%s(%s, %s)".formatted(operator.getValue(), left, right);
     }
 }

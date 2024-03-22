@@ -15,50 +15,37 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.Type;
 
 import java.util.List;
 
+import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static java.util.Objects.requireNonNull;
 
 @JsonSerialize
-public record LambdaExpression(List<String> arguments, Expression body)
+public record Not(Expression value)
         implements Expression
 {
-    public LambdaExpression
+    public Not
     {
-        requireNonNull(arguments, "arguments is null");
-        requireNonNull(body, "body is null");
+        requireNonNull(value, "value is null");
     }
 
-    @Deprecated
-    public List<String> getArguments()
+    @Override
+    public Type type()
     {
-        return arguments;
-    }
-
-    @Deprecated
-    public Expression getBody()
-    {
-        return body;
+        return BOOLEAN;
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitLambdaExpression(this, context);
+        return visitor.visitNot(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        return ImmutableList.of(body);
-    }
-
-    @Override
-    public String toString()
-    {
-        return "(%s) -> %s".formatted(
-                String.join(", ", arguments),
-                body);
+        return ImmutableList.of(value);
     }
 }

@@ -15,8 +15,11 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.RowType;
+import io.trino.spi.type.Type;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
@@ -30,10 +33,10 @@ public record Row(List<Expression> items)
         items = ImmutableList.copyOf(items);
     }
 
-    @Deprecated
-    public List<Expression> getItems()
+    @Override
+    public Type type()
     {
-        return items;
+        return RowType.anonymous(items.stream().map(Expression::type).collect(Collectors.toList()));
     }
 
     @Override
@@ -43,7 +46,7 @@ public record Row(List<Expression> items)
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
         return items;
     }

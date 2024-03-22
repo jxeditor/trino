@@ -36,22 +36,10 @@ public record Cast(Expression expression, Type type, boolean safe)
         requireNonNull(type, "type is null");
     }
 
-    @Deprecated
-    public Expression getExpression()
-    {
-        return expression;
-    }
-
-    @Deprecated
-    public Type getType()
+    @Override
+    public Type type()
     {
         return type;
-    }
-
-    @Deprecated
-    public boolean isSafe()
-    {
-        return safe;
     }
 
     @Override
@@ -61,7 +49,7 @@ public record Cast(Expression expression, Type type, boolean safe)
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
         return ImmutableList.of(expression);
     }

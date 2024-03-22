@@ -20,8 +20,7 @@ import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
-import io.trino.sql.ir.SubscriptExpression;
-import io.trino.sql.planner.IrTypeAnalyzer;
+import io.trino.sql.ir.Subscript;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.iterative.Rule;
 import io.trino.sql.planner.plan.ApplyNode;
@@ -71,13 +70,6 @@ public class UnwrapSingleColumnRowInApply
         implements Rule<ApplyNode>
 {
     private static final Pattern<ApplyNode> PATTERN = applyNode();
-
-    private final IrTypeAnalyzer typeAnalyzer;
-
-    public UnwrapSingleColumnRowInApply(IrTypeAnalyzer typeAnalyzer)
-    {
-        this.typeAnalyzer = requireNonNull(typeAnalyzer, "typeAnalyzer is null");
-    }
 
     @Override
     public Pattern<ApplyNode> getPattern()
@@ -148,7 +140,7 @@ public class UnwrapSingleColumnRowInApply
 
     private Optional<Unwrapping> unwrapSingleColumnRow(Context context, Expression value, Expression list, BiFunction<Symbol, Symbol, ApplyNode.SetExpression> function)
     {
-        Type type = typeAnalyzer.getType(context.getSymbolAllocator().getTypes(), value);
+        Type type = value.type();
         if (type instanceof RowType rowType) {
             if (rowType.getFields().size() == 1) {
                 Type elementType = rowType.getTypeParameters().get(0);
@@ -156,8 +148,8 @@ public class UnwrapSingleColumnRowInApply
                 Symbol valueSymbol = context.getSymbolAllocator().newSymbol("input", elementType);
                 Symbol listSymbol = context.getSymbolAllocator().newSymbol("subquery", elementType);
 
-                Assignment inputAssignment = new Assignment(valueSymbol, new SubscriptExpression(value, new Constant(INTEGER, 1L)));
-                Assignment nestedPlanAssignment = new Assignment(listSymbol, new SubscriptExpression(list, new Constant(INTEGER, 1L)));
+                Assignment inputAssignment = new Assignment(valueSymbol, new Subscript(elementType, value, new Constant(INTEGER, 1L)));
+                Assignment nestedPlanAssignment = new Assignment(listSymbol, new Subscript(elementType, list, new Constant(INTEGER, 1L)));
                 ApplyNode.SetExpression comparison = function.apply(valueSymbol, listSymbol);
 
                 return Optional.of(new Unwrapping(comparison, inputAssignment, nestedPlanAssignment));

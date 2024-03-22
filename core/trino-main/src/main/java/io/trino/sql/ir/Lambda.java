@@ -15,35 +15,51 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.Type;
+import io.trino.sql.planner.Symbol;
+import io.trino.type.FunctionType;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
 @JsonSerialize
-public record NotExpression(Expression value)
+public record Lambda(List<Symbol> arguments, Expression body)
         implements Expression
 {
-    public NotExpression
+    public Lambda
     {
-        requireNonNull(value, "value is null");
+        requireNonNull(arguments, "arguments is null");
+        requireNonNull(body, "body is null");
     }
 
-    @Deprecated
-    public Expression getValue()
+    @Override
+    public Type type()
     {
-        return value;
+        return new FunctionType(
+                arguments.stream().map(Symbol::getType).collect(Collectors.toList()),
+                body.type());
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitNotExpression(this, context);
+        return visitor.visitLambda(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        return ImmutableList.of(value);
+        return ImmutableList.of(body);
+    }
+
+    @Override
+    public String toString()
+    {
+        return "(%s) -> %s".formatted(
+                arguments.stream()
+                        .map(Symbol::toString).collect(Collectors.joining(", ")),
+                body);
     }
 }

@@ -15,41 +15,49 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.metadata.ResolvedFunction;
+import io.trino.spi.type.Type;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
 @JsonSerialize
-public record ArithmeticNegation(Expression value)
+public record Call(ResolvedFunction function, List<Expression> arguments)
         implements Expression
 {
-    public ArithmeticNegation
+    public Call
     {
-        requireNonNull(value, "value is null");
+        requireNonNull(function, "function is null");
+        arguments = ImmutableList.copyOf(arguments);
     }
 
-    @Deprecated
-    public Expression getValue()
+    @Override
+    public Type type()
     {
-        return value;
+        return function.getSignature().getReturnType();
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitArithmeticNegation(this, context);
+        return visitor.visitCall(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        return ImmutableList.of(value);
+        return arguments;
     }
 
     @Override
     public String toString()
     {
-        return "-(%s)".formatted(value);
+        return "%s(%s)".formatted(
+                function.getName(),
+                arguments.stream()
+                        .map(Expression::toString)
+                        .collect(Collectors.joining(", ")));
     }
 }

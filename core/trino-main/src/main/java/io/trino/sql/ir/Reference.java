@@ -15,35 +15,36 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.Type;
 
 import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
 @JsonSerialize
-public record IsNullPredicate(Expression value)
+public record Reference(Type type, String name)
         implements Expression
 {
-    public IsNullPredicate
+    public Reference
     {
-        requireNonNull(value, "value is null");
+        requireNonNull(name, "name is null");
     }
 
-    @Deprecated
-    public Expression getValue()
+    @Override
+    public Type type()
     {
-        return value;
+        return type;
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitIsNullPredicate(this, context);
+        return visitor.visitReference(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        return ImmutableList.of(value);
+        return ImmutableList.of();
     }
 }

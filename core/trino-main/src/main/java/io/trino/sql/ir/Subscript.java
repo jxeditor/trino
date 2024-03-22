@@ -15,42 +15,37 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.Type;
 
 import java.util.List;
 
+import static java.util.Objects.requireNonNull;
+
 @JsonSerialize
-public record InPredicate(Expression value, List<Expression> valueList)
+public record Subscript(Type type, Expression base, Expression index)
         implements Expression
 {
-    public InPredicate
+    public Subscript
     {
-        valueList = ImmutableList.copyOf(valueList);
+        requireNonNull(base, "base is null");
+        requireNonNull(index, "index is null");
     }
 
-    @Deprecated
-    public Expression getValue()
+    @Override
+    public Type type()
     {
-        return value;
-    }
-
-    @Deprecated
-    public List<Expression> getValueList()
-    {
-        return valueList;
+        return type;
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitInPredicate(this, context);
+        return visitor.visitSubscript(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        return ImmutableList.<Expression>builder()
-                .add(value)
-                .addAll(valueList)
-                .build();
+        return ImmutableList.of(base, index);
     }
 }

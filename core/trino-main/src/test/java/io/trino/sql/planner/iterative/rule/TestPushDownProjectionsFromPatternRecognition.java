@@ -20,11 +20,12 @@ import io.airlift.slice.Slices;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.metadata.TestingFunctionResolution;
 import io.trino.spi.function.OperatorType;
-import io.trino.sql.ir.ArithmeticBinaryExpression;
-import io.trino.sql.ir.ComparisonExpression;
+import io.trino.sql.ir.Arithmetic;
+import io.trino.sql.ir.Call;
+import io.trino.sql.ir.Comparison;
 import io.trino.sql.ir.Constant;
-import io.trino.sql.ir.FunctionCall;
-import io.trino.sql.ir.SymbolReference;
+import io.trino.sql.ir.Reference;
+import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.assertions.PlanMatchPattern;
 import io.trino.sql.planner.iterative.rule.test.BaseRuleTest;
 import io.trino.sql.planner.rowpattern.AggregatedSetDescriptor;
@@ -42,11 +43,11 @@ import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.sql.analyzer.TypeSignatureProvider.fromTypes;
-import static io.trino.sql.ir.ArithmeticBinaryExpression.Operator.ADD;
-import static io.trino.sql.ir.ArithmeticBinaryExpression.Operator.MULTIPLY;
-import static io.trino.sql.ir.BooleanLiteral.TRUE_LITERAL;
-import static io.trino.sql.ir.ComparisonExpression.Operator.GREATER_THAN;
-import static io.trino.sql.ir.ComparisonExpression.Operator.LESS_THAN;
+import static io.trino.sql.ir.Arithmetic.Operator.ADD;
+import static io.trino.sql.ir.Arithmetic.Operator.MULTIPLY;
+import static io.trino.sql.ir.Booleans.TRUE;
+import static io.trino.sql.ir.Comparison.Operator.GREATER_THAN;
+import static io.trino.sql.ir.Comparison.Operator.LESS_THAN;
 import static io.trino.sql.planner.assertions.PlanMatchPattern.patternRecognition;
 import static io.trino.sql.planner.assertions.PlanMatchPattern.project;
 import static io.trino.sql.planner.assertions.PlanMatchPattern.values;
@@ -56,7 +57,8 @@ public class TestPushDownProjectionsFromPatternRecognition
 {
     private static final TestingFunctionResolution FUNCTIONS = new TestingFunctionResolution();
     private static final ResolvedFunction ADD_INTEGER = FUNCTIONS.resolveOperator(OperatorType.ADD, ImmutableList.of(INTEGER, INTEGER));
-    private static final ResolvedFunction MULTIPLY_INTEGER = FUNCTIONS.resolveOperator(OperatorType.MULTIPLY, ImmutableList.of(INTEGER, INTEGER));
+    private static final ResolvedFunction ADD_BIGINT = FUNCTIONS.resolveOperator(OperatorType.ADD, ImmutableList.of(BIGINT, BIGINT));
+    private static final ResolvedFunction MULTIPLY_BIGINT = FUNCTIONS.resolveOperator(OperatorType.MULTIPLY, ImmutableList.of(BIGINT, BIGINT));
 
     private static final ResolvedFunction CONCAT = FUNCTIONS.resolveFunction("concat", fromTypes(VARCHAR, VARCHAR));
     private static final ResolvedFunction MAX_BY = createTestMetadataManager().resolveBuiltinFunction("max_by", fromTypes(BIGINT, BIGINT));
@@ -67,7 +69,7 @@ public class TestPushDownProjectionsFromPatternRecognition
         tester().assertThat(new PushDownProjectionsFromPatternRecognition())
                 .on(p -> p.patternRecognition(builder -> builder
                         .pattern(new IrLabel("X"))
-                        .addVariableDefinition(new IrLabel("X"), TRUE_LITERAL)
+                        .addVariableDefinition(new IrLabel("X"), TRUE)
                         .source(p.values(p.symbol("a")))))
                 .doesNotFire();
     }
@@ -80,13 +82,13 @@ public class TestPushDownProjectionsFromPatternRecognition
                         .pattern(new IrLabel("X"))
                         .addVariableDefinition(
                                 new IrLabel("X"),
-                                new ComparisonExpression(GREATER_THAN, new FunctionCall(MAX_BY, ImmutableList.of(
-                                        new ArithmeticBinaryExpression(ADD_INTEGER, ADD, new Constant(INTEGER, 1L), new SymbolReference("match")),
-                                        new FunctionCall(CONCAT, ImmutableList.of(new Constant(VARCHAR, Slices.utf8Slice("x")), new SymbolReference("classifier"))))),
+                                new Comparison(GREATER_THAN, new Call(MAX_BY, ImmutableList.of(
+                                        new Arithmetic(ADD_INTEGER, ADD, new Constant(INTEGER, 1L), new Reference(INTEGER, "match")),
+                                        new Call(CONCAT, ImmutableList.of(new Constant(VARCHAR, Slices.utf8Slice("x")), new Reference(VARCHAR, "classifier"))))),
                                         new Constant(INTEGER, 5L)),
                                 ImmutableMap.of(
-                                        "classifier", new ClassifierValuePointer(new LogicalIndexPointer(ImmutableSet.of(), true, true, 0, 0)),
-                                        "match", new MatchNumberValuePointer()))
+                                        new Symbol(VARCHAR, "classifier"), new ClassifierValuePointer(new LogicalIndexPointer(ImmutableSet.of(), true, true, 0, 0)),
+                                        new Symbol(INTEGER, "match"), new MatchNumberValuePointer()))
                         .source(p.values(p.symbol("a")))))
                 .doesNotFire();
     }
@@ -99,7 +101,7 @@ public class TestPushDownProjectionsFromPatternRecognition
                         .pattern(new IrLabel("X"))
                         .addVariableDefinition(
                                 new IrLabel("X"),
-                                new ComparisonExpression(GREATER_THAN, new FunctionCall(MAX_BY, ImmutableList.of(new SymbolReference("a"), new SymbolReference("b"))), new Constant(INTEGER, 5L)))
+                                new Comparison(GREATER_THAN, new Call(MAX_BY, ImmutableList.of(new Reference(BIGINT, "a"), new Reference(BIGINT, "b"))), new Constant(INTEGER, 5L)))
                         .source(p.values(p.symbol("a"), p.symbol("b")))))
                 .doesNotFire();
     }
@@ -113,32 +115,32 @@ public class TestPushDownProjectionsFromPatternRecognition
                         .pattern(new IrLabel("X"))
                         .addVariableDefinition(
                                 new IrLabel("X"),
-                                new ComparisonExpression(LESS_THAN, new SymbolReference("agg"), new Constant(INTEGER, 5L)),
-                                ImmutableMap.of("agg", new AggregationValuePointer(
+                                new Comparison(LESS_THAN, new Reference(BIGINT, "agg"), new Constant(BIGINT, 5L)),
+                                ImmutableMap.of(new Symbol(BIGINT, "agg"), new AggregationValuePointer(
                                         maxBy,
                                         new AggregatedSetDescriptor(ImmutableSet.of(), true),
-                                        ImmutableList.of(new ArithmeticBinaryExpression(ADD_INTEGER, ADD, new SymbolReference("a"), new Constant(INTEGER, 1L)), new ArithmeticBinaryExpression(MULTIPLY_INTEGER, MULTIPLY, new SymbolReference("b"), new Constant(INTEGER, 2L))),
+                                        ImmutableList.of(new Arithmetic(ADD_BIGINT, ADD, new Reference(BIGINT, "a"), new Constant(BIGINT, 1L)), new Arithmetic(MULTIPLY_BIGINT, MULTIPLY, new Reference(BIGINT, "b"), new Constant(BIGINT, 2L))),
                                         Optional.empty(),
                                         Optional.empty())))
-                        .source(p.values(p.symbol("a"), p.symbol("b")))))
+                        .source(p.values(p.symbol("a", BIGINT), p.symbol("b", BIGINT)))))
                 .matches(
                         patternRecognition(builder -> builder
                                         .pattern(new IrLabel("X"))
                                         .addVariableDefinition(
                                                 new IrLabel("X"),
-                                                new ComparisonExpression(LESS_THAN, new SymbolReference("agg"), new Constant(INTEGER, 5L)),
+                                                new Comparison(LESS_THAN, new Reference(BIGINT, "agg"), new Constant(BIGINT, 5L)),
                                                 ImmutableMap.of("agg", new AggregationValuePointer(
                                                         maxBy,
                                                         new AggregatedSetDescriptor(ImmutableSet.of(), true),
-                                                        ImmutableList.of(new SymbolReference("expr_1"), new SymbolReference("expr_2")),
+                                                        ImmutableList.of(new Reference(BIGINT, "expr_1"), new Reference(BIGINT, "expr_2")),
                                                         Optional.empty(),
                                                         Optional.empty()))),
                                 project(
                                         ImmutableMap.of(
-                                                "expr_1", PlanMatchPattern.expression(new ArithmeticBinaryExpression(ADD_INTEGER, ADD, new SymbolReference("a"), new Constant(INTEGER, 1L))),
-                                                "expr_2", PlanMatchPattern.expression(new ArithmeticBinaryExpression(MULTIPLY_INTEGER, MULTIPLY, new SymbolReference("b"), new Constant(INTEGER, 2L))),
-                                                "a", PlanMatchPattern.expression(new SymbolReference("a")),
-                                                "b", PlanMatchPattern.expression(new SymbolReference("b"))),
+                                                "expr_1", PlanMatchPattern.expression(new Arithmetic(ADD_BIGINT, ADD, new Reference(BIGINT, "a"), new Constant(BIGINT, 1L))),
+                                                "expr_2", PlanMatchPattern.expression(new Arithmetic(MULTIPLY_BIGINT, MULTIPLY, new Reference(BIGINT, "b"), new Constant(BIGINT, 2L))),
+                                                "a", PlanMatchPattern.expression(new Reference(BIGINT, "a")),
+                                                "b", PlanMatchPattern.expression(new Reference(BIGINT, "b"))),
                                         values("a", "b"))));
     }
 }

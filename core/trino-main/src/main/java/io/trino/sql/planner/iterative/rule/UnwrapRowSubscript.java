@@ -20,7 +20,7 @@ import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.ir.ExpressionTreeRewriter;
 import io.trino.sql.ir.Row;
-import io.trino.sql.ir.SubscriptExpression;
+import io.trino.sql.ir.Subscript;
 import io.trino.type.UnknownType;
 
 import java.util.ArrayDeque;
@@ -48,28 +48,28 @@ public class UnwrapRowSubscript
             extends io.trino.sql.ir.ExpressionRewriter<Void>
     {
         @Override
-        public Expression rewriteSubscriptExpression(SubscriptExpression node, Void context, ExpressionTreeRewriter<Void> treeRewriter)
+        public Expression rewriteSubscript(Subscript node, Void context, ExpressionTreeRewriter<Void> treeRewriter)
         {
-            Expression base = treeRewriter.rewrite(node.getBase(), context);
+            Expression base = treeRewriter.rewrite(node.base(), context);
 
             Deque<Coercion> coercions = new ArrayDeque<>();
             while (base instanceof Cast cast) {
-                if (!(cast.getType() instanceof RowType rowType)) {
+                if (!(cast.type() instanceof RowType rowType)) {
                     break;
                 }
 
-                int index = (int) (long) ((Constant) node.getIndex()).getValue();
+                int index = (int) (long) ((Constant) node.index()).value();
                 Type type = rowType.getFields().get(index - 1).getType();
                 if (!(type instanceof UnknownType)) {
-                    coercions.push(new Coercion(type, cast.isSafe()));
+                    coercions.push(new Coercion(type, cast.safe()));
                 }
 
-                base = cast.getExpression();
+                base = cast.expression();
             }
 
             if (base instanceof Row row) {
-                int index = (int) (long) ((Constant) node.getIndex()).getValue();
-                Expression result = row.getItems().get(index - 1);
+                int index = (int) (long) ((Constant) node.index()).value();
+                Expression result = row.items().get(index - 1);
 
                 while (!coercions.isEmpty()) {
                     Coercion coercion = coercions.pop();

@@ -15,44 +15,39 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.Type;
 
 import java.util.List;
 
-import static com.google.common.base.Preconditions.checkArgument;
+import static io.trino.spi.type.BooleanType.BOOLEAN;
 
 @JsonSerialize
-public record CoalesceExpression(List<Expression> operands)
+public record In(Expression value, List<Expression> valueList)
         implements Expression
 {
-    public CoalesceExpression(Expression first, Expression second, Expression... additional)
+    public In
     {
-        this(ImmutableList.<Expression>builder()
-                .add(first, second)
-                .add(additional)
-                .build());
+        valueList = ImmutableList.copyOf(valueList);
     }
 
-    public CoalesceExpression
+    @Override
+    public Type type()
     {
-        checkArgument(operands.size() >= 2, "must have at least two operands");
-        operands = ImmutableList.copyOf(operands);
-    }
-
-    @Deprecated
-    public List<Expression> getOperands()
-    {
-        return operands;
+        return BOOLEAN;
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitCoalesceExpression(this, context);
+        return visitor.visitIn(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        return operands;
+        return ImmutableList.<Expression>builder()
+                .add(value)
+                .addAll(valueList)
+                .build();
     }
 }

@@ -15,42 +15,46 @@ package io.trino.sql.ir;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableList;
+import io.trino.spi.type.Type;
 
 import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
+/**
+ * NULLIF(V1,V2): CASE WHEN V1=V2 THEN NULL ELSE V1 END
+ */
 @JsonSerialize
-public record SubscriptExpression(Expression base, Expression index)
+public record NullIf(Expression first, Expression second)
         implements Expression
 {
-    public SubscriptExpression
+    public NullIf
     {
-        requireNonNull(base, "base is null");
-        requireNonNull(index, "index is null");
+        requireNonNull(first, "first is null");
+        requireNonNull(second, "second is null");
+    }
+
+    @Override
+    public Type type()
+    {
+        return first.type();
     }
 
     @Override
     public <R, C> R accept(IrVisitor<R, C> visitor, C context)
     {
-        return visitor.visitSubscriptExpression(this, context);
+        return visitor.visitNullIf(this, context);
     }
 
     @Override
-    public List<? extends Expression> getChildren()
+    public List<? extends Expression> children()
     {
-        return ImmutableList.of(base, index);
+        return ImmutableList.of(first, second);
     }
 
-    @Deprecated
-    public Expression getBase()
+    @Override
+    public String toString()
     {
-        return base;
-    }
-
-    @Deprecated
-    public Expression getIndex()
-    {
-        return index;
+        return "NullIf(%s, %s)".formatted(first, second);
     }
 }
