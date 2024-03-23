@@ -889,7 +889,7 @@ public class TranslationMap
 
         Call call = BuiltinFunctionCallBuilder.resolve(plannerContext.getMetadata())
                 .setName(FormatFunction.NAME)
-                .addArgument(VARCHAR, arguments.get(0))
+                .addArgument(VARCHAR, new io.trino.sql.ir.Cast(arguments.get(0), VARCHAR))
                 .addArgument(RowType.anonymous(argumentTypes.subList(1, arguments.size())), new io.trino.sql.ir.Row(arguments.subList(1, arguments.size())))
                 .build();
 
@@ -917,20 +917,20 @@ public class TranslationMap
         if (escape.isPresent()) {
             patternCall = BuiltinFunctionCallBuilder.resolve(plannerContext.getMetadata())
                     .setName(LIKE_PATTERN_FUNCTION_NAME)
-                    .addArgument(analysis.getType(node.getPattern()), pattern)
-                    .addArgument(analysis.getType(node.getEscape().get()), escape.get())
+                    .addArgument(VARCHAR, new io.trino.sql.ir.Cast(pattern, VARCHAR))
+                    .addArgument(VARCHAR, new io.trino.sql.ir.Cast(escape.get(), VARCHAR))
                     .build();
         }
         else {
             patternCall = BuiltinFunctionCallBuilder.resolve(plannerContext.getMetadata())
                     .setName(LIKE_PATTERN_FUNCTION_NAME)
-                    .addArgument(analysis.getType(node.getPattern()), pattern)
+                    .addArgument(VARCHAR, new io.trino.sql.ir.Cast(pattern, VARCHAR))
                     .build();
         }
 
         Call call = BuiltinFunctionCallBuilder.resolve(plannerContext.getMetadata())
                 .setName(LIKE_FUNCTION_NAME)
-                .addArgument(analysis.getType(node.getValue()), value)
+                .addArgument(value.type(), value)
                 .addArgument(LIKE_PATTERN, patternCall)
                 .build();
 
@@ -963,10 +963,14 @@ public class TranslationMap
                     rewrittenBase, new Constant(INTEGER, index.getParsedValue()));
         }
 
-        return new Subscript(
-                analysis.getType(node),
-                translateExpression(node.getBase()),
-                translateExpression(node.getIndex()));
+        ResolvedFunction operator = plannerContext.getMetadata()
+                .resolveOperator(OperatorType.SUBSCRIPT, ImmutableList.of(getCoercedType(node.getBase()), getCoercedType(node.getIndex())));
+
+        return new Call(
+                operator,
+                ImmutableList.of(
+                    new io.trino.sql.ir.Cast(translateExpression(node.getBase()), operator.getSignature().getArgumentType(0)),
+                    new io.trino.sql.ir.Cast(translateExpression(node.getIndex()), operator.getSignature().getArgumentType(1))));
     }
 
     private io.trino.sql.ir.Expression translate(LambdaExpression node)

@@ -11,22 +11,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.deltalake.transactionlog;
+package io.trino.plugin.snowflake;
 
-import jakarta.annotation.Nullable;
+import io.trino.plugin.jdbc.aggregation.BaseImplementAvgBigint;
 
-import java.util.Map;
-
-import static java.util.Objects.requireNonNull;
-
-public record RemoveFileEntry(
-        String path,
-        @Nullable Map<String, String> partitionValues,
-        long deletionTimestamp,
-        boolean dataChange)
+public class ImplementAvgBigint
+        extends BaseImplementAvgBigint
 {
-    public RemoveFileEntry
+    @Override
+    protected String getRewriteFormatExpression()
     {
-        requireNonNull(path, "path is null");
+        return "avg((%s * 1.0))";
     }
 }
