@@ -43,9 +43,9 @@ import io.trino.sql.ir.Arithmetic;
 import io.trino.sql.ir.Comparison;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
+import io.trino.sql.ir.FieldReference;
 import io.trino.sql.ir.Negation;
 import io.trino.sql.ir.Reference;
-import io.trino.sql.ir.Subscript;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.iterative.rule.PruneTableScanColumns;
 import io.trino.sql.planner.iterative.rule.PushPredicateIntoTableScan;
@@ -87,7 +87,7 @@ public class TestConnectorPushdownRulesWithIceberg
         extends BaseRuleTest
 {
     private static final TestingFunctionResolution FUNCTIONS = new TestingFunctionResolution();
-    private static final ResolvedFunction ADD_INTEGER = FUNCTIONS.resolveOperator(OperatorType.ADD, ImmutableList.of(INTEGER, INTEGER));
+    private static final ResolvedFunction ADD_BIGINT = FUNCTIONS.resolveOperator(OperatorType.ADD, ImmutableList.of(BIGINT, BIGINT));
 
     private static final String SCHEMA_NAME = "test_schema";
 
@@ -220,7 +220,7 @@ public class TestConnectorPushdownRulesWithIceberg
                 .on(p ->
                         p.project(
                                 Assignments.of(
-                                        p.symbol("expr_deref", BIGINT), new Subscript(BIGINT, p.symbol("struct_of_int", baseType).toSymbolReference(), new Constant(INTEGER, 1L))),
+                                        p.symbol("expr_deref", BIGINT), new FieldReference(p.symbol("struct_of_int", baseType).toSymbolReference(), 0)),
                                 p.tableScan(
                                         table,
                                         ImmutableList.of(p.symbol("struct_of_int", baseType)),
@@ -414,12 +414,12 @@ public class TestConnectorPushdownRulesWithIceberg
         // Test Dereference pushdown
         tester().assertThat(pushProjectionIntoTableScan)
                 .on(p -> {
-                    Subscript subscript = new Subscript(BIGINT, p.symbol("struct_of_bigint", ROW_TYPE).toSymbolReference(), new Constant(INTEGER, 1L));
-                    Expression sum = new Arithmetic(ADD_INTEGER, ADD, subscript, new Constant(INTEGER, 2L));
+                    FieldReference fieldReference = new FieldReference(p.symbol("struct_of_bigint", ROW_TYPE).toSymbolReference(), 0);
+                    Expression sum = new Arithmetic(ADD_BIGINT, ADD, fieldReference, new Constant(BIGINT, 2L));
                     return p.project(
                             Assignments.of(
                                     // The subscript expression instance is part of both the assignments
-                                    p.symbol("expr_deref", BIGINT), subscript,
+                                    p.symbol("expr_deref", BIGINT), fieldReference,
                                     p.symbol("expr_deref_2", BIGINT), sum),
                             p.tableScan(
                                     table,
@@ -428,8 +428,8 @@ public class TestConnectorPushdownRulesWithIceberg
                 })
                 .matches(project(
                         ImmutableMap.of(
-                                "expr_deref", expression(new Reference(INTEGER, "struct_of_bigint#a")),
-                                "expr_deref_2", expression(new Arithmetic(ADD_INTEGER, ADD, new Reference(INTEGER, "struct_of_bigint#a"), new Constant(INTEGER, 2L)))),
+                                "expr_deref", expression(new Reference(BIGINT, "struct_of_bigint#a")),
+                                "expr_deref_2", expression(new Arithmetic(ADD_BIGINT, ADD, new Reference(BIGINT, "struct_of_bigint#a"), new Constant(BIGINT, 2L)))),
                         tableScan(
                                 icebergTable.withProjectedColumns(ImmutableSet.of(partialColumn))::equals,
                                 TupleDomain.all(),

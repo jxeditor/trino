@@ -136,7 +136,7 @@ public final class ExpressionTreeRewriter<C>
         }
 
         @Override
-        protected Expression visitSubscript(Subscript node, Context<C> context)
+        protected Expression visitFieldReference(FieldReference node, Context<C> context)
         {
             if (!context.isDefaultRewrite()) {
                 Expression result = rewriter.rewriteSubscript(node, context.get(), ExpressionTreeRewriter.this);
@@ -146,10 +146,9 @@ public final class ExpressionTreeRewriter<C>
             }
 
             Expression base = rewrite(node.base(), context.get());
-            Expression index = rewrite(node.index(), context.get());
 
-            if (base != node.base() || index != node.index()) {
-                return new Subscript(node.type(), base, index);
+            if (base != node.base()) {
+                return new FieldReference(base, node.field());
             }
 
             return node;

@@ -47,6 +47,7 @@ import io.trino.sql.ir.Case;
 import io.trino.sql.ir.Coalesce;
 import io.trino.sql.ir.Comparison;
 import io.trino.sql.ir.Constant;
+import io.trino.sql.ir.FieldReference;
 import io.trino.sql.ir.In;
 import io.trino.sql.ir.IsNull;
 import io.trino.sql.ir.Lambda;
@@ -55,7 +56,6 @@ import io.trino.sql.ir.Negation;
 import io.trino.sql.ir.Not;
 import io.trino.sql.ir.NullIf;
 import io.trino.sql.ir.Reference;
-import io.trino.sql.ir.Subscript;
 import io.trino.sql.ir.Switch;
 import io.trino.sql.tree.ArithmeticBinaryExpression;
 import io.trino.sql.tree.ArithmeticUnaryExpression;
@@ -79,7 +79,6 @@ import io.trino.sql.tree.DereferenceExpression;
 import io.trino.sql.tree.DoubleLiteral;
 import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.Extract;
-import io.trino.sql.tree.FieldReference;
 import io.trino.sql.tree.Format;
 import io.trino.sql.tree.FunctionCall;
 import io.trino.sql.tree.GenericLiteral;
@@ -138,7 +137,6 @@ import static io.airlift.slice.Slices.utf8Slice;
 import static io.trino.spi.StandardErrorCode.TOO_MANY_ARGUMENTS;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.DoubleType.DOUBLE;
-import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.TimeWithTimeZoneType.createTimeWithTimeZoneType;
 import static io.trino.spi.type.TimestampWithTimeZoneType.createTimestampWithTimeZoneType;
 import static io.trino.spi.type.TinyintType.TINYINT;
@@ -158,6 +156,7 @@ import static io.trino.type.LikePatternType.LIKE_PATTERN;
 import static io.trino.util.DateTimeUtils.parseDayTimeInterval;
 import static io.trino.util.DateTimeUtils.parseYearMonthInterval;
 import static io.trino.util.Failures.checkCondition;
+import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
@@ -274,7 +273,7 @@ public class TranslationMap
     {
         if (astToSymbols.containsKey(scopeAwareKey(expression, analysis, scope)) ||
                 substitutions.containsKey(NodeRef.of(expression)) ||
-                expression instanceof FieldReference) {
+                expression instanceof io.trino.sql.tree.FieldReference) {
             return true;
         }
 
@@ -308,7 +307,7 @@ public class TranslationMap
         }
         else {
             result = switch (expr) {
-                case FieldReference expression -> translate(expression);
+                case io.trino.sql.tree.FieldReference expression -> translate(expression);
                 case Identifier expression -> translate(expression);
                 case FunctionCall expression -> translate(expression);
                 case DereferenceExpression expression -> translate(expression);
@@ -611,7 +610,7 @@ public class TranslationMap
         return new Constant(analysis.getType(expression), expression.getParsedValue());
     }
 
-    private io.trino.sql.ir.Expression translate(FieldReference expression)
+    private io.trino.sql.ir.Expression translate(io.trino.sql.tree.FieldReference expression)
     {
         return getSymbolForColumn(expression)
                 .map(Symbol::toSymbolReference)
@@ -670,10 +669,7 @@ public class TranslationMap
 
         checkState(index >= 0, "could not find field name: %s", fieldName);
 
-        return new Subscript(
-                rowType.getFields().get(index).getType(),
-                translateExpression(expression.getBase()),
-                new Constant(INTEGER, (long) (index + 1)));
+        return new FieldReference(translateExpression(expression.getBase()), index);
     }
 
     private io.trino.sql.ir.Expression translate(Array expression)
@@ -958,9 +954,8 @@ public class TranslationMap
             // Do not rewrite subscript index into symbol. Row subscript index is required to be a literal.
             io.trino.sql.ir.Expression rewrittenBase = translateExpression(node.getBase());
             LongLiteral index = (LongLiteral) node.getIndex();
-            return new Subscript(
-                    analysis.getType(node),
-                    rewrittenBase, new Constant(INTEGER, index.getParsedValue()));
+            return new FieldReference(
+                    rewrittenBase, toIntExact(index.getParsedValue() - 1));
         }
 
         ResolvedFunction operator = plannerContext.getMetadata()

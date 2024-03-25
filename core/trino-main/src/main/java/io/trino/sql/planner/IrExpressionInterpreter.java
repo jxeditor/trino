@@ -18,7 +18,6 @@ import com.google.common.primitives.Primitives;
 import io.trino.Session;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.ResolvedFunction;
-import io.trino.operator.scalar.ArraySubscriptOperator;
 import io.trino.spi.TrinoException;
 import io.trino.spi.block.SqlRow;
 import io.trino.spi.connector.ConnectorSession;
@@ -43,6 +42,7 @@ import io.trino.sql.ir.Comparison;
 import io.trino.sql.ir.Comparison.Operator;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
+import io.trino.sql.ir.FieldReference;
 import io.trino.sql.ir.In;
 import io.trino.sql.ir.IrVisitor;
 import io.trino.sql.ir.IsNull;
@@ -53,7 +53,6 @@ import io.trino.sql.ir.Not;
 import io.trino.sql.ir.NullIf;
 import io.trino.sql.ir.Reference;
 import io.trino.sql.ir.Row;
-import io.trino.sql.ir.Subscript;
 import io.trino.sql.ir.Switch;
 import io.trino.sql.ir.WhenClause;
 import io.trino.type.FunctionType;
@@ -82,7 +81,6 @@ import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.trino.metadata.GlobalFunctionCatalog.builtinFunctionName;
-import static io.trino.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.block.RowValueBuilder.buildRowValue;
 import static io.trino.spi.function.InvocationConvention.InvocationArgumentConvention.NEVER_NULL;
@@ -95,7 +93,6 @@ import static io.trino.spi.type.TypeUtils.writeNativeValue;
 import static io.trino.sql.DynamicFilters.isDynamicFilter;
 import static io.trino.sql.gen.VarArgsToMapAdapterGenerator.generateVarArgsToMapAdapter;
 import static io.trino.sql.planner.DeterminismEvaluator.isDeterministic;
-import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
@@ -122,21 +119,9 @@ public class IrExpressionInterpreter
         this.typeCoercion = new TypeCoercion(plannerContext.getTypeManager()::getType);
     }
 
-    public static Object evaluateConstantExpression(Expression expression, PlannerContext plannerContext, Session session)
-    {
-        return new IrExpressionInterpreter(expression, plannerContext, session).evaluate();
-    }
-
     public Object evaluate()
     {
         Object result = new Visitor(false).processWithExceptionHandling(expression, null);
-        verify(!(result instanceof Expression), "Expression interpreter returned an unresolved expression");
-        return result;
-    }
-
-    public Object evaluate(SymbolResolver inputs)
-    {
-        Object result = new Visitor(false).processWithExceptionHandling(expression, inputs);
         verify(!(result instanceof Expression), "Expression interpreter returned an unresolved expression");
         return result;
     }
@@ -883,36 +868,20 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitSubscript(Subscript node, Object context)
+        protected Object visitFieldReference(FieldReference node, Object context)
         {
             Object base = processWithExceptionHandling(node.base(), context);
             if (base == null) {
                 return null;
             }
-            Object index = processWithExceptionHandling(node.index(), context);
-            if (index == null) {
-                return null;
-            }
-            if ((index instanceof Long) && isArray(node.base().type())) {
-                ArraySubscriptOperator.checkArrayIndex((Long) index);
+
+            if (hasUnresolvedValue(base)) {
+                return new FieldReference(toExpression(base, node.base().type()), node.field());
             }
 
-            if (hasUnresolvedValue(base, index)) {
-                return new Subscript(node.type(), toExpression(base, node.base().type()), toExpression(index, node.index().type()));
-            }
-
-            // Subscript on Row hasn't got a dedicated operator. It is interpreted by hand.
-            if (base instanceof SqlRow row) {
-                int fieldIndex = toIntExact((long) index - 1);
-                if (fieldIndex < 0 || fieldIndex >= row.getFieldCount()) {
-                    throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "ROW index out of bounds: " + (fieldIndex + 1));
-                }
-                Type returnType = node.base().type().getTypeParameters().get(fieldIndex);
-                return readNativeValue(returnType, row.getRawFieldBlock(fieldIndex), row.getRawIndex());
-            }
-
-            // Subscript on Array or Map is interpreted using operator.
-            return invokeOperator(OperatorType.SUBSCRIPT, types(node.base(), node.index()), ImmutableList.of(base, index));
+            SqlRow row = (SqlRow) base;
+            Type returnType = node.base().type().getTypeParameters().get(node.field());
+            return readNativeValue(returnType, row.getRawFieldBlock(node.field()), row.getRawIndex());
         }
 
         @Override

@@ -18,7 +18,6 @@ import io.trino.Session;
 import io.trino.metadata.FunctionManager;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.ResolvedFunction;
-import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeManager;
 import io.trino.sql.ir.Arithmetic;
@@ -32,6 +31,7 @@ import io.trino.sql.ir.Comparison;
 import io.trino.sql.ir.Comparison.Operator;
 import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
+import io.trino.sql.ir.FieldReference;
 import io.trino.sql.ir.In;
 import io.trino.sql.ir.IrVisitor;
 import io.trino.sql.ir.IsNull;
@@ -42,7 +42,6 @@ import io.trino.sql.ir.Not;
 import io.trino.sql.ir.NullIf;
 import io.trino.sql.ir.Reference;
 import io.trino.sql.ir.Row;
-import io.trino.sql.ir.Subscript;
 import io.trino.sql.ir.Switch;
 import io.trino.sql.ir.WhenClause;
 import io.trino.sql.planner.Symbol;
@@ -60,7 +59,6 @@ import static io.trino.spi.function.OperatorType.HASH_CODE;
 import static io.trino.spi.function.OperatorType.INDETERMINATE;
 import static io.trino.spi.function.OperatorType.LESS_THAN_OR_EQUAL;
 import static io.trino.spi.function.OperatorType.NEGATION;
-import static io.trino.spi.function.OperatorType.SUBSCRIPT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.sql.analyzer.TypeSignatureProvider.fromTypes;
@@ -489,20 +487,10 @@ public final class SqlToRowExpressionTranslator
         }
 
         @Override
-        protected RowExpression visitSubscript(Subscript node, Void context)
+        protected RowExpression visitFieldReference(FieldReference node, Void context)
         {
             RowExpression base = process(node.base(), context);
-            RowExpression index = process(node.index(), context);
-
-            if (node.base().type() instanceof RowType) {
-                long value = (Long) ((ConstantExpression) index).getValue();
-                return new SpecialForm(DEREFERENCE, ((Expression) node).type(), base, constant(value - 1, INTEGER));
-            }
-
-            return call(
-                    metadata.resolveOperator(SUBSCRIPT, ImmutableList.of(base.getType(), index.getType())),
-                    base,
-                    index);
+            return new SpecialForm(DEREFERENCE, node.type(), base, constant((long) node.field(), INTEGER));
         }
 
         @Override
