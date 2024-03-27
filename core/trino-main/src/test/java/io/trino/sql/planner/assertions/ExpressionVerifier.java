@@ -13,7 +13,6 @@
  */
 package io.trino.sql.planner.assertions;
 
-import io.trino.sql.ir.Arithmetic;
 import io.trino.sql.ir.Between;
 import io.trino.sql.ir.Call;
 import io.trino.sql.ir.Case;
@@ -28,7 +27,6 @@ import io.trino.sql.ir.IrVisitor;
 import io.trino.sql.ir.IsNull;
 import io.trino.sql.ir.Lambda;
 import io.trino.sql.ir.Logical;
-import io.trino.sql.ir.Negation;
 import io.trino.sql.ir.Not;
 import io.trino.sql.ir.Reference;
 import io.trino.sql.ir.Row;
@@ -166,28 +164,6 @@ public final class ExpressionVerifier
         return process(actual.value(), expected.value()) &&
                 process(actual.min(), expected.min()) &&
                 process(actual.max(), expected.max());
-    }
-
-    @Override
-    protected Boolean visitNegation(Negation actual, Expression expectedExpression)
-    {
-        if (!(expectedExpression instanceof Negation expected)) {
-            return false;
-        }
-
-        return process(actual.value(), expected.value());
-    }
-
-    @Override
-    protected Boolean visitArithmetic(Arithmetic actual, Expression expectedExpression)
-    {
-        if (!(expectedExpression instanceof Arithmetic expected)) {
-            return false;
-        }
-
-        return actual.operator() == expected.operator() &&
-                process(actual.left(), expected.left()) &&
-                process(actual.right(), expected.right());
     }
 
     @Override

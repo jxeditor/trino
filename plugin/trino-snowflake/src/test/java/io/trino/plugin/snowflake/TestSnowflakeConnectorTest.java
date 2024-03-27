@@ -224,13 +224,6 @@ public class TestSnowflakeConnectorTest
 
     @Test
     @Override
-    public void testNumericAggregationPushdown()
-    {
-        abort("TODO");
-    }
-
-    @Test
-    @Override
     public void testInsertIntoNotNullColumn()
     {
         // TODO: java.lang.UnsupportedOperationException: This method should be overridden
@@ -346,14 +339,6 @@ public class TestSnowflakeConnectorTest
 
         assertUpdate("CREATE TABLE " + tableName + " AS SELECT 123 x", 1);
         assertQuery("SELECT x FROM " + tableName, "VALUES 123");
-    }
-
-    @Test
-    @Override
-    public void testInsertArray()
-    {
-        // Snowflake does not support this feature.
-        abort("Not supported");
     }
 
     @Test

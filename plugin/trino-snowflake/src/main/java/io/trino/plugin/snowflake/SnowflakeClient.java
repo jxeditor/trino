@@ -149,7 +149,7 @@ public class SnowflakeClient
                         .add(new ImplementCountAll(bigintTypeHandle))
                         .add(new ImplementCount(bigintTypeHandle))
                         .add(new ImplementMinMax(false))
-                        .add(new ImplementSum(SnowflakeClient::toTypeHandle))
+                        .add(new ImplementSum(SnowflakeClient::decimalTypeHandle))
                         .add(new ImplementAvgFloatingPoint())
                         .add(new ImplementAvgDecimal())
                         .add(new ImplementAvgBigint())
@@ -250,7 +250,7 @@ public class SnowflakeClient
             return writeMappingFunction.convert(type);
         }
 
-        throw new TrinoException(NOT_SUPPORTED, "Unsupported column type: " + type.getDisplayName() + ", simple:" + simple);
+        throw new TrinoException(NOT_SUPPORTED, "Unsupported column type: " + type.getDisplayName());
     }
 
     @Override
@@ -267,9 +267,15 @@ public class SnowflakeClient
         return preventTextualTypeAggregationPushdown(groupingSets);
     }
 
-    private static Optional<JdbcTypeHandle> toTypeHandle(DecimalType decimalType)
+    private static Optional<JdbcTypeHandle> decimalTypeHandle(DecimalType decimalType)
     {
-        return Optional.of(new JdbcTypeHandle(Types.NUMERIC, Optional.of("decimal"), Optional.of(decimalType.getPrecision()), Optional.of(decimalType.getScale()), Optional.empty(), Optional.empty()));
+        return Optional.of(new JdbcTypeHandle(
+                Types.NUMERIC,
+                Optional.of("NUMBER"),
+                Optional.of(decimalType.getPrecision()),
+                Optional.of(decimalType.getScale()),
+                Optional.empty(),
+                Optional.empty()));
     }
 
     @Override

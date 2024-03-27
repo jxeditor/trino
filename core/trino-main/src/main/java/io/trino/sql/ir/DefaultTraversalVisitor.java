@@ -24,15 +24,6 @@ public abstract class DefaultTraversalVisitor<C>
     }
 
     @Override
-    protected Void visitArithmetic(Arithmetic node, C context)
-    {
-        process(node.left(), context);
-        process(node.right(), context);
-
-        return null;
-    }
-
-    @Override
     protected Void visitBetween(Between node, C context)
     {
         process(node.value(), context);
@@ -122,13 +113,6 @@ public abstract class DefaultTraversalVisitor<C>
         }
         process(node.function(), context);
 
-        return null;
-    }
-
-    @Override
-    protected Void visitNegation(Negation node, C context)
-    {
-        process(node.value(), context);
         return null;
     }
 
