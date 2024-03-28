@@ -124,13 +124,24 @@ public class IrExpressionInterpreter
         return result;
     }
 
-    public Object optimize(SymbolResolver inputs)
+    public Expression optimize(SymbolResolver inputs)
     {
-        return new Visitor(true).processWithExceptionHandling(expression, inputs);
+        Object result = new Visitor(true).processWithExceptionHandling(expression, inputs);
+
+        if (result instanceof Expression expression) {
+            return expression;
+        }
+
+        return new Constant(expression.type(), result);
+    }
+
+    public Expression optimize()
+    {
+        return optimize(NoOpSymbolResolver.INSTANCE);
     }
 
     private class Visitor
-            extends IrVisitor<Object, Object>
+            extends IrVisitor<Object, SymbolResolver>
     {
         private final boolean optimize;
 
@@ -139,7 +150,7 @@ public class IrExpressionInterpreter
             this.optimize = optimize;
         }
 
-        private Object processWithExceptionHandling(Expression expression, Object context)
+        private Object processWithExceptionHandling(Expression expression, SymbolResolver context)
         {
             if (expression == null) {
                 return null;
@@ -162,19 +173,24 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitReference(Reference node, Object context)
+        protected Object visitReference(Reference node, SymbolResolver context)
         {
-            return ((SymbolResolver) context).getValue(Symbol.from(node));
+            Optional<Constant> binding = context.getValue(Symbol.from(node));
+            if (binding.isPresent()) {
+                return binding.get().value();
+            }
+
+            return node;
         }
 
         @Override
-        protected Object visitConstant(Constant node, Object context)
+        protected Object visitConstant(Constant node, SymbolResolver context)
         {
             return node.value();
         }
 
         @Override
-        protected Object visitIsNull(IsNull node, Object context)
+        protected Object visitIsNull(IsNull node, SymbolResolver context)
         {
             Object value = processWithExceptionHandling(node.value(), context);
 
@@ -186,7 +202,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitCase(Case node, Object context)
+        protected Object visitCase(Case node, SymbolResolver context)
         {
             Object newDefault = null;
             boolean foundNewDefault = false;
@@ -214,27 +230,25 @@ public class IrExpressionInterpreter
                 defaultResult = newDefault;
             }
             else {
-                defaultResult = processWithExceptionHandling(node.defaultValue().orElse(null), context);
+                defaultResult = processWithExceptionHandling(node.defaultValue(), context);
             }
 
             if (whenClauses.isEmpty()) {
                 return defaultResult;
             }
 
-            Expression defaultExpression;
-            defaultExpression = defaultResult == null ? null : toExpression(defaultResult, ((Expression) node).type());
-            return new Case(whenClauses, Optional.ofNullable(defaultExpression));
+            return new Case(whenClauses, toExpression(defaultResult, ((Expression) node).type()));
         }
 
         @Override
-        protected Object visitSwitch(Switch node, Object context)
+        protected Object visitSwitch(Switch node, SymbolResolver context)
         {
             Object operand = processWithExceptionHandling(node.operand(), context);
             Type operandType = node.operand().type();
 
             // if operand is null, return defaultValue
             if (operand == null) {
-                return processWithExceptionHandling(node.defaultValue().orElse(null), context);
+                return processWithExceptionHandling(node.defaultValue(), context);
             }
 
             Object newDefault = null;
@@ -265,16 +279,15 @@ public class IrExpressionInterpreter
                 defaultResult = newDefault;
             }
             else {
-                defaultResult = processWithExceptionHandling(node.defaultValue().orElse(null), context);
+                defaultResult = processWithExceptionHandling(node.defaultValue(), context);
             }
 
             if (whenClauses.isEmpty()) {
                 return defaultResult;
             }
 
-            Expression defaultExpression;
-            defaultExpression = defaultResult == null ? null : toExpression(defaultResult, ((Expression) node).type());
-            return new Switch(toExpression(operand, node.operand().type()), whenClauses, Optional.ofNullable(defaultExpression));
+            Expression defaultExpression = toExpression(defaultResult, ((Expression) node).type());
+            return new Switch(toExpression(operand, node.operand().type()), whenClauses, defaultExpression);
         }
 
         private boolean isEqual(Object operand1, Type type1, Object operand2, Type type2)
@@ -283,7 +296,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitCoalesce(Coalesce node, Object context)
+        protected Object visitCoalesce(Coalesce node, SymbolResolver context)
         {
             List<Object> newOperands = processOperands(node, context);
             if (newOperands.isEmpty()) {
@@ -297,7 +310,7 @@ public class IrExpressionInterpreter
                     .collect(toImmutableList()));
         }
 
-        private List<Object> processOperands(Coalesce node, Object context)
+        private List<Object> processOperands(Coalesce node, SymbolResolver context)
         {
             List<Object> newOperands = new ArrayList<>();
             Set<Expression> uniqueNewOperands = new HashSet<>();
@@ -332,7 +345,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitIn(In node, Object context)
+        protected Object visitIn(In node, SymbolResolver context)
         {
             Object value = processWithExceptionHandling(node.value(), context);
 
@@ -444,7 +457,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitComparison(Comparison node, Object context)
+        protected Object visitComparison(Comparison node, SymbolResolver context)
         {
             Operator operator = node.operator();
             Expression left = node.left();
@@ -477,7 +490,7 @@ public class IrExpressionInterpreter
             return processComparisonExpression(context, operator, left, right);
         }
 
-        private Object processIsDistinctFrom(Object context, Expression leftExpression, Expression rightExpression)
+        private Object processIsDistinctFrom(SymbolResolver context, Expression leftExpression, Expression rightExpression)
         {
             Object left = processWithExceptionHandling(leftExpression, context);
             Object right = processWithExceptionHandling(rightExpression, context);
@@ -497,7 +510,7 @@ public class IrExpressionInterpreter
             return invokeOperator(OperatorType.valueOf(Operator.IS_DISTINCT_FROM.name()), types(leftExpression, rightExpression), Arrays.asList(left, right));
         }
 
-        private Object processComparisonExpression(Object context, Operator operator, Expression leftExpression, Expression rightExpression)
+        private Object processComparisonExpression(SymbolResolver context, Operator operator, Expression leftExpression, Expression rightExpression)
         {
             Object left = processWithExceptionHandling(leftExpression, context);
             if (left == null) {
@@ -531,7 +544,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitBetween(Between node, Object context)
+        protected Object visitBetween(Between node, SymbolResolver context)
         {
             Object value = processWithExceptionHandling(node.value(), context);
             if (value == null) {
@@ -566,7 +579,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitNullIf(NullIf node, Object context)
+        protected Object visitNullIf(NullIf node, SymbolResolver context)
         {
             Object first = processWithExceptionHandling(node.first(), context);
             if (first == null) {
@@ -604,7 +617,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitNot(Not node, Object context)
+        protected Object visitNot(Not node, SymbolResolver context)
         {
             Object value = processWithExceptionHandling(node.value(), context);
             if (value == null) {
@@ -619,7 +632,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitLogical(Logical node, Object context)
+        protected Object visitLogical(Logical node, SymbolResolver context)
         {
             List<Object> terms = new ArrayList<>();
             List<Type> types = new ArrayList<>();
@@ -672,7 +685,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitCall(Call node, Object context)
+        protected Object visitCall(Call node, SymbolResolver context)
         {
             if (node.function().getName().getFunctionName().equals(mangleOperatorName(NEGATION))) {
                 return processNegation(node, context);
@@ -708,7 +721,7 @@ public class IrExpressionInterpreter
             return functionInvoker.invoke(resolvedFunction, connectorSession, argumentValues);
         }
 
-        private Object processNegation(Call negation, Object context)
+        private Object processNegation(Call negation, SymbolResolver context)
         {
             Object value = processWithExceptionHandling(negation.arguments().getFirst(), context);
 
@@ -721,7 +734,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitLambda(Lambda node, Object context)
+        protected Object visitLambda(Lambda node, SymbolResolver context)
         {
             if (optimize) {
                 // TODO: enable optimization related to lambda expression
@@ -758,7 +771,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitBind(Bind node, Object context)
+        protected Object visitBind(Bind node, SymbolResolver context)
         {
             List<Object> values = node.values().stream()
                     .map(value -> processWithExceptionHandling(value, context))
@@ -778,7 +791,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        public Object visitCast(Cast node, Object context)
+        public Object visitCast(Cast node, SymbolResolver context)
         {
             Object value = processWithExceptionHandling(node.expression(), context);
             Type targetType = node.type();
@@ -809,7 +822,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitRow(Row node, Object context)
+        protected Object visitRow(Row node, SymbolResolver context)
         {
             RowType rowType = (RowType) ((Expression) node).type();
             List<Type> parameterTypes = rowType.getTypeParameters();
@@ -831,7 +844,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitFieldReference(FieldReference node, Object context)
+        protected Object visitFieldReference(FieldReference node, SymbolResolver context)
         {
             Object base = processWithExceptionHandling(node.base(), context);
             if (base == null) {
@@ -848,7 +861,7 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        protected Object visitExpression(Expression node, Object context)
+        protected Object visitExpression(Expression node, SymbolResolver context)
         {
             throw new TrinoException(NOT_SUPPORTED, "not yet implemented: " + node.getClass().getName());
         }
@@ -916,10 +929,10 @@ public class IrExpressionInterpreter
         }
 
         @Override
-        public Object getValue(Symbol symbol)
+        public Optional<Constant> getValue(Symbol symbol)
         {
             checkState(values.containsKey(symbol.getName()), "values does not contain %s", symbol);
-            return values.get(symbol.getName());
+            return Optional.of(new Constant(symbol.getType(), values.get(symbol.getName())));
         }
     }
 }

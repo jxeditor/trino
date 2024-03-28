@@ -33,14 +33,12 @@ import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.sql.PlannerContext;
 import io.trino.sql.ir.Booleans;
-import io.trino.sql.ir.Constant;
 import io.trino.sql.ir.Expression;
 import io.trino.sql.planner.ConnectorExpressionTranslator;
 import io.trino.sql.planner.ConnectorExpressionTranslator.ConnectorExpressionTranslation;
 import io.trino.sql.planner.DomainTranslator;
 import io.trino.sql.planner.IrExpressionInterpreter;
 import io.trino.sql.planner.LayoutConstraintEvaluator;
-import io.trino.sql.planner.NoOpSymbolResolver;
 import io.trino.sql.planner.Symbol;
 import io.trino.sql.planner.iterative.Rule;
 import io.trino.sql.planner.plan.FilterNode;
@@ -265,13 +263,7 @@ public class PushPredicateIntoTableScan
             Expression translatedExpression = ConnectorExpressionTranslator.translate(session, remainingConnectorExpression.get(), plannerContext, variableMappings);
             // ConnectorExpressionTranslator may or may not preserve optimized form of expressions during round-trip. Avoid potential optimizer loop
             // by ensuring expression is optimized.
-            Object optimized = new IrExpressionInterpreter(translatedExpression, plannerContext, session)
-                    .optimize(NoOpSymbolResolver.INSTANCE);
-
-            translatedExpression = optimized instanceof Expression optimizedExpression ?
-                    optimizedExpression :
-                    new Constant(translatedExpression.type(), optimized);
-
+            translatedExpression = new IrExpressionInterpreter(translatedExpression, plannerContext, session).optimize();
             remainingDecomposedPredicate = combineConjuncts(translatedExpression, expressionTranslation.remainingExpression());
         }
 

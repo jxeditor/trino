@@ -42,6 +42,7 @@ import io.trino.plugin.jdbc.aggregation.ImplementAvgDecimal;
 import io.trino.plugin.jdbc.aggregation.ImplementAvgFloatingPoint;
 import io.trino.plugin.jdbc.aggregation.ImplementCount;
 import io.trino.plugin.jdbc.aggregation.ImplementCountAll;
+import io.trino.plugin.jdbc.aggregation.ImplementCountDistinct;
 import io.trino.plugin.jdbc.aggregation.ImplementMinMax;
 import io.trino.plugin.jdbc.aggregation.ImplementSum;
 import io.trino.plugin.jdbc.expression.JdbcConnectorExpressionRewriterBuilder;
@@ -148,6 +149,7 @@ public class SnowflakeClient
                 ImmutableSet.<AggregateFunctionRule<JdbcExpression, ParameterizedExpression>>builder()
                         .add(new ImplementCountAll(bigintTypeHandle))
                         .add(new ImplementCount(bigintTypeHandle))
+                        .add(new ImplementCountDistinct(bigintTypeHandle, false))
                         .add(new ImplementMinMax(false))
                         .add(new ImplementSum(SnowflakeClient::decimalTypeHandle))
                         .add(new ImplementAvgFloatingPoint())
@@ -235,14 +237,14 @@ public class SnowflakeClient
 
         final Map<String, WriteMappingFunction> snowflakeWriteMappings = ImmutableMap.<String, WriteMappingFunction>builder()
                 .put("TimeType", writeType -> WriteMapping.longMapping("time", timeWriteFunction(((TimeType) writeType).getPrecision())))
-                .put("ShortTimestampType", writeType -> SnowflakeClient.snowFlakeTimestampWriter(writeType))
-                .put("ShortTimestampWithTimeZoneType", writeType -> SnowflakeClient.snowFlakeTimestampWithTZWriter(writeType))
-                .put("LongTimestampType", writeType -> SnowflakeClient.snowFlakeTimestampWithTZWriter(writeType))
-                .put("LongTimestampWithTimeZoneType", writeType -> SnowflakeClient.snowFlakeTimestampWithTZWriter(writeType))
-                .put("VarcharType", writeType -> SnowflakeClient.snowFlakeVarCharWriter(writeType))
-                .put("CharType", writeType -> SnowflakeClient.snowFlakeCharWriter(writeType))
-                .put("LongDecimalType", writeType -> SnowflakeClient.snowFlakeDecimalWriter(writeType))
-                .put("ShortDecimalType", writeType -> SnowflakeClient.snowFlakeDecimalWriter(writeType))
+                .put("ShortTimestampType", SnowflakeClient::snowFlakeTimestampWriter)
+                .put("ShortTimestampWithTimeZoneType", SnowflakeClient::snowFlakeTimestampWithTZWriter)
+                .put("LongTimestampType", SnowflakeClient::snowFlakeTimestampWithTZWriter)
+                .put("LongTimestampWithTimeZoneType", SnowflakeClient::snowFlakeTimestampWithTZWriter)
+                .put("VarcharType", SnowflakeClient::snowFlakeVarCharWriter)
+                .put("CharType", SnowflakeClient::snowFlakeCharWriter)
+                .put("LongDecimalType", SnowflakeClient::snowFlakeDecimalWriter)
+                .put("ShortDecimalType", SnowflakeClient::snowFlakeDecimalWriter)
                 .buildOrThrow();
 
         WriteMappingFunction writeMappingFunction = snowflakeWriteMappings.get(simple);
