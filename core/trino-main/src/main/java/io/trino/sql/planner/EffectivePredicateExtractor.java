@@ -98,33 +98,29 @@ public class EffectivePredicateExtractor
             };
 
     private final PlannerContext plannerContext;
-    private final DomainTranslator domainTranslator;
     private final boolean useTableProperties;
 
-    public EffectivePredicateExtractor(DomainTranslator domainTranslator, PlannerContext plannerContext, boolean useTableProperties)
+    public EffectivePredicateExtractor(PlannerContext plannerContext, boolean useTableProperties)
     {
         this.plannerContext = requireNonNull(plannerContext, "plannerContext is null");
-        this.domainTranslator = requireNonNull(domainTranslator, "domainTranslator is null");
         this.useTableProperties = useTableProperties;
     }
 
     public Expression extract(Session session, PlanNode node)
     {
-        return node.accept(new Visitor(domainTranslator, plannerContext, session, useTableProperties), null);
+        return node.accept(new Visitor(plannerContext, session, useTableProperties), null);
     }
 
     private static class Visitor
             extends PlanVisitor<Expression, Void>
     {
-        private final DomainTranslator domainTranslator;
         private final PlannerContext plannerContext;
         private final Metadata metadata;
         private final Session session;
         private final boolean useTableProperties;
 
-        public Visitor(DomainTranslator domainTranslator, PlannerContext plannerContext, Session session, boolean useTableProperties)
+        public Visitor(PlannerContext plannerContext, Session session, boolean useTableProperties)
         {
-            this.domainTranslator = requireNonNull(domainTranslator, "domainTranslator is null");
             this.plannerContext = requireNonNull(plannerContext, "plannerContext is null");
             this.metadata = plannerContext.getMetadata();
             this.session = requireNonNull(session, "session is null");
@@ -159,12 +155,13 @@ public class EffectivePredicateExtractor
         {
             Expression underlyingPredicate = node.getSource().accept(this, context);
 
-            Expression predicate = node.getPredicate();
+            DomainTranslator.ExtractionResult underlying = DomainTranslator.getExtractionResult(plannerContext, session, filterDeterministicConjuncts(underlyingPredicate));
+            DomainTranslator.ExtractionResult current = DomainTranslator.getExtractionResult(plannerContext, session, filterDeterministicConjuncts(node.getPredicate()));
 
-            // Remove non-deterministic conjuncts
-            predicate = filterDeterministicConjuncts(predicate);
-
-            return combineConjuncts(predicate, underlyingPredicate);
+            return combineConjuncts(
+                    DomainTranslator.toPredicate(underlying.getTupleDomain().intersect(current.getTupleDomain())),
+                    underlying.getRemainingExpression(),
+                    current.getRemainingExpression());
         }
 
         @Override
@@ -253,7 +250,7 @@ public class EffectivePredicateExtractor
             }
 
             // TODO: replace with metadata.getTableProperties() when table layouts are fully removed
-            return domainTranslator.toPredicate(predicate.simplify()
+            return DomainTranslator.toPredicate(predicate.simplify()
                     .filter((columnHandle, domain) -> assignments.containsKey(columnHandle))
                     .transformKeys(assignments::get));
         }
@@ -445,7 +442,7 @@ public class EffectivePredicateExtractor
             }
 
             // simplify to avoid a large expression if there are many rows in ValuesNode
-            return domainTranslator.toPredicate(TupleDomain.withColumnDomains(domains.buildOrThrow()).simplify());
+            return DomainTranslator.toPredicate(TupleDomain.withColumnDomains(domains.buildOrThrow()).simplify());
         }
 
         private boolean hasNestedNulls(Type type, Object value)
