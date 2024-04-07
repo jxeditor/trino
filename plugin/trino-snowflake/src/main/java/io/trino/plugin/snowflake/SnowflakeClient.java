@@ -42,13 +42,20 @@ import io.trino.plugin.jdbc.StandardColumnMappings;
 import io.trino.plugin.jdbc.WriteMapping;
 import io.trino.plugin.jdbc.aggregation.ImplementAvgDecimal;
 import io.trino.plugin.jdbc.aggregation.ImplementAvgFloatingPoint;
+import io.trino.plugin.jdbc.aggregation.ImplementCorr;
 import io.trino.plugin.jdbc.aggregation.ImplementCount;
 import io.trino.plugin.jdbc.aggregation.ImplementCountAll;
 import io.trino.plugin.jdbc.aggregation.ImplementCountDistinct;
+import io.trino.plugin.jdbc.aggregation.ImplementCovariancePop;
+import io.trino.plugin.jdbc.aggregation.ImplementCovarianceSamp;
 import io.trino.plugin.jdbc.aggregation.ImplementMinMax;
+import io.trino.plugin.jdbc.aggregation.ImplementRegrIntercept;
+import io.trino.plugin.jdbc.aggregation.ImplementRegrSlope;
 import io.trino.plugin.jdbc.aggregation.ImplementStddevPop;
 import io.trino.plugin.jdbc.aggregation.ImplementStddevSamp;
 import io.trino.plugin.jdbc.aggregation.ImplementSum;
+import io.trino.plugin.jdbc.aggregation.ImplementVariancePop;
+import io.trino.plugin.jdbc.aggregation.ImplementVarianceSamp;
 import io.trino.plugin.jdbc.expression.JdbcConnectorExpressionRewriterBuilder;
 import io.trino.plugin.jdbc.expression.ParameterizedExpression;
 import io.trino.plugin.jdbc.logging.RemoteQueryModifier;
@@ -74,7 +81,6 @@ import io.trino.spi.type.VarcharType;
 
 import java.math.RoundingMode;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -165,6 +171,13 @@ public class SnowflakeClient
                         .add(new ImplementAvgBigint())
                         .add(new ImplementStddevSamp())
                         .add(new ImplementStddevPop())
+                        .add(new ImplementVarianceSamp())
+                        .add(new ImplementVariancePop())
+                        .add(new ImplementCovarianceSamp())
+                        .add(new ImplementCovariancePop())
+                        .add(new ImplementCorr())
+                        .add(new ImplementRegrIntercept())
+                        .add(new ImplementRegrSlope())
                         .build());
     }
 
@@ -246,7 +259,7 @@ public class SnowflakeClient
         }
 
         final Map<String, WriteMappingFunction> snowflakeWriteMappings = ImmutableMap.<String, WriteMappingFunction>builder()
-                .put("TimeType", writeType -> WriteMapping.longMapping("time", timeWriteFunction(((TimeType) writeType).getPrecision())))
+                .put("TimeType", writeType -> WriteMapping.longMapping(format("time(%s)", ((TimeType) writeType).getPrecision()), timeWriteFunction(((TimeType) writeType).getPrecision())))
                 .put("ShortTimestampType", SnowflakeClient::snowFlakeTimestampWriter)
                 .put("ShortTimestampWithTimeZoneType", SnowflakeClient::snowFlakeTimestampWithTZWriter)
                 .put("LongTimestampType", SnowflakeClient::snowFlakeTimestampWithTZWriter)
@@ -369,7 +382,7 @@ public class SnowflakeClient
             throw new TrinoException(NOT_SUPPORTED, "mapping.getPredicatePushdownController() is DISABLE_PUSHDOWN. Type was " + mapping.getType());
         }
 
-        return new ColumnMapping(mapping.getType(), mapping.getReadFunction(), mapping.getWriteFunction(), PredicatePushdownController.FULL_PUSHDOWN);
+        return ColumnMapping.mapping(mapping.getType(), mapping.getReadFunction(), mapping.getWriteFunction(), PredicatePushdownController.FULL_PUSHDOWN);
     }
 
     private static ColumnMapping timeColumnMapping(int precision)
@@ -469,26 +482,13 @@ public class SnowflakeClient
     private static LongWriteFunction timeWriteFunction(int precision)
     {
         checkArgument(precision <= MAX_SUPPORTED_TEMPORAL_PRECISION, "Unsupported precision: %s", precision);
-        return new LongWriteFunction()
-        {
-            @Override
-            public String getBindExpression()
-            {
-                return format("CAST(? AS time(%s))", precision);
+        return (statement, index, picosOfDay) -> {
+            picosOfDay = Timestamps.round(picosOfDay, 12 - precision);
+            if (picosOfDay == Timestamps.PICOSECONDS_PER_DAY) {
+                picosOfDay = 0;
             }
-
-            @Override
-            public void set(PreparedStatement statement, int index, long picosOfDay)
-                    throws SQLException
-            {
-                picosOfDay = Timestamps.round(picosOfDay, 12 - precision);
-                if (picosOfDay == Timestamps.PICOSECONDS_PER_DAY) {
-                    picosOfDay = 0;
-                }
-                LocalTime localTime = LocalTime.ofNanoOfDay(picosOfDay / PICOSECONDS_PER_NANOSECOND);
-                // statement.setObject(.., localTime) would yield incorrect end result for 23:59:59.999000
-                statement.setString(index, SNOWFLAKE_TIME_FORMATTER.format(localTime));
-            }
+            LocalTime localTime = LocalTime.ofNanoOfDay(picosOfDay / PICOSECONDS_PER_NANOSECOND);
+            statement.setString(index, SNOWFLAKE_TIME_FORMATTER.format(localTime));
         };
     }
 

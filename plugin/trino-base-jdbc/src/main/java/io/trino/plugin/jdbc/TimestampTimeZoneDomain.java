@@ -11,13 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.mysql;
+package io.trino.plugin.jdbc;
 
-public class TestMySqlTableStatisticsMySql5IndexStatistics
-        extends BaseMySqlTableStatisticsIndexStatisticsTest
+public enum TimestampTimeZoneDomain
 {
-    public TestMySqlTableStatisticsMySql5IndexStatistics()
-    {
-        super("mysql:5.5.46"); // oldest available on RDS
-    }
+    /**
+     * Connector can produce {@link io.trino.spi.type.TimestampWithTimeZoneType} values with varying zones.
+     */
+    ANY,
+
+    /**
+     * Connector can produce {@link io.trino.spi.type.TimestampWithTimeZoneType} values only with UTC zone.
+     */
+    UTC_ONLY,
 }
