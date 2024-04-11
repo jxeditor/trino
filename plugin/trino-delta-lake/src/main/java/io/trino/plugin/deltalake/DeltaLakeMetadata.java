@@ -825,7 +825,7 @@ public class DeltaLakeMetadata
                             return Stream.of();
                         }
                         String tableLocation = metastoreTable.get().location();
-                        TableSnapshot snapshot = transactionLogAccess.loadSnapshot(session, table, tableLocation);
+                        TableSnapshot snapshot = transactionLogAccess.loadSnapshot(session, table, tableLocation, Optional.empty());
                         MetadataEntry metadata = transactionLogAccess.getMetadataEntry(session, snapshot);
                         ProtocolEntry protocol = transactionLogAccess.getProtocolEntry(session, snapshot);
                         List<ColumnMetadata> columnMetadata = getTableColumnMetadata(metadata, protocol);
@@ -1261,9 +1261,9 @@ public class DeltaLakeMetadata
     {
         DeltaLakeOutputTableHandle handle = (DeltaLakeOutputTableHandle) tableHandle;
 
-        String schemaName = handle.getSchemaName();
-        String tableName = handle.getTableName();
-        String location = handle.getLocation();
+        String schemaName = handle.schemaName();
+        String tableName = handle.tableName();
+        String location = handle.location();
 
         List<DataFileInfo> dataFileInfos = fragments.stream()
                 .map(Slice::getBytes)
@@ -1271,31 +1271,31 @@ public class DeltaLakeMetadata
                 .collect(toImmutableList());
 
         SchemaTableName schemaTableName = schemaTableName(schemaName, tableName);
-        Table table = buildTable(session, schemaTableName, location, handle.isExternal());
+        Table table = buildTable(session, schemaTableName, location, handle.external());
 
-        ColumnMappingMode columnMappingMode = handle.getColumnMappingMode();
-        String schemaString = handle.getSchemaString();
-        List<String> columnNames = handle.getInputColumns().stream().map(DeltaLakeColumnHandle::getBaseColumnName).collect(toImmutableList());
-        List<String> physicalPartitionNames = handle.getInputColumns().stream()
+        ColumnMappingMode columnMappingMode = handle.columnMappingMode();
+        String schemaString = handle.schemaString();
+        List<String> columnNames = handle.inputColumns().stream().map(DeltaLakeColumnHandle::getBaseColumnName).collect(toImmutableList());
+        List<String> physicalPartitionNames = handle.inputColumns().stream()
                 .filter(column -> column.getColumnType() == PARTITION_KEY)
                 .map(DeltaLakeColumnHandle::getBasePhysicalColumnName)
                 .collect(toImmutableList());
         try {
             // For CTAS there is no risk of multiple writers racing. Using writer without transaction isolation so we are not limiting support for CTAS to
             // filesystems for which we have proper implementations of TransactionLogSynchronizers.
-            TransactionLogWriter transactionLogWriter = transactionLogWriterFactory.newWriterWithoutTransactionIsolation(session, handle.getLocation());
+            TransactionLogWriter transactionLogWriter = transactionLogWriterFactory.newWriterWithoutTransactionIsolation(session, handle.location());
 
             appendTableEntries(
                     0,
                     transactionLogWriter,
                     randomUUID().toString(),
                     schemaString,
-                    handle.getPartitionedBy(),
-                    configurationForNewTable(handle.getCheckpointInterval(), handle.getChangeDataFeedEnabled(), columnMappingMode, handle.getMaxColumnId()),
+                    handle.partitionedBy(),
+                    configurationForNewTable(handle.checkpointInterval(), handle.changeDataFeedEnabled(), columnMappingMode, handle.maxColumnId()),
                     CREATE_TABLE_AS_OPERATION,
                     session,
-                    handle.getComment(),
-                    handle.getProtocolEntry());
+                    handle.comment(),
+                    handle.protocolEntry());
             appendAddFileEntries(transactionLogWriter, dataFileInfos, physicalPartitionNames, columnNames, true);
             transactionLogWriter.flush();
 
@@ -2092,7 +2092,7 @@ public class DeltaLakeMetadata
     public void finishMerge(ConnectorSession session, ConnectorMergeTableHandle mergeTableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
     {
         DeltaLakeMergeTableHandle mergeHandle = (DeltaLakeMergeTableHandle) mergeTableHandle;
-        DeltaLakeTableHandle handle = mergeHandle.getTableHandle();
+        DeltaLakeTableHandle handle = mergeHandle.tableHandle();
 
         List<DeltaLakeMergeResult> mergeResults = fragments.stream()
                 .map(Slice::getBytes)
@@ -2110,7 +2110,7 @@ public class DeltaLakeMetadata
         List<DataFileInfo> newFiles = ImmutableList.copyOf(split.get(true));
         List<DataFileInfo> cdcFiles = ImmutableList.copyOf(split.get(false));
 
-        if (mergeHandle.getInsertTableHandle().isRetriesEnabled()) {
+        if (mergeHandle.insertTableHandle().isRetriesEnabled()) {
             cleanExtraOutputFiles(session, Location.of(handle.getLocation()), allFiles);
         }
 
@@ -2138,7 +2138,7 @@ public class DeltaLakeMetadata
             ColumnMappingMode columnMappingMode = getColumnMappingMode(handle.getMetadataEntry(), handle.getProtocolEntry());
             List<String> partitionColumns = getPartitionColumns(
                     handle.getMetadataEntry().getOriginalPartitionColumns(),
-                    mergeHandle.getInsertTableHandle().getInputColumns(),
+                    mergeHandle.insertTableHandle().getInputColumns(),
                     columnMappingMode);
 
             if (!cdcFiles.isEmpty()) {
