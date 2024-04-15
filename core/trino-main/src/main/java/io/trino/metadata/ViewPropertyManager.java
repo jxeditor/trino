@@ -11,16 +11,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.memory;
+package io.trino.metadata;
 
-import io.trino.spi.connector.ColumnHandle;
+import io.trino.connector.CatalogServiceProvider;
+import io.trino.spi.session.PropertyMetadata;
 
-public record MemoryColumnHandle(int columnIndex)
-        implements ColumnHandle
+import java.util.Map;
+
+import static io.trino.spi.StandardErrorCode.INVALID_VIEW_PROPERTY;
+
+public class ViewPropertyManager
+        extends AbstractCatalogPropertyManager
 {
-    @Override
-    public String toString()
+    public ViewPropertyManager(CatalogServiceProvider<Map<String, PropertyMetadata<?>>> connectorProperties)
     {
-        return Integer.toString(columnIndex);
+        super("view", INVALID_VIEW_PROPERTY, connectorProperties);
     }
 }
