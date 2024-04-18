@@ -87,6 +87,7 @@ public final class BigQueryQueryRunner
             return this;
         }
 
+        @CanIgnoreReturnValue
         public Builder setInitialTables(Iterable<TpchTable<?>> initialTables)
         {
             this.initialTables = ImmutableList.copyOf(requireNonNull(initialTables, "initialTables is null"));
@@ -116,7 +117,7 @@ public final class BigQueryQueryRunner
 
                 queryRunner.execute("CREATE SCHEMA IF NOT EXISTS " + TPCH_SCHEMA);
                 queryRunner.execute("CREATE SCHEMA IF NOT EXISTS " + TEST_SCHEMA);
-                copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, queryRunner.getDefaultSession(), initialTables);
+                copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, initialTables);
                 return queryRunner;
             }
             catch (Throwable e) {
