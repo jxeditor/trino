@@ -602,9 +602,9 @@ public class TracingMetadata
     @Override
     public Optional<ConnectorOutputMetadata> finishCreateTable(Session session, OutputTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
     {
-        Span span = startSpan("finishCreateTable", tableHandle.getCatalogHandle().getCatalogName());
+        Span span = startSpan("finishCreateTable", tableHandle.catalogHandle().getCatalogName());
         if (span.isRecording()) {
-            span.setAttribute(TrinoAttributes.TABLE, tableHandle.getConnectorHandle().toString());
+            span.setAttribute(TrinoAttributes.TABLE, tableHandle.connectorHandle().toString());
         }
         try (var ignored = scopedSpan(span)) {
             return delegate.finishCreateTable(session, tableHandle, fragments, computedStatistics);
@@ -650,9 +650,9 @@ public class TracingMetadata
     @Override
     public void finishStatisticsCollection(Session session, AnalyzeTableHandle tableHandle, Collection<ComputedStatistics> computedStatistics)
     {
-        Span span = startSpan("finishStatisticsCollection", tableHandle.getCatalogHandle().getCatalogName());
+        Span span = startSpan("finishStatisticsCollection", tableHandle.catalogHandle().getCatalogName());
         if (span.isRecording()) {
-            span.setAttribute(TrinoAttributes.TABLE, tableHandle.getConnectorHandle().toString());
+            span.setAttribute(TrinoAttributes.TABLE, tableHandle.connectorHandle().toString());
         }
         try (var ignored = scopedSpan(span)) {
             delegate.finishStatisticsCollection(session, tableHandle, computedStatistics);
@@ -698,9 +698,9 @@ public class TracingMetadata
     @Override
     public Optional<ConnectorOutputMetadata> finishInsert(Session session, InsertTableHandle tableHandle, List<TableHandle> sourceTableHandles, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
     {
-        Span span = startSpan("finishInsert", tableHandle.getCatalogHandle().getCatalogName());
+        Span span = startSpan("finishInsert", tableHandle.catalogHandle().getCatalogName());
         if (span.isRecording()) {
-            span.setAttribute(TrinoAttributes.TABLE, tableHandle.getConnectorHandle().toString());
+            span.setAttribute(TrinoAttributes.TABLE, tableHandle.connectorHandle().toString());
         }
         try (var ignored = scopedSpan(span)) {
             return delegate.finishInsert(session, tableHandle, sourceTableHandles, fragments, computedStatistics);
@@ -832,9 +832,9 @@ public class TracingMetadata
     @Override
     public void finishMerge(Session session, MergeHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
     {
-        Span span = startSpan("finishMerge", tableHandle.getTableHandle().getCatalogHandle().getCatalogName());
+        Span span = startSpan("finishMerge", tableHandle.tableHandle().catalogHandle().getCatalogName());
         if (span.isRecording()) {
-            span.setAttribute(TrinoAttributes.TABLE, tableHandle.getTableHandle().getConnectorHandle().toString());
+            span.setAttribute(TrinoAttributes.TABLE, tableHandle.tableHandle().connectorHandle().toString());
         }
         try (var ignored = scopedSpan(span)) {
             delegate.finishMerge(session, tableHandle, fragments, computedStatistics);
@@ -1016,8 +1016,8 @@ public class TracingMetadata
     public Optional<JoinApplicationResult<TableHandle>> applyJoin(Session session, JoinType joinType, TableHandle left, TableHandle right, ConnectorExpression joinCondition, Map<String, ColumnHandle> leftAssignments, Map<String, ColumnHandle> rightAssignments, JoinStatistics statistics)
     {
         Span span = startSpan("applyJoin");
-        if (span.isRecording() && left.getCatalogHandle().equals(right.getCatalogHandle())) {
-            span.setAttribute(TrinoAttributes.CATALOG, left.getCatalogHandle().getCatalogName().toString());
+        if (span.isRecording() && left.catalogHandle().equals(right.catalogHandle())) {
+            span.setAttribute(TrinoAttributes.CATALOG, left.catalogHandle().getCatalogName().toString());
         }
         try (var ignored = scopedSpan(span)) {
             return delegate.applyJoin(session, joinType, left, right, joinCondition, leftAssignments, rightAssignments, statistics);
@@ -1037,8 +1037,8 @@ public class TracingMetadata
     public Optional<TableFunctionApplicationResult<TableHandle>> applyTableFunction(Session session, TableFunctionHandle handle)
     {
         Span span = startSpan("applyTableFunction")
-                .setAttribute(TrinoAttributes.CATALOG, handle.getCatalogHandle().getCatalogName().toString())
-                .setAttribute(TrinoAttributes.HANDLE, handle.getFunctionHandle().toString());
+                .setAttribute(TrinoAttributes.CATALOG, handle.catalogHandle().getCatalogName().toString())
+                .setAttribute(TrinoAttributes.HANDLE, handle.functionHandle().toString());
         try (var ignored = scopedSpan(span)) {
             return delegate.applyTableFunction(session, handle);
         }
@@ -1595,8 +1595,8 @@ public class TracingMetadata
     {
         Span span = startSpan(methodName);
         if (span.isRecording()) {
-            span.setAttribute(TrinoAttributes.CATALOG, handle.getCatalogHandle().getCatalogName().toString());
-            span.setAttribute(TrinoAttributes.HANDLE, handle.getConnectorHandle().toString());
+            span.setAttribute(TrinoAttributes.CATALOG, handle.catalogHandle().getCatalogName().toString());
+            span.setAttribute(TrinoAttributes.HANDLE, handle.connectorHandle().toString());
         }
         return span;
     }
@@ -1605,8 +1605,8 @@ public class TracingMetadata
     {
         Span span = startSpan(methodName);
         if (span.isRecording()) {
-            span.setAttribute(TrinoAttributes.CATALOG, handle.getCatalogHandle().getCatalogName().toString());
-            span.setAttribute(TrinoAttributes.HANDLE, handle.getConnectorHandle().toString());
+            span.setAttribute(TrinoAttributes.CATALOG, handle.catalogHandle().getCatalogName().toString());
+            span.setAttribute(TrinoAttributes.HANDLE, handle.connectorHandle().toString());
         }
         return span;
     }

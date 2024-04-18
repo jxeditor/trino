@@ -405,8 +405,8 @@ public class LogicalPlanner
     private RelationPlan createAnalyzePlan(Analysis analysis, Analyze analyzeStatement)
     {
         AnalyzeMetadata analyzeMetadata = analysis.getAnalyzeMetadata().orElseThrow();
-        TableHandle targetTable = analyzeMetadata.getTableHandle();
-        TableStatisticsMetadata tableStatisticsMetadata = analyzeMetadata.getStatisticsMetadata();
+        TableHandle targetTable = analyzeMetadata.tableHandle();
+        TableStatisticsMetadata tableStatisticsMetadata = analyzeMetadata.statisticsMetadata();
 
         // Plan table scan
         Map<String, ColumnHandle> columnHandles = metadata.getColumnHandles(session, targetTable);
@@ -588,7 +588,7 @@ public class LogicalPlanner
                 .map(ColumnMetadata::getName)
                 .collect(toImmutableList());
 
-        TableStatisticsMetadata statisticsMetadata = metadata.getStatisticsCollectionMetadataForWrite(session, tableHandle.getCatalogHandle(), tableMetadata.metadata());
+        TableStatisticsMetadata statisticsMetadata = metadata.getStatisticsCollectionMetadataForWrite(session, tableHandle.catalogHandle(), tableMetadata.metadata());
 
         if (materializedViewRefreshWriterTarget.isPresent()) {
             return createTableWriterPlan(

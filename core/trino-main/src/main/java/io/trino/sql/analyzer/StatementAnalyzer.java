@@ -671,7 +671,7 @@ class StatementAnalyzer
                     Column::new);
 
             analysis.setUpdateTarget(
-                    targetTableHandle.get().getCatalogHandle().getVersion(),
+                    targetTableHandle.get().catalogHandle().getVersion(),
                     targetTable,
                     Optional.empty(),
                     Optional.of(Streams.zip(
@@ -846,7 +846,7 @@ class StatementAnalyzer
             node.getWhere().ifPresent(where -> analyzeWhere(node, tableScope, where));
 
             analysis.setUpdateType("DELETE");
-            analysis.setUpdateTarget(handle.getCatalogHandle().getVersion(), tableName, Optional.of(table), Optional.empty());
+            analysis.setUpdateTarget(handle.catalogHandle().getVersion(), tableName, Optional.of(table), Optional.empty());
             Scope accessControlScope = Scope.builder()
                     .withRelationType(RelationId.anonymous(), analysis.getScope(table).getRelationType())
                     .build();
@@ -871,7 +871,7 @@ class StatementAnalyzer
                     .orElseThrow(() -> semanticException(TABLE_NOT_FOUND, node, "Table '%s' does not exist", tableName));
 
             analysis.setUpdateType("ANALYZE");
-            analysis.setUpdateTarget(tableHandle.getCatalogHandle().getVersion(), tableName, Optional.empty(), Optional.empty());
+            analysis.setUpdateTarget(tableHandle.catalogHandle().getVersion(), tableName, Optional.empty(), Optional.empty());
 
             validateProperties(node.getProperties(), scope);
             String catalogName = tableName.catalogName();
@@ -923,7 +923,7 @@ class StatementAnalyzer
                             true,
                             false));
                     analysis.setUpdateType("CREATE TABLE");
-                    analysis.setUpdateTarget(targetTableHandle.get().getCatalogHandle().getVersion(), targetTable, Optional.empty(), Optional.of(ImmutableList.of()));
+                    analysis.setUpdateTarget(targetTableHandle.get().catalogHandle().getVersion(), targetTable, Optional.empty(), Optional.of(ImmutableList.of()));
                     return createAndAssignScope(node, scope, Field.newUnqualified("rows", BIGINT));
                 }
                 throw semanticException(TABLE_ALREADY_EXISTS, node, "Destination table '%s' already exists", targetTable);
@@ -1300,7 +1300,7 @@ class StatementAnalyzer
             analysis.setTableExecuteHandle(executeHandle);
 
             analysis.setUpdateType("ALTER TABLE EXECUTE");
-            analysis.setUpdateTarget(executeHandle.getCatalogHandle().getVersion(), tableName, Optional.of(table), Optional.empty());
+            analysis.setUpdateTarget(executeHandle.catalogHandle().getVersion(), tableName, Optional.of(table), Optional.empty());
 
             return createAndAssignScope(node, scope, Field.newUnqualified("rows", BIGINT));
         }
@@ -1665,8 +1665,8 @@ class StatementAnalyzer
             TableFunctionMetadata tableFunctionMetadata = resolveTableFunction(node)
                     .orElseThrow(() -> semanticException(FUNCTION_NOT_FOUND, node, "Table function '%s' not registered", node.getName()));
 
-            ConnectorTableFunction function = tableFunctionMetadata.getFunction();
-            CatalogHandle catalogHandle = tableFunctionMetadata.getCatalogHandle();
+            ConnectorTableFunction function = tableFunctionMetadata.function();
+            CatalogHandle catalogHandle = tableFunctionMetadata.catalogHandle();
 
             Node errorLocation = node;
             if (!node.getArguments().isEmpty()) {
@@ -2544,11 +2544,11 @@ class StatementAnalyzer
             List<Field> viewFields = columns.stream()
                     .map(column -> Field.newQualified(
                             table.getName(),
-                            Optional.of(column.getName()),
+                            Optional.of(column.name()),
                             getViewColumnType(column, name, table),
                             false,
                             Optional.of(name),
-                            Optional.of(column.getName()),
+                            Optional.of(column.name()),
                             false))
                     .collect(toImmutableList());
 
@@ -3459,7 +3459,7 @@ class StatementAnalyzer
             }
 
             analysis.setUpdateTarget(
-                    handle.getCatalogHandle().getVersion(),
+                    handle.catalogHandle().getVersion(),
                     tableName,
                     Optional.of(table),
                     Optional.of(updatedColumnSchemas.stream()
@@ -3630,7 +3630,7 @@ class StatementAnalyzer
                     .map(columnHandle -> new OutputColumn(new Column(columnHandle, dataColumnTypes.get(columnHandle).toString()), ImmutableSet.of()))
                     .collect(toImmutableList());
 
-            analysis.setUpdateTarget(targetTableHandle.getCatalogHandle().getVersion(), tableName, Optional.of(table), Optional.of(updatedColumns));
+            analysis.setUpdateTarget(targetTableHandle.catalogHandle().getVersion(), tableName, Optional.of(table), Optional.of(updatedColumns));
             List<List<ColumnHandle>> mergeCaseColumnHandles = buildCaseColumnLists(merge, dataColumnSchemas, allColumnHandles);
 
             createMergeAnalysis(table, targetTableHandle, tableSchema, targetTableScope, joinScope, mergeCaseColumnHandles);
@@ -5005,13 +5005,13 @@ class StatementAnalyzer
                             i));
                 }
                 String fieldName = field.getName().orElseThrow();
-                if (!column.getName().equalsIgnoreCase(fieldName)) {
+                if (!column.name().equalsIgnoreCase(fieldName)) {
                     return Optional.of(format(
                             "column [%s] of type %s projected from query view at position %s has a different name from column [%s] of type %s stored in view definition",
                             fieldName,
                             field.getType(),
                             i,
-                            column.getName(),
+                            column.name(),
                             type));
                 }
                 if (!typeCoercion.canCoerce(field.getType(), type)) {
@@ -5020,7 +5020,7 @@ class StatementAnalyzer
                             fieldName,
                             field.getType(),
                             i,
-                            column.getName(),
+                            column.name(),
                             type));
                 }
             }
@@ -5031,10 +5031,10 @@ class StatementAnalyzer
         private Type getViewColumnType(ViewColumn column, QualifiedObjectName name, Node node)
         {
             try {
-                return plannerContext.getTypeManager().getType(column.getType());
+                return plannerContext.getTypeManager().getType(column.type());
             }
             catch (TypeNotFoundException e) {
-                throw semanticException(INVALID_VIEW, node, e, "Unknown type '%s' for column '%s' in view: %s", column.getType(), column.getName(), name);
+                throw semanticException(INVALID_VIEW, node, e, "Unknown type '%s' for column '%s' in view: %s", column.type(), column.name(), name);
             }
         }
 
@@ -5860,9 +5860,9 @@ class StatementAnalyzer
 
         private void validateVersionPointer(QueryPeriod queryPeriod, TableVersion extractedVersion)
         {
-            Type type = extractedVersion.getObjectType();
-            Object pointer = extractedVersion.getPointer();
-            if (extractedVersion.getPointerType() == PointerType.TEMPORAL) {
+            Type type = extractedVersion.objectType();
+            Object pointer = extractedVersion.pointer();
+            if (extractedVersion.pointerType() == PointerType.TEMPORAL) {
                 // Before checking if the connector supports the version type, verify that version is a valid time-based type
                 if (!(type instanceof TimestampWithTimeZoneType ||
                         type instanceof TimestampType ||

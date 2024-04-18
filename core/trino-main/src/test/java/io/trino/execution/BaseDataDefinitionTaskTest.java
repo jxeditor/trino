@@ -444,7 +444,7 @@ public abstract class BaseDataDefinitionTaskTest
 
         private SchemaTableName getTableName(TableHandle tableHandle)
         {
-            return ((TestingTableHandle) tableHandle.getConnectorHandle()).getTableName();
+            return ((TestingTableHandle) tableHandle.connectorHandle()).getTableName();
         }
 
         @Override
@@ -520,7 +520,7 @@ public abstract class BaseDataDefinitionTaskTest
                             view.getCatalog(),
                             view.getSchema(),
                             view.getColumns().stream()
-                                    .map(currentViewColumn -> columnName.equals(currentViewColumn.getName()) ? new ViewColumn(currentViewColumn.getName(), currentViewColumn.getType(), comment) : currentViewColumn)
+                                    .map(currentViewColumn -> columnName.equals(currentViewColumn.name()) ? new ViewColumn(currentViewColumn.name(), currentViewColumn.type(), comment) : currentViewColumn)
                                     .collect(toImmutableList()),
                             view.getGracePeriod(),
                             view.getComment(),
@@ -616,7 +616,7 @@ public abstract class BaseDataDefinitionTaskTest
                             view.getCatalog(),
                             view.getSchema(),
                             view.getColumns().stream()
-                                    .map(currentViewColumn -> columnName.equals(currentViewColumn.getName()) ? new ViewColumn(currentViewColumn.getName(), currentViewColumn.getType(), comment) : currentViewColumn)
+                                    .map(currentViewColumn -> columnName.equals(currentViewColumn.name()) ? new ViewColumn(currentViewColumn.name(), currentViewColumn.type(), comment) : currentViewColumn)
                                     .collect(toImmutableList()),
                             view.getComment(),
                             view.getRunAsIdentity(),
