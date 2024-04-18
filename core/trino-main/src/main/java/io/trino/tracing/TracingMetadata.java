@@ -1318,8 +1318,8 @@ public class TracingMetadata
     public AggregationFunctionMetadata getAggregationFunctionMetadata(Session session, ResolvedFunction resolvedFunction)
     {
         Span span = startSpan("getAggregationFunctionMetadata")
-                .setAttribute(TrinoAttributes.CATALOG, resolvedFunction.getCatalogHandle().getCatalogName().toString())
-                .setAttribute(TrinoAttributes.FUNCTION, resolvedFunction.getSignature().getName().toString());
+                .setAttribute(TrinoAttributes.CATALOG, resolvedFunction.catalogHandle().getCatalogName().toString())
+                .setAttribute(TrinoAttributes.FUNCTION, resolvedFunction.signature().getName().toString());
         try (var ignored = scopedSpan(span)) {
             return delegate.getAggregationFunctionMetadata(session, resolvedFunction);
         }
@@ -1562,9 +1562,9 @@ public class TracingMetadata
     private Span startSpan(String methodName, QualifiedObjectName table)
     {
         return startSpan(methodName)
-                .setAttribute(TrinoAttributes.CATALOG, table.getCatalogName())
-                .setAttribute(TrinoAttributes.SCHEMA, table.getSchemaName())
-                .setAttribute(TrinoAttributes.TABLE, table.getObjectName());
+                .setAttribute(TrinoAttributes.CATALOG, table.catalogName())
+                .setAttribute(TrinoAttributes.SCHEMA, table.schemaName())
+                .setAttribute(TrinoAttributes.TABLE, table.objectName());
     }
 
     private Span startSpan(String methodName, CatalogSchemaTableName table)

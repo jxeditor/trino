@@ -18,6 +18,7 @@ import io.trino.Session;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.spi.TrinoException;
+import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.SqlRow;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.function.CatalogSchemaFunctionName;
@@ -29,6 +30,7 @@ import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
 import io.trino.sql.InterpretedFunctionInvoker;
 import io.trino.sql.PlannerContext;
+import io.trino.sql.ir.Array;
 import io.trino.sql.ir.Between;
 import io.trino.sql.ir.Bind;
 import io.trino.sql.ir.Call;
@@ -72,6 +74,9 @@ import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.trino.metadata.GlobalFunctionCatalog.builtinFunctionName;
 import static io.trino.metadata.OperatorNameUtil.mangleOperatorName;
+import static io.trino.operator.scalar.JsonStringToArrayCast.JSON_STRING_TO_ARRAY_NAME;
+import static io.trino.operator.scalar.JsonStringToMapCast.JSON_STRING_TO_MAP_NAME;
+import static io.trino.operator.scalar.JsonStringToRowCast.JSON_STRING_TO_ROW_NAME;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.block.RowValueBuilder.buildRowValue;
 import static io.trino.spi.function.InvocationConvention.InvocationArgumentConvention.NEVER_NULL;
@@ -594,7 +599,7 @@ public class IrExpressionInterpreter
         protected Expression visitCall(Call node, SymbolResolver context)
         {
             ResolvedFunction function = node.function();
-            if (function.getName().getFunctionName().equals(mangleOperatorName(NEGATION))) {
+            if (function.name().getFunctionName().equals(mangleOperatorName(NEGATION))) {
                 return processNegation(node, context);
             }
 
@@ -602,7 +607,7 @@ public class IrExpressionInterpreter
                     .map(argument -> processWithExceptionHandling(argument, context))
                     .toList();
 
-            FunctionNullability nullability = function.getFunctionNullability();
+            FunctionNullability nullability = function.functionNullability();
             for (int i = 0; i < arguments.size(); i++) {
                 Expression argument = arguments.get(i);
                 if (isConstantNull(argument) && !nullability.isArgumentNullable(i)) {
@@ -611,9 +616,9 @@ public class IrExpressionInterpreter
             }
 
             if ((evaluate ||
-                    function.isDeterministic() && // constant fold non-deterministic functions only in evaluation mode
+                    function.deterministic() && // constant fold non-deterministic functions only in evaluation mode
                             !isDynamicFilter(node) &&
-                            !function.getName().equals(FAIL_NAME) &&
+                            !function.name().equals(FAIL_NAME) &&
                             arguments.stream().allMatch(e -> e instanceof Constant || e instanceof Lambda && isDeterministic(e)))) {
                 List<Object> argumentValues = arguments.stream()
                         .map(argument -> switch (argument) {
@@ -676,7 +681,7 @@ public class IrExpressionInterpreter
 
             return switch (value) {
                 case Constant constant -> new Constant(negation.type(), functionInvoker.invoke(negation.function(), connectorSession, ImmutableList.of(constant.value())));
-                case Call inner when inner.function().getName().equals(builtinFunctionName(NEGATION)) -> inner.arguments().getFirst(); // double negation
+                case Call inner when inner.function().name().equals(builtinFunctionName(NEGATION)) -> inner.arguments().getFirst(); // double negation
                 case Expression inner -> new Call(negation.function(), ImmutableList.of(inner));
             };
         }
@@ -741,6 +746,7 @@ public class IrExpressionInterpreter
             Expression value = processWithExceptionHandling(node.expression(), context);
 
             return switch (value) {
+                case Call call when call.function().name().equals(builtinFunctionName("json_parse")) -> processJsonParseWithinCast(node, call);
                 case Expression expression when expression.type().equals(node.type()) -> expression;
                 case Constant constant when constant.value() == null -> new Constant(node.type(), null);
                 case Constant constant -> {
@@ -761,6 +767,36 @@ public class IrExpressionInterpreter
                 }
                 default -> new Cast(value, node.type(), node.safe());
             };
+        }
+
+        // Optimization for CAST(JSON_PARSE(...) AS ARRAY/MAP/ROW)
+        private Expression processJsonParseWithinCast(Cast cast, Call jsonParse)
+        {
+            Expression string = jsonParse.arguments().getFirst();
+            return switch (cast.type()) {
+                case ArrayType arrayType -> new Call(metadata.getCoercion(builtinFunctionName(JSON_STRING_TO_ARRAY_NAME), string.type(), arrayType), jsonParse.arguments());
+                case MapType mapType -> new Call(metadata.getCoercion(builtinFunctionName(JSON_STRING_TO_MAP_NAME), string.type(), mapType), jsonParse.arguments());
+                case RowType rowType -> new Call(metadata.getCoercion(builtinFunctionName(JSON_STRING_TO_ROW_NAME), string.type(), rowType), jsonParse.arguments());
+                default -> cast;
+            };
+        }
+
+        @Override
+        protected Expression visitArray(Array node, SymbolResolver context)
+        {
+            List<Expression> elements = node.elements().stream()
+                    .map(field -> processWithExceptionHandling(field, context))
+                    .toList();
+
+            if (elements.stream().allMatch(Constant.class::isInstance)) {
+                BlockBuilder builder = node.elementType().createBlockBuilder(null, node.elements().size());
+                for (Expression element : elements) {
+                    writeNativeValue(node.elementType(), builder, ((Constant) element).value());
+                }
+                return new Constant(node.type(), builder.build());
+            }
+
+            return new Array(node.elementType(), elements);
         }
 
         @Override
