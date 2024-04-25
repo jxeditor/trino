@@ -72,7 +72,7 @@ import io.trino.util.Reflection;
 import java.lang.invoke.MethodHandle;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.IdentityHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -287,8 +287,8 @@ public final class SqlRoutineCompiler
         private final Map<LambdaDefinitionExpression, CompiledLambda> compiledLambdaMap;
         private final Map<IrVariable, Variable> variables;
 
-        private final Map<IrLabel, LabelNode> continueLabels = new IdentityHashMap<>();
-        private final Map<IrLabel, LabelNode> breakLabels = new IdentityHashMap<>();
+        private final Map<IrLabel, LabelNode> continueLabels = new HashMap<>();
+        private final Map<IrLabel, LabelNode> breakLabels = new HashMap<>();
 
         public BytecodeVisitor(
                 CachedInstanceBinder cachedInstanceBinder,
@@ -333,11 +333,11 @@ public final class SqlRoutineCompiler
             LabelNode continueLabel = new LabelNode("continue");
             LabelNode breakLabel = new LabelNode("break");
 
-            if (node.label().isPresent()) {
-                continueLabels.put(node.label().get(), continueLabel);
-                breakLabels.put(node.label().get(), breakLabel);
+            node.label().ifPresent(label -> {
+                verify(continueLabels.putIfAbsent(label, continueLabel) == null, "continue label for loop label %s already exists", label);
+                verify(breakLabels.putIfAbsent(label, breakLabel) == null, "break label for loop label %s already exists", label);
                 block.visitLabel(continueLabel);
-            }
+            });
 
             for (IrStatement statement : node.statements()) {
                 block.append(process(statement, scope));
@@ -439,8 +439,8 @@ public final class SqlRoutineCompiler
             LabelNode breakLabel = new LabelNode("break");
 
             if (label.isPresent()) {
-                continueLabels.put(label.get(), continueLabel);
-                breakLabels.put(label.get(), breakLabel);
+                verify(continueLabels.putIfAbsent(label.get(), continueLabel) == null, "continue label for loop label %s already exists", label.get());
+                verify(breakLabels.putIfAbsent(label.get(), breakLabel) == null, "break label for loop label %s already exists", label.get());
                 block.visitLabel(continueLabel);
             }
 
