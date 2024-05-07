@@ -54,8 +54,6 @@
         <module>lib/trino-memory-context</module>
         <module>lib/trino-orc</module>
         <module>lib/trino-parquet</module>
-        <!-- TODO(https://github.com/trinodb/trino/issues/13051): Remove whole module when Phoenix5 is released -->
-        <module>lib/trino-phoenix5-patched</module>
         <module>lib/trino-plugin-toolkit</module>
         <module>lib/trino-record-decoder</module>
         <module>plugin/trino-accumulo</module>
@@ -142,6 +140,8 @@
 
     <properties>
         <project.build.targetJdk>22</project.build.targetJdk>
+        <!-- for reproducible build support, updated by release plugin -->
+        <project.build.outputTimestamp>2024-04-29T23:23:14Z</project.build.outputTimestamp>
         <!-- TODO remove this property when no module overrides it -->
         <trino.error-prone.guarded-by>ERROR</trino.error-prone.guarded-by>
 
@@ -186,7 +186,7 @@
         <dep.aws-sdk.version>1.12.715</dep.aws-sdk.version>
         <dep.cassandra.version>4.17.0</dep.cassandra.version>
         <dep.confluent.version>7.5.1</dep.confluent.version>
-        <dep.docker.images.version>93</dep.docker.images.version>
+        <dep.docker.images.version>94</dep.docker.images.version>
         <dep.drift.version>1.21</dep.drift.version>
         <dep.errorprone.version>2.27.1</dep.errorprone.version>
         <dep.flyway.version>10.12.0</dep.flyway.version>
@@ -1284,13 +1284,6 @@
                 <version>${project.version}</version>
             </dependency>
 
-            <!-- TODO(https://github.com/trinodb/trino/issues/13051): Remove when Phoenix5 is released -->
-            <dependency>
-                <groupId>io.trino</groupId>
-                <artifactId>trino-phoenix5-patched</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
             <dependency>
                 <groupId>io.trino</groupId>
                 <artifactId>trino-pinot</artifactId>
@@ -1526,7 +1519,7 @@
             <dependency>
                 <groupId>io.trino.coral</groupId>
                 <artifactId>coral</artifactId>
-                <version>2.2.14-1</version>
+                <version>2.2.14-2</version>
             </dependency>
 
             <dependency>
