@@ -179,11 +179,11 @@
         <!-- keep dependency properties sorted -->
         <dep.accumulo-hadoop.version>2.7.7-1</dep.accumulo-hadoop.version>
         <dep.accumulo.version>3.0.0</dep.accumulo.version>
-        <dep.airlift.version>246</dep.airlift.version>
+        <dep.airlift.version>247</dep.airlift.version>
         <dep.alluxio.version>312</dep.alluxio.version>
         <dep.antlr.version>4.13.1</dep.antlr.version>
         <dep.avro.version>1.11.3</dep.avro.version>
-        <dep.aws-sdk.version>1.12.715</dep.aws-sdk.version>
+        <dep.aws-sdk.version>1.12.716</dep.aws-sdk.version>
         <dep.cassandra.version>4.17.0</dep.cassandra.version>
         <dep.confluent.version>7.5.1</dep.confluent.version>
         <dep.docker.images.version>94</dep.docker.images.version>
@@ -305,7 +305,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>2.25.45</version>
+                <version>2.25.46</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -692,7 +692,7 @@
             <dependency>
                 <groupId>io.airlift.discovery</groupId>
                 <artifactId>discovery-server</artifactId>
-                <version>1.36</version>
+                <version>1.37</version>
                 <exclusions>
                     <exclusion>
                         <groupId>io.airlift</groupId>
@@ -1525,7 +1525,7 @@
             <dependency>
                 <groupId>io.trino.hadoop</groupId>
                 <artifactId>hadoop-apache</artifactId>
-                <version>3.3.5-2</version>
+                <version>3.3.5-3</version>
             </dependency>
 
             <dependency>
