@@ -11,19 +11,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.prometheus;
+package io.trino.metadata;
 
-import io.trino.spi.type.Type;
+import io.trino.spi.ErrorCodeSupplier;
+import io.trino.spi.TrinoException;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Strings.isNullOrEmpty;
-import static java.util.Objects.requireNonNull;
-
-public record PrometheusColumn(String name, Type type)
+public class LanguageFunctionAnalysisException
+        extends TrinoException
 {
-    public PrometheusColumn
+    public LanguageFunctionAnalysisException(ErrorCodeSupplier errorCode, String message)
     {
-        checkArgument(!isNullOrEmpty(name), "name is null or is empty");
-        requireNonNull(type, "type is null");
+        super(errorCode, message);
     }
 }

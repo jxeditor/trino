@@ -2859,12 +2859,15 @@ public class HiveMetadata
                 else if (e.getErrorCode().equals(HIVE_INVALID_VIEW_DATA.toErrorCode())) {
                     // Ignore views that are not valid
                 }
+                else if (e.getErrorCode().equals(HIVE_UNSUPPORTED_FORMAT.toErrorCode())) {
+                    // Ignore views that are not supported
+                }
                 else if (e.getErrorCode().equals(TABLE_NOT_FOUND.toErrorCode()) || e instanceof TableNotFoundException || e instanceof ViewNotFoundException) {
                     // Ignore view that was dropped during query execution (race condition)
                 }
-                else {
-                    throw e;
-                }
+            }
+            catch (RuntimeException e) {
+                log.warn(e, "Failed to get metadata for view: %s", name);
             }
         }
         return views.buildOrThrow();

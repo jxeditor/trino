@@ -355,7 +355,7 @@ public final class SqlRoutineCompiler
         {
             return new BytecodeBlock()
                     .append(compile(node.value(), scope))
-                    .ret(wrap(node.value().getType().getJavaType()));
+                    .ret(wrap(node.value().type().getJavaType()));
         }
 
         @Override
@@ -456,7 +456,7 @@ public final class SqlRoutineCompiler
         private BytecodeNode compile(RowExpression expression, Scope scope)
         {
             if (expression instanceof InputReferenceExpression input) {
-                return scope.getVariable(name(input.getField()));
+                return scope.getVariable(name(input.field()));
             }
 
             RowExpressionCompiler rowExpressionCompiler = new RowExpressionCompiler(
@@ -468,15 +468,15 @@ public final class SqlRoutineCompiler
 
             return new BytecodeBlock()
                     .comment("boolean wasNull = false;")
-                    .putVariable(scope.getVariable("wasNull"), expression.getType().getJavaType() == void.class)
+                    .putVariable(scope.getVariable("wasNull"), expression.type().getJavaType() == void.class)
                     .comment("expression: " + expression)
                     .append(rowExpressionCompiler.compile(expression, scope))
-                    .append(boxPrimitiveIfNecessary(scope, wrap(expression.getType().getJavaType())));
+                    .append(boxPrimitiveIfNecessary(scope, wrap(expression.type().getJavaType())));
         }
 
         private BytecodeNode compileBoolean(RowExpression expression, Scope scope)
         {
-            checkArgument(expression.getType().equals(BooleanType.BOOLEAN), "type must be boolean");
+            checkArgument(expression.type().equals(BooleanType.BOOLEAN), "type must be boolean");
 
             LabelNode notNull = new LabelNode("notNull");
             LabelNode done = new LabelNode("done");
@@ -532,9 +532,9 @@ public final class SqlRoutineCompiler
         @Override
         public BytecodeNode visitInputReference(InputReferenceExpression node, Scope scope)
         {
-            Class<?> boxedType = wrap(node.getType().getJavaType());
+            Class<?> boxedType = wrap(node.type().getJavaType());
             return new BytecodeBlock()
-                    .append(scope.getVariable(name(node.getField())))
+                    .append(scope.getVariable(name(node.field())))
                     .append(unboxPrimitiveIfNecessary(scope, boxedType));
         }
 
