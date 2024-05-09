@@ -10,7 +10,7 @@
 
     <groupId>io.trino</groupId>
     <artifactId>trino-root</artifactId>
-    <version>447-SNAPSHOT</version>
+    <version>448-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>${project.artifactId}</name>
@@ -141,7 +141,7 @@
     <properties>
         <project.build.targetJdk>22</project.build.targetJdk>
         <!-- for reproducible build support, updated by release plugin -->
-        <project.build.outputTimestamp>2024-04-29T23:23:14Z</project.build.outputTimestamp>
+        <project.build.outputTimestamp>2024-05-08T23:21:50Z</project.build.outputTimestamp>
         <!-- TODO remove this property when no module overrides it -->
         <trino.error-prone.guarded-by>ERROR</trino.error-prone.guarded-by>
 
@@ -179,7 +179,7 @@
         <!-- keep dependency properties sorted -->
         <dep.accumulo-hadoop.version>2.7.7-1</dep.accumulo-hadoop.version>
         <dep.accumulo.version>3.0.0</dep.accumulo.version>
-        <dep.airlift.version>247</dep.airlift.version>
+        <dep.airlift.version>248</dep.airlift.version>
         <dep.alluxio.version>312</dep.alluxio.version>
         <dep.antlr.version>4.13.1</dep.antlr.version>
         <dep.avro.version>1.11.3</dep.avro.version>
@@ -187,7 +187,7 @@
         <dep.cassandra.version>4.17.0</dep.cassandra.version>
         <dep.confluent.version>7.5.1</dep.confluent.version>
         <dep.docker.images.version>94</dep.docker.images.version>
-        <dep.drift.version>1.21</dep.drift.version>
+        <dep.drift.version>1.22</dep.drift.version>
         <dep.errorprone.version>2.27.1</dep.errorprone.version>
         <dep.flyway.version>10.12.0</dep.flyway.version>
         <dep.google.http.client.version>1.44.1</dep.google.http.client.version>
@@ -200,7 +200,7 @@
         <dep.kafka-clients.version>3.7.0</dep.kafka-clients.version>
         <dep.okio.version>3.9.0</dep.okio.version>
         <dep.packaging.version>${dep.airlift.version}</dep.packaging.version>
-        <dep.parquet.version>1.13.1</dep.parquet.version>
+        <dep.parquet.version>1.14.0</dep.parquet.version>
         <dep.plugin.failsafe.version>${dep.plugin.surefire.version}</dep.plugin.failsafe.version>
         <dep.protobuf.version>3.25.3</dep.protobuf.version>
         <dep.snowflake.version>3.16.0</dep.snowflake.version>
@@ -657,7 +657,7 @@
             <dependency>
                 <groupId>info.picocli</groupId>
                 <artifactId>picocli</artifactId>
-                <version>4.7.5</version>
+                <version>4.7.6</version>
             </dependency>
 
             <dependency>
@@ -1533,6 +1533,10 @@
                 <artifactId>hive-apache</artifactId>
                 <version>3.1.2-22</version>
                 <exclusions>
+                    <exclusion>
+                        <groupId>javax.annotation</groupId>
+                        <artifactId>javax.annotation-api</artifactId>
+                    </exclusion>
                     <exclusion>
                         <groupId>org.apache.parquet</groupId>
                         <artifactId>parquet-hadoop</artifactId>

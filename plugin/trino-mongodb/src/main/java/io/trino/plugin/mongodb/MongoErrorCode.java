@@ -11,14 +11,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.redshift;
+package io.trino.plugin.mongodb;
 
-import io.airlift.configuration.DefunctConfig;
+import io.trino.spi.ErrorCode;
+import io.trino.spi.ErrorCodeSupplier;
+import io.trino.spi.ErrorType;
 
-@DefunctConfig({
-        "redshift.disable-automatic-fetch-size",
-        "redshift.use-legacy-type-mapping",
-})
-public class RedshiftConfig
+import static io.trino.spi.ErrorType.EXTERNAL;
+
+public enum MongoErrorCode
+        implements ErrorCodeSupplier
 {
+    MONGODB_INVALID_TYPE(0, EXTERNAL),
+    /**/;
+
+    private final ErrorCode errorCode;
+
+    MongoErrorCode(int code, ErrorType type)
+    {
+        errorCode = new ErrorCode(code + 0x0512_0000, name(), type);
+    }
+
+    @Override
+    public ErrorCode toErrorCode()
+    {
+        return errorCode;
+    }
 }
