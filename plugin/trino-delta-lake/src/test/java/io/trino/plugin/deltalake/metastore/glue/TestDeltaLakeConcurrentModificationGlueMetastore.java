@@ -75,7 +75,7 @@ public class TestDeltaLakeConcurrentModificationGlueMetastore
         GlueHiveMetastoreConfig glueConfig = new GlueHiveMetastoreConfig()
                 .setDefaultWarehouseDir(dataDirectory.toUri().toString());
 
-        GlueClient glueClient = createGlueClient(new GlueHiveMetastoreConfig(), OpenTelemetry.noop());
+        GlueClient glueClient = closeAfterClass(createGlueClient(new GlueHiveMetastoreConfig(), OpenTelemetry.noop()));
         GlueClient proxiedGlueClient = newProxy(GlueClient.class, (proxy, method, args) -> {
             Object result;
             try {
@@ -125,6 +125,7 @@ public class TestDeltaLakeConcurrentModificationGlueMetastore
     {
         if (metastore != null) {
             metastore.dropDatabase(SCHEMA, false);
+            metastore.shutdown();
             deleteRecursively(dataDirectory, ALLOW_INSECURE);
         }
     }

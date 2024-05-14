@@ -73,7 +73,7 @@ public class TestHiveConcurrentModificationGlueMetastore
         GlueHiveMetastoreConfig glueConfig = new GlueHiveMetastoreConfig()
                 .setDefaultWarehouseDir(dataDirectory.toUri().toString());
 
-        GlueClient glueClient = createGlueClient(new GlueHiveMetastoreConfig(), OpenTelemetry.noop());
+        GlueClient glueClient = closeAfterClass(createGlueClient(new GlueHiveMetastoreConfig(), OpenTelemetry.noop()));
         GlueClient proxiedGlueClient = newProxy(GlueClient.class, (proxy, method, args) -> {
             try {
                 if (method.getName().equals("updateTable")) {
@@ -142,6 +142,7 @@ public class TestHiveConcurrentModificationGlueMetastore
     {
         if (metastore != null) {
             metastore.dropDatabase(SCHEMA, false);
+            metastore.shutdown();
             deleteRecursively(dataDirectory, ALLOW_INSECURE);
         }
     }
