@@ -46,6 +46,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
+import com.google.errorprone.annotations.concurrent.GuardedBy;
 import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
@@ -76,7 +77,6 @@ import java.util.stream.Stream;
 import static com.datastax.oss.driver.api.querybuilder.QueryBuilder.literal;
 import static com.datastax.oss.driver.api.querybuilder.QueryBuilder.selectFrom;
 import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.base.Suppliers.memoize;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.Iterables.getOnlyElement;
@@ -105,8 +105,12 @@ public class CassandraSession
 
     private final CassandraTypeManager cassandraTypeManager;
     private final JsonCodec<List<ExtraColumnMetadata>> extraColumnMetadataCodec;
-    private final Supplier<CqlSession> session;
     private final Duration noHostAvailableRetryTimeout;
+
+    @GuardedBy("this")
+    private Supplier<CqlSession> sessionSupplier;
+    @GuardedBy("this")
+    private CqlSession session;
 
     public CassandraSession(
             CassandraTypeManager cassandraTypeManager,
@@ -117,7 +121,16 @@ public class CassandraSession
         this.cassandraTypeManager = requireNonNull(cassandraTypeManager, "cassandraTypeManager is null");
         this.extraColumnMetadataCodec = requireNonNull(extraColumnMetadataCodec, "extraColumnMetadataCodec is null");
         this.noHostAvailableRetryTimeout = requireNonNull(noHostAvailableRetryTimeout, "noHostAvailableRetryTimeout is null");
-        this.session = memoize(sessionSupplier::get);
+        this.sessionSupplier = requireNonNull(sessionSupplier, "sessionSupplier is null");
+    }
+
+    private synchronized CqlSession session()
+    {
+        if (session == null) {
+            checkState(sessionSupplier != null, "already closed");
+            session = sessionSupplier.get();
+        }
+        return session;
     }
 
     public Version getCassandraVersion()
@@ -126,8 +139,8 @@ public class CassandraSession
         Row versionRow = result.one();
         if (versionRow == null) {
             throw new TrinoException(CASSANDRA_VERSION_ERROR, "The cluster version is not available. " +
-                    "Please make sure that the Cassandra cluster is up and running, " +
-                    "and that the contact points are specified correctly.");
+                                                              "Please make sure that the Cassandra cluster is up and running, " +
+                                                              "and that the contact points are specified correctly.");
         }
         return Version.parse(versionRow.getString("release_version"));
     }
@@ -304,8 +317,8 @@ public class CassandraSession
     private static RelationMetadata getTableMetadata(KeyspaceMetadata keyspace, String caseInsensitiveTableName)
     {
         List<RelationMetadata> tables = Stream.concat(
-                keyspace.getTables().values().stream(),
-                keyspace.getViews().values().stream())
+                        keyspace.getTables().values().stream(),
+                        keyspace.getViews().values().stream())
                 .filter(table -> table.getName().asInternal().equalsIgnoreCase(caseInsensitiveTableName))
                 .collect(toImmutableList());
         if (tables.isEmpty()) {
@@ -559,12 +572,12 @@ public class CassandraSession
 
     private <T> T executeWithSession(SessionCallable<T> sessionCallable)
     {
-        ReconnectionPolicy reconnectionPolicy = session.get().getContext().getReconnectionPolicy();
+        ReconnectionPolicy reconnectionPolicy = session().getContext().getReconnectionPolicy();
         ReconnectionPolicy.ReconnectionSchedule schedule = reconnectionPolicy.newControlConnectionSchedule(false);
         long deadline = System.currentTimeMillis() + noHostAvailableRetryTimeout.toMillis();
         while (true) {
             try {
-                return sessionCallable.executeWithSession(session.get());
+                return sessionCallable.executeWithSession(session());
             }
             catch (AllNodesFailedException e) {
                 long timeLeft = deadline - System.currentTimeMillis();
@@ -611,9 +624,13 @@ public class CassandraSession
     }
 
     @Override
-    public void close()
+    public synchronized void close()
     {
-        session.get().close();
+        sessionSupplier = null;
+        if (session != null) {
+            session.close();
+            session = null;
+        }
     }
 
     private interface SessionCallable<T>
