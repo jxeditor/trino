@@ -173,14 +173,12 @@ class ContinuousTaskStatusFetcher
         {
             try (SetThreadName ignored = new SetThreadName("ContinuousTaskStatusFetcher-%s", taskId)) {
                 updateStats(requestStartNanos);
-                try {
-                    updateTaskStatus(value);
-                    errorTracker.requestSucceeded();
-                }
-                finally {
-                    cleanupRequest();
-                    scheduleNextRequest();
-                }
+                updateTaskStatus(value);
+                errorTracker.requestSucceeded();
+            }
+            finally {
+                cleanupRequest();
+                scheduleNextRequest();
             }
         }
 
@@ -189,24 +187,22 @@ class ContinuousTaskStatusFetcher
         {
             try (SetThreadName ignored = new SetThreadName("ContinuousTaskStatusFetcher-%s", taskId)) {
                 updateStats(requestStartNanos);
-                try {
-                    // if task not already done, record error
-                    TaskStatus taskStatus = getTaskStatus();
-                    if (!taskStatus.getState().isDone()) {
-                        errorTracker.requestFailed(cause);
-                    }
+                // if task not already done, record error
+                TaskStatus taskStatus = getTaskStatus();
+                if (!taskStatus.getState().isDone()) {
+                    errorTracker.requestFailed(cause);
                 }
-                catch (Error e) {
-                    onFail.accept(e);
-                    throw e;
-                }
-                catch (RuntimeException e) {
-                    onFail.accept(e);
-                }
-                finally {
-                    cleanupRequest();
-                    scheduleNextRequest();
-                }
+            }
+            catch (Error e) {
+                onFail.accept(e);
+                throw e;
+            }
+            catch (RuntimeException e) {
+                onFail.accept(e);
+            }
+            finally {
+                cleanupRequest();
+                scheduleNextRequest();
             }
         }
 
@@ -216,6 +212,9 @@ class ContinuousTaskStatusFetcher
             try (SetThreadName ignored = new SetThreadName("ContinuousTaskStatusFetcher-%s", taskId)) {
                 updateStats(requestStartNanos);
                 onFail.accept(cause);
+            }
+            finally {
+                cleanupRequest();
             }
         }
     }
@@ -243,11 +242,8 @@ class ContinuousTaskStatusFetcher
                 // never update if the task has reached a terminal state
                 return false;
             }
-            if (newValue.getVersion() < oldValue.getVersion()) {
-                // don't update to an older version (same version is ok)
-                return false;
-            }
-            return true;
+            // don't update to an older version (same version is ok)
+            return newValue.getVersion() >= oldValue.getVersion();
         });
 
         if (taskMismatch.get()) {
