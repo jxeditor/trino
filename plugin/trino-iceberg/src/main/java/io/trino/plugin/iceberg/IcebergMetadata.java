@@ -218,6 +218,7 @@ import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_COMMIT_ERROR;
 import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_FILESYSTEM_ERROR;
 import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_INVALID_METADATA;
 import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_MISSING_METADATA;
+import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_UNSUPPORTED_VIEW_DIALECT;
 import static io.trino.plugin.iceberg.IcebergMetadataColumn.FILE_MODIFIED_TIME;
 import static io.trino.plugin.iceberg.IcebergMetadataColumn.FILE_PATH;
 import static io.trino.plugin.iceberg.IcebergMetadataColumn.isMetadataColumnId;
@@ -1515,7 +1516,10 @@ public class IcebergMetadata
         }
 
         RewriteFiles rewriteFiles = transaction.newRewrite();
-        rewriteFiles.rewriteFiles(scannedDataFiles, fullyAppliedDeleteFiles, newFiles, ImmutableSet.of());
+        scannedDataFiles.forEach(rewriteFiles::deleteFile);
+        fullyAppliedDeleteFiles.forEach(rewriteFiles::deleteFile);
+        newFiles.forEach(rewriteFiles::addFile);
+
         // Table.snapshot method returns null if there is no matching snapshot
         Snapshot snapshot = requireNonNull(icebergTable.snapshot(optimizeHandle.snapshotId().get()), "snapshot is null");
         rewriteFiles.validateFromSnapshot(snapshot.snapshotId());
@@ -2502,6 +2506,20 @@ public class IcebergMetadata
     public Map<SchemaTableName, ConnectorViewDefinition> getViews(ConnectorSession session, Optional<String> schemaName)
     {
         return catalog.getViews(session, schemaName);
+    }
+
+    @Override
+    public boolean isView(ConnectorSession session, SchemaTableName viewName)
+    {
+        try {
+            return catalog.getView(session, viewName).isPresent();
+        }
+        catch (TrinoException e) {
+            if (e.getErrorCode() == ICEBERG_UNSUPPORTED_VIEW_DIALECT.toErrorCode()) {
+                return true;
+            }
+            throw e;
+        }
     }
 
     @Override
