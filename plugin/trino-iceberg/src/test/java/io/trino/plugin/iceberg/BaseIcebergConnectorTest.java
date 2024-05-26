@@ -1297,8 +1297,7 @@ public abstract class BaseIcebergConnectorTest
     {
         String tableName = "test_sort_with_transform_" + randomNameSuffix();
         assertThat(query(format("CREATE TABLE %s (%s TIMESTAMP(6)) WITH (sorted_by = ARRAY['%s'])", tableName, columnName, sortField)))
-                // TODO throw TrinoException indicating user error
-                .nonTrinoExceptionFailure().hasMessageContaining("Unable to parse sort field");
+                .failure().hasMessageContaining("Unable to parse sort field");
     }
 
     @Test
@@ -1402,12 +1401,10 @@ public abstract class BaseIcebergConnectorTest
         String tableName = "test_sorting_on_nested_field" + randomNameSuffix();
         assertThat(query("CREATE TABLE " + tableName + " (nationkey BIGINT, row_t ROW(name VARCHAR, regionkey BIGINT, comment VARCHAR)) " +
                 "WITH (sorted_by = ARRAY['row_t.comment'])"))
-                // TODO throw TrinoException indicating user error
-                .nonTrinoExceptionFailure().hasMessageContaining("Unable to parse sort field: [row_t.comment]");
+                .failure().hasMessageContaining("Unable to parse sort field: [row_t.comment]");
         assertThat(query("CREATE TABLE " + tableName + " (nationkey BIGINT, row_t ROW(name VARCHAR, regionkey BIGINT, comment VARCHAR)) " +
                 "WITH (sorted_by = ARRAY['\"row_t\".\"comment\"'])"))
-                // TODO throw TrinoException indicating user error
-                .nonTrinoExceptionFailure().hasMessageContaining("Unable to parse sort field: [\"row_t\".\"comment\"]");
+                .failure().hasMessageContaining("Unable to parse sort field: [\"row_t\".\"comment\"]");
         assertThat(query("CREATE TABLE " + tableName + " (nationkey BIGINT, row_t ROW(name VARCHAR, regionkey BIGINT, comment VARCHAR)) " +
                 "WITH (sorted_by = ARRAY['\"row_t.comment\"'])"))
                 .failure().hasMessageContaining("Column not found: row_t.comment");
@@ -4953,7 +4950,7 @@ public abstract class BaseIcebergConnectorTest
         assertQuery("SELECT a.b FROM " + tableName, "VALUES NULL");
         assertUpdate("DROP TABLE " + tableName);
 
-        // Very changing subfield ordering does not revive dropped data
+        // Verify changing subfield ordering does not revive dropped data
         assertUpdate("CREATE TABLE " + tableName + " (dummy BIGINT, a ROW(b BIGINT, c VARCHAR), d BIGINT) with (partitioning = ARRAY['d'])");
         assertUpdate("INSERT INTO " + tableName + " VALUES (1, ROW(2, 'abc'), 3)", 1);
         assertUpdate("ALTER TABLE " + tableName + " DROP COLUMN a");
