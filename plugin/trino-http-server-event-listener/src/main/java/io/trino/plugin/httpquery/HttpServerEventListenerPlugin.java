@@ -11,18 +11,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.clickhouse;
+package io.trino.plugin.httpquery;
 
-import io.trino.testing.QueryRunner;
+import io.trino.spi.Plugin;
+import io.trino.spi.eventlistener.EventListenerFactory;
 
-public class TestClickHouseTypeMapping
-        extends BaseClickHouseTypeMapping
+import static java.util.Collections.singletonList;
+
+public class HttpServerEventListenerPlugin
+        implements Plugin
 {
     @Override
-    protected QueryRunner createQueryRunner()
-            throws Exception
+    public Iterable<EventListenerFactory> getEventListenerFactories()
     {
-        clickhouseServer = closeAfterClass(new TestingClickHouseServer());
-        return ClickHouseQueryRunner.builder(clickhouseServer).build();
+        return singletonList(new HttpServerEventListenerFactory());
     }
 }
