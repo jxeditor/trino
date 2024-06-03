@@ -23,33 +23,31 @@ import io.trino.plugin.openlineage.transport.OpenLineageTransport;
 import java.net.URI;
 import java.util.Map;
 
-import static java.lang.String.format;
+import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 
 public class OpenLineageHttpTransport
         implements OpenLineageTransport
 {
-    private final String url;
+    private final URI url;
     private final String endpoint;
     private final int timeout;
     private final ApiKeyTokenProvider apiKey;
     private final Map<String, String> urlParams;
     private final Map<String, String> headers;
 
-    private static class ApiKeyTokenProvider
+    private record ApiKeyTokenProvider(String token)
             implements TokenProvider
     {
-        private final String token;
-
-        public ApiKeyTokenProvider(String token)
+        public ApiKeyTokenProvider
         {
-            this.token = requireNonNull(token);
+            requireNonNull(token);
         }
 
         @Override
         public String getToken()
         {
-            return format("Bearer %s", this.token);
+            return "Bearer " + this.token;
         }
     }
 
@@ -58,7 +56,7 @@ public class OpenLineageHttpTransport
     {
         this.url = config.getUrl();
         this.endpoint = config.getEndpoint();
-        this.timeout = (int) config.getTimeout().toMillis();
+        this.timeout = toIntExact(config.getTimeout().toMillis());
         this.apiKey = config.getApiKey().map(ApiKeyTokenProvider::new).orElse(null);
         this.urlParams = config.getUrlParams();
         this.headers = config.getHeaders();
@@ -66,11 +64,10 @@ public class OpenLineageHttpTransport
 
     @Override
     public HttpTransport buildTransport()
-            throws Exception
     {
         return new HttpTransport(
                 new HttpConfig(
-                        new URI(this.url),
+                        this.url,
                         this.endpoint,
                         null,
                         this.timeout,
