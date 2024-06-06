@@ -88,12 +88,9 @@ public abstract class BaseTestHiveCoercion
     {
         String tableName = mutableTableInstanceOf(tableDefinition).getNameInDatabase();
 
-        String floatToDoubleType = tableName.toLowerCase(ENGLISH).contains("parquet") ? "DOUBLE" : "REAL";
-        String floatToDecimalVal = tableName.toLowerCase(ENGLISH).contains("parquet") ? "12345.12345" : "12345.12300";
-        String decimalToFloatVal = tableName.toLowerCase(ENGLISH).contains("parquet") ? "12345.12345" : "12345.124";
         List<Object> booleanToVarcharVal = tableName.toLowerCase(ENGLISH).contains("parquet") && tableName.toLowerCase(ENGLISH).contains("_unpartitioned") ? ImmutableList.of("true", "false") : ImmutableList.of("TRUE", "FALSE");
 
-        insertTableRows(tableName, floatToDoubleType);
+        insertTableRows(tableName);
 
         alterTableColumnTypes(tableName);
         assertProperAlteredTableSchema(tableName);
@@ -134,6 +131,9 @@ public abstract class BaseTestHiveCoercion
                 "bigint_to_shortdecimal",
                 "bigint_to_longdecimal",
                 "float_to_double",
+                "float_to_string",
+                "float_to_bounded_varchar",
+                "float_infinity_to_string",
                 "double_to_float",
                 "double_to_string",
                 "double_to_bounded_varchar",
@@ -197,7 +197,7 @@ public abstract class BaseTestHiveCoercion
                 "varchar_to_timestamp",
                 "id");
 
-        Function<Engine, Map<String, List<Object>>> expected = engine -> expectedValuesForEngineProvider(engine, tableName, decimalToFloatVal, floatToDecimalVal, booleanToVarcharVal);
+        Function<Engine, Map<String, List<Object>>> expected = engine -> expectedValuesForEngineProvider(engine, tableName, booleanToVarcharVal);
 
         // For Trino, remove unsupported columns
         List<String> prestoReadColumns = removeUnsupportedColumnsForTrino(allColumns, tableName);
@@ -207,27 +207,27 @@ public abstract class BaseTestHiveCoercion
             assertEquals(ImmutableSet.copyOf(prestoReadColumns), expectedPrestoResults.keySet());
         }
         String prestoSelectQuery = format("SELECT %s FROM %s", String.join(", ", prestoReadColumns), tableName);
-        assertQueryResults(Engine.TRINO, prestoSelectQuery, expectedPrestoResults, prestoReadColumns, 2, tableName);
+        assertQueryResults(Engine.TRINO, prestoSelectQuery, expectedPrestoResults, prestoReadColumns, 2);
 
         // For Hive, remove unsupported columns for the current file format and hive version
         List<String> hiveReadColumns = removeUnsupportedColumnsForHive(allColumns, tableName);
         Map<String, List<Object>> expectedHiveResults = expected.apply(Engine.HIVE);
         String hiveSelectQuery = format("SELECT %s FROM %s", String.join(", ", hiveReadColumns), tableName);
-        assertQueryResults(Engine.HIVE, hiveSelectQuery, expectedHiveResults, hiveReadColumns, 2, tableName);
+        assertQueryResults(Engine.HIVE, hiveSelectQuery, expectedHiveResults, hiveReadColumns, 2);
 
         assertNestedSubFields(tableName);
     }
 
-    protected void insertTableRows(String tableName, String floatToDoubleType)
+    protected void insertTableRows(String tableName)
     {
         // Insert all the data with nanoseconds precision
         setHiveTimestampPrecision(NANOSECONDS);
         onTrino().executeQuery(format(
-                "INSERT INTO %1$s VALUES " +
+                "INSERT INTO %s VALUES " +
                         "(" +
                         "  CAST(ROW ('as is', -1, 100, 2323, 12345, 2) AS ROW(keep VARCHAR, ti2si TINYINT, si2int SMALLINT, int2bi INTEGER, bi2vc BIGINT, lower2uppercase BIGINT)), " +
                         "  ARRAY [CAST(ROW (2, -101, 12345, 'removed') AS ROW (ti2int TINYINT, si2bi SMALLINT, bi2vc BIGINT, remove VARCHAR))], " +
-                        "  MAP (ARRAY [TINYINT '2'], ARRAY [CAST(ROW (-3, 2323, REAL '0.5') AS ROW (ti2bi TINYINT, int2bi INTEGER, float2double %2$s))]), " +
+                        "  MAP (ARRAY [TINYINT '2'], ARRAY [CAST(ROW (-3, 2323, REAL '0.5') AS ROW (ti2bi TINYINT, int2bi INTEGER, float2double REAL))]), " +
                         "  TRUE, " +
                         "  'TRUE', " +
                         "  ' ', " +
@@ -260,6 +260,9 @@ public abstract class BaseTestHiveCoercion
                         "  9223372, " +
                         "  9223372036, " +
                         "  REAL '0.5', " +
+                        "  REAL '0.5', " +
+                        "  REAL '0.5', " +
+                        "  REAL 'Infinity', " +
                         "  DOUBLE '0.5', " +
                         "  DOUBLE '12345.12345', " +
                         "  DOUBLE '12345.12345', " +
@@ -278,7 +281,7 @@ public abstract class BaseTestHiveCoercion
                         "  DECIMAL '123', " +
                         "  DECIMAL '123471234567.9989', " +
                         "  DECIMAL '12345678.12', " +
-                        "  %2$s '12345.12345', " +
+                        "  REAL '12345.12345', " +
                         "  DOUBLE '12345.12345', " +
                         "  DECIMAL '12345.12345', " +
                         "  DECIMAL '12345.12345', " +
@@ -325,7 +328,7 @@ public abstract class BaseTestHiveCoercion
                         "(" +
                         "  CAST(ROW (NULL, 1, -100, -2323, -12345, 2) AS ROW(keep VARCHAR, ti2si TINYINT, si2int SMALLINT, int2bi INTEGER, bi2vc BIGINT, lower2uppercase BIGINT)), " +
                         "  ARRAY [CAST(ROW (-2, 101, -12345, NULL) AS ROW (ti2int TINYINT, si2bi SMALLINT, bi2vc BIGINT, remove VARCHAR))], " +
-                        "  MAP (ARRAY [TINYINT '-2'], ARRAY [CAST(ROW (null, -2323, REAL '-1.5') AS ROW (ti2bi TINYINT, int2bi INTEGER, float2double %2$s))]), " +
+                        "  MAP (ARRAY [TINYINT '-2'], ARRAY [CAST(ROW (null, -2323, REAL '-1.5') AS ROW (ti2bi TINYINT, int2bi INTEGER, float2double REAL))]), " +
                         "  FALSE, " +
                         "  'FAlSE', " +
                         "  'oFF', " +
@@ -358,6 +361,9 @@ public abstract class BaseTestHiveCoercion
                         "  -9223372, " +
                         "  -9223372036, " +
                         "  REAL '-1.5', " +
+                        "  REAL '-1.5', " +
+                        "  REAL 'NaN', " +
+                        "  REAL '-Infinity', " +
                         "  DOUBLE '-1.5', " +
                         "  DOUBLE 'NaN', " +
                         "  DOUBLE '-12345.12345', " +
@@ -376,7 +382,7 @@ public abstract class BaseTestHiveCoercion
                         "  DECIMAL '-124', " +
                         "  DECIMAL '-123471234577.9989', " +
                         "  DECIMAL '-12345678.12', " +
-                        "  %2$s '-12345.12345', " +
+                        "  REAL '-12345.12345', " +
                         "  DOUBLE '-12345.12345', " +
                         "  DECIMAL '-12345.12345', " +
                         "  DECIMAL '-12345.12345', " +
@@ -420,12 +426,11 @@ public abstract class BaseTestHiveCoercion
                         "  '1970', " +
                         "  '1970-01-01 00:00:00.123', " +
                         "  1)",
-                tableName,
-                floatToDoubleType));
+                tableName));
         resetHiveTimestampPrecision();
     }
 
-    protected Map<String, List<Object>> expectedValuesForEngineProvider(Engine engine, String tableName, String decimalToFloatVal, String floatToDecimalVal, List<Object> booleanToVarcharVal)
+    protected Map<String, List<Object>> expectedValuesForEngineProvider(Engine engine, String tableName, List<Object> booleanToVarcharVal)
     {
         String hiveValueForCaseChangeField;
         String coercedNaN = "NaN";
@@ -597,6 +602,9 @@ public abstract class BaseTestHiveCoercion
                 .put("float_to_double", ImmutableList.of(
                         0.5,
                         -1.5))
+                .put("float_to_string", ImmutableList.of("0.5", "-1.5"))
+                .put("float_to_bounded_varchar", Arrays.asList("0.5", coercedNaN))
+                .put("float_infinity_to_string", ImmutableList.of("Infinity", "-Infinity"))
                 .put("double_to_float", ImmutableList.of(0.5, -1.5))
                 .put("double_to_string", Arrays.asList("12345.12345", coercedNaN))
                 .put("double_to_bounded_varchar", ImmutableList.of("12345.12345", "-12345.12345"))
@@ -613,11 +621,11 @@ public abstract class BaseTestHiveCoercion
                 .put("longdecimal_to_longdecimal", ImmutableList.of(
                         new BigDecimal("12345678.12345612345600"),
                         new BigDecimal("-12345678.12345612345600")))
-                .put("float_to_decimal", ImmutableList.of(new BigDecimal(floatToDecimalVal), new BigDecimal("-" + floatToDecimalVal)))
+                .put("float_to_decimal", ImmutableList.of(new BigDecimal("12345.12300"), new BigDecimal("-12345.12300")))
                 .put("double_to_decimal", ImmutableList.of(new BigDecimal("12345.12345"), new BigDecimal("-12345.12345")))
                 .put("decimal_to_float", ImmutableList.of(
-                        Float.parseFloat(decimalToFloatVal),
-                        -Float.parseFloat(decimalToFloatVal)))
+                        Float.parseFloat("12345.124"),
+                        -Float.parseFloat("12345.124")))
                 .put("decimal_to_double", ImmutableList.of(
                         12345.12345,
                         -12345.12345))
@@ -817,7 +825,7 @@ public abstract class BaseTestHiveCoercion
                     trinoReadColumns::contains);
 
             String trinoReadQuery = format("SELECT %s FROM %s", String.join(", ", trinoReadColumns), tableName);
-            assertQueryResults(Engine.TRINO, trinoReadQuery, expectedTinoResults, trinoReadColumns, 6, tableName);
+            assertQueryResults(Engine.TRINO, trinoReadQuery, expectedTinoResults, trinoReadColumns, 6);
 
             List<String> hiveReadColumns = removeUnsupportedColumnsForHive(allColumns, tableName);
             Map<String, List<Object>> expectedHiveResults = Maps.filterKeys(
@@ -825,7 +833,7 @@ public abstract class BaseTestHiveCoercion
                     hiveReadColumns::contains);
 
             String hiveSelectQuery = format("SELECT %s FROM %s", String.join(", ", hiveReadColumns), tableName);
-            assertQueryResults(Engine.HIVE, hiveSelectQuery, expectedHiveResults, hiveReadColumns, 6, tableName);
+            assertQueryResults(Engine.HIVE, hiveSelectQuery, expectedHiveResults, hiveReadColumns, 6);
         }
     }
 
@@ -965,95 +973,29 @@ public abstract class BaseTestHiveCoercion
         List<String> expectedColumns = ImmutableList.of("nested_field");
 
         // Assert Trino behavior
-        assertQueryResults(Engine.TRINO, subfieldQueryUpperCase, expectedNestedFieldTrino, expectedColumns, 2, tableName);
-        assertQueryResults(Engine.TRINO, subfieldQueryLowerCase, expectedNestedFieldTrino, expectedColumns, 2, tableName);
+        assertQueryResults(Engine.TRINO, subfieldQueryUpperCase, expectedNestedFieldTrino, expectedColumns, 2);
+        assertQueryResults(Engine.TRINO, subfieldQueryLowerCase, expectedNestedFieldTrino, expectedColumns, 2);
 
         // Assert Hive behavior
         if (isFormat.test("rcbinary")) {
-            assertThatThrownBy(() -> assertQueryResults(Engine.HIVE, subfieldQueryUpperCase, expectedNestedFieldTrino, expectedColumns, 2, tableName))
+            assertThatThrownBy(() -> assertQueryResults(Engine.HIVE, subfieldQueryUpperCase, expectedNestedFieldTrino, expectedColumns, 2))
                     .hasMessageContaining("org.apache.hadoop.hive.ql.metadata.HiveException");
-            assertThatThrownBy(() -> assertQueryResults(Engine.HIVE, subfieldQueryLowerCase, expectedNestedFieldTrino, expectedColumns, 2, tableName))
+            assertThatThrownBy(() -> assertQueryResults(Engine.HIVE, subfieldQueryLowerCase, expectedNestedFieldTrino, expectedColumns, 2))
                     .hasMessageContaining("org.apache.hadoop.hive.ql.metadata.HiveException");
         }
         else if (isFormat.test("parquet")) {
-            assertQueryResults(Engine.HIVE, subfieldQueryUpperCase, expectedNestedFieldHive, expectedColumns, 2, tableName);
-            assertQueryResults(Engine.HIVE, subfieldQueryLowerCase, expectedNestedFieldHive, expectedColumns, 2, tableName);
+            assertQueryResults(Engine.HIVE, subfieldQueryUpperCase, expectedNestedFieldHive, expectedColumns, 2);
+            assertQueryResults(Engine.HIVE, subfieldQueryLowerCase, expectedNestedFieldHive, expectedColumns, 2);
         }
         else {
-            assertQueryResults(Engine.HIVE, subfieldQueryUpperCase, expectedNestedFieldHive, expectedColumns, 2, tableName);
-            assertQueryResults(Engine.HIVE, subfieldQueryLowerCase, expectedNestedFieldHive, expectedColumns, 2, tableName);
+            assertQueryResults(Engine.HIVE, subfieldQueryUpperCase, expectedNestedFieldHive, expectedColumns, 2);
+            assertQueryResults(Engine.HIVE, subfieldQueryLowerCase, expectedNestedFieldHive, expectedColumns, 2);
         }
     }
 
     protected Map<ColumnContext, String> expectedExceptionsWithHiveContext()
     {
         return ImmutableMap.<ColumnContext, String>builder()
-                // 1.1
-                // Parquet
-                .put(columnContext("1.1", "parquet", "row_to_row"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.io.IntWritable")
-                .put(columnContext("1.1", "parquet", "list_to_list"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ShortWritable")
-                .put(columnContext("1.1", "parquet", "map_to_map"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ByteWritable")
-                .put(columnContext("1.1", "parquet", "tinyint_to_bigint"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ByteWritable")
-                .put(columnContext("1.1", "parquet", "tinyint_to_double"), "org.apache.hadoop.io.DoubleWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ByteWritable")
-                .put(columnContext("1.1", "parquet", "tinyint_to_shortdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.ByteWritable")
-                .put(columnContext("1.1", "parquet", "tinyint_to_longdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.ByteWritable")
-                .put(columnContext("1.1", "parquet", "smallint_to_bigint"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ShortWritable")
-                .put(columnContext("1.1", "parquet", "smallint_to_double"), "org.apache.hadoop.io.DoubleWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ShortWritable")
-                .put(columnContext("1.1", "parquet", "smallint_to_shortdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.ShortWritable")
-                .put(columnContext("1.1", "parquet", "smallint_to_longdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.ShortWritable")
-                .put(columnContext("1.1", "parquet", "int_to_bigint"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.io.IntWritable")
-                .put(columnContext("1.1", "parquet", "int_to_double"), "org.apache.hadoop.io.DoubleWritable cannot be cast to org.apache.hadoop.io.IntWritable")
-                .put(columnContext("1.1", "parquet", "int_to_shortdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.IntWritable")
-                .put(columnContext("1.1", "parquet", "int_to_longdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.IntWritable")
-                .put(columnContext("1.1", "parquet", "bigint_to_double"), "org.apache.hadoop.io.DoubleWritable cannot be cast to org.apache.hadoop.io.LongWritable")
-                .put(columnContext("1.1", "parquet", "bigint_to_shortdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.LongWritable")
-                .put(columnContext("1.1", "parquet", "bigint_to_longdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.LongWritable")
-                // Rcbinary
-                .put(columnContext("1.1", "rcbinary", "row_to_row"), "java.util.ArrayList cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryStruct")
-                .put(columnContext("1.1", "rcbinary", "list_to_list"), "java.util.ArrayList cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryArray")
-                .put(columnContext("1.1", "rcbinary", "map_to_map"), "java.util.HashMap cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryMap")
-                //
-                // 1.2
-                // Orc
-                .put(columnContext("1.2", "orc", "map_to_map"), "Unknown encoding kind: DIRECT_V2")
-                // Parquet
-                .put(columnContext("1.2", "parquet", "list_to_list"), "java.lang.UnsupportedOperationException: Cannot inspect java.util.ArrayList")
-                .put(columnContext("1.2", "parquet", "timestamp_row_to_row"), "Timestamp value coerced to a different value due to zone difference in HiveServer")
-                .put(columnContext("1.2", "parquet", "timestamp_list_to_list"), "java.lang.UnsupportedOperationException: Cannot inspect java.util.ArrayList")
-                .put(columnContext("1.2", "parquet", "timestamp_map_to_map"), "java.lang.UnsupportedOperationException: Cannot inspect java.util.ArrayList")
-                // Rcbinary
-                .put(columnContext("1.2", "rcbinary", "row_to_row"), "java.util.ArrayList cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryStruct")
-                .put(columnContext("1.2", "rcbinary", "list_to_list"), "java.util.ArrayList cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryArray")
-                .put(columnContext("1.2", "rcbinary", "map_to_map"), "java.util.HashMap cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryMap")
-                .put(columnContext("1.2", "rcbinary", "timestamp_row_to_row"), "java.util.ArrayList cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryStruct")
-                .put(columnContext("1.2", "rcbinary", "timestamp_list_to_list"), "java.util.ArrayList cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryArray")
-                .put(columnContext("1.2", "rcbinary", "timestamp_map_to_map"), "java.util.HashMap cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryMap")
-                //
-                // 2.1
-                // Parquet
-                .put(columnContext("2.1", "parquet", "row_to_row"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.io.IntWritable")
-                .put(columnContext("2.1", "parquet", "list_to_list"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ShortWritable")
-                .put(columnContext("2.1", "parquet", "map_to_map"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ByteWritable")
-                .put(columnContext("2.1", "parquet", "tinyint_to_bigint"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ByteWritable")
-                .put(columnContext("2.1", "parquet", "tinyint_to_double"), "org.apache.hadoop.io.DoubleWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ByteWritable")
-                .put(columnContext("2.1", "parquet", "tinyint_to_shortdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.ByteWritable")
-                .put(columnContext("2.1", "parquet", "tinyint_to_longdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.ByteWritable")
-                .put(columnContext("2.1", "parquet", "smallint_to_bigint"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ShortWritable")
-                .put(columnContext("2.1", "parquet", "smallint_to_double"), "org.apache.hadoop.io.DoubleWritable cannot be cast to org.apache.hadoop.hive.serde2.io.ShortWritable")
-                .put(columnContext("2.1", "parquet", "smallint_to_shortdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.ShortWritable")
-                .put(columnContext("2.1", "parquet", "smallint_to_longdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.ShortWritable")
-                .put(columnContext("2.1", "parquet", "int_to_bigint"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.io.IntWritable")
-                .put(columnContext("2.1", "parquet", "int_to_double"), "org.apache.hadoop.io.DoubleWritable cannot be cast to org.apache.hadoop.io.IntWritable")
-                .put(columnContext("2.1", "parquet", "int_to_shortdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.IntWritable")
-                .put(columnContext("2.1", "parquet", "int_to_longdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.IntWritable")
-                .put(columnContext("2.1", "parquet", "bigint_to_double"), "org.apache.hadoop.io.DoubleWritable cannot be cast to org.apache.hadoop.io.LongWritable")
-                .put(columnContext("2.1", "parquet", "bigint_to_shortdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.LongWritable")
-                .put(columnContext("2.1", "parquet", "bigint_to_longdecimal"), "org.apache.hadoop.hive.serde2.io.HiveDecimalWritable cannot be cast to org.apache.hadoop.io.LongWritable")
-                // Rcbinary
-                .put(columnContext("2.1", "rcbinary", "row_to_row"), "java.util.ArrayList cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryStruct")
-                .put(columnContext("2.1", "rcbinary", "list_to_list"), "java.util.ArrayList cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryArray")
-                .put(columnContext("2.1", "rcbinary", "map_to_map"), "java.util.HashMap cannot be cast to org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryMap")
-                //
                 // 3.1
                 // Parquet
                 .put(columnContext("3.1", "parquet", "row_to_row"), "org.apache.hadoop.io.LongWritable cannot be cast to org.apache.hadoop.io.IntWritable")
@@ -1094,8 +1036,7 @@ public abstract class BaseTestHiveCoercion
             String query,
             Map<String, List<Object>> expected,
             List<String> columns,
-            int rowCount,
-            String tableName)
+            int rowCount)
     {
         QueryResult actual = execute(engine, query);
 
@@ -1113,7 +1054,7 @@ public abstract class BaseTestHiveCoercion
         }
 
         List<Row> expectedRows = rowsBuilder.build();
-        assertColumnTypes(actual, tableName, engine, columns);
+        assertColumnTypes(actual, engine, columns);
 
         for (int sqlIndex = 1; sqlIndex <= columns.size(); sqlIndex++) {
             String column = columns.get(sqlIndex - 1);
@@ -1141,8 +1082,6 @@ public abstract class BaseTestHiveCoercion
 
     private void assertProperAlteredTableSchema(String tableName)
     {
-        String floatType = tableName.toLowerCase(ENGLISH).contains("parquet") ? "double" : "real";
-
         assertThat(onTrino().executeQuery("SHOW COLUMNS FROM " + tableName).project(1, 2)).containsExactlyInOrder(
                 // The field lower2uppercase in the row is recorded in upper case in hive, but Trino converts it to lower case
                 row("row_to_row", "row(keep varchar, ti2si smallint, si2int integer, int2bi bigint, bi2vc varchar, lower2uppercase bigint)"),
@@ -1180,7 +1119,10 @@ public abstract class BaseTestHiveCoercion
                 row("bigint_to_shortdecimal", "decimal(10,2)"),
                 row("bigint_to_longdecimal", "decimal(20,2)"),
                 row("float_to_double", "double"),
-                row("double_to_float", floatType),
+                row("float_to_string", "varchar"),
+                row("float_to_bounded_varchar", "varchar(12)"),
+                row("float_infinity_to_string", "varchar"),
+                row("double_to_float", "real"),
                 row("double_to_string", "varchar"),
                 row("double_to_bounded_varchar", "varchar(12)"),
                 row("double_infinity_to_string", "varchar"),
@@ -1200,7 +1142,7 @@ public abstract class BaseTestHiveCoercion
                 row("shortdecimal_to_bigint", "bigint"),
                 row("float_to_decimal", "decimal(10,5)"),
                 row("double_to_decimal", "decimal(10,5)"),
-                row("decimal_to_float", floatType),
+                row("decimal_to_float", "real"),
                 row("decimal_to_double", "double"),
                 row("short_decimal_to_varchar", "varchar"),
                 row("long_decimal_to_varchar", "varchar"),
@@ -1218,10 +1160,10 @@ public abstract class BaseTestHiveCoercion
                 row("varchar_to_smaller_varchar", "varchar(2)"),
                 row("varchar_to_date", "date"),
                 row("varchar_to_distant_date", "date"),
-                row("varchar_to_float", floatType),
-                row("string_to_float", floatType),
-                row("varchar_to_float_infinity", floatType),
-                row("varchar_to_special_float", floatType),
+                row("varchar_to_float", "real"),
+                row("string_to_float", "real"),
+                row("varchar_to_float_infinity", "real"),
+                row("varchar_to_special_float", "real"),
                 row("varchar_to_double", "double"),
                 row("string_to_double", "double"),
                 row("varchar_to_double_infinity", "double"),
@@ -1246,18 +1188,10 @@ public abstract class BaseTestHiveCoercion
 
     private void assertColumnTypes(
             QueryResult queryResult,
-            String tableName,
             Engine engine,
             List<String> columns)
     {
-        JDBCType floatType;
-        if (engine == Engine.TRINO) {
-            floatType = tableName.toLowerCase(ENGLISH).contains("parquet") ? DOUBLE : REAL;
-        }
-        else {
-            floatType = tableName.toLowerCase(ENGLISH).contains("parquet") ? DOUBLE : FLOAT;
-        }
-
+        JDBCType floatType = engine == Engine.TRINO ? REAL : FLOAT;
         Map<String, JDBCType> expectedTypes = ImmutableMap.<String, JDBCType>builder()
                 .put("row_to_row", engine == Engine.TRINO ? JAVA_OBJECT : STRUCT)   // row
                 .put("list_to_list", ARRAY) // list
@@ -1294,6 +1228,9 @@ public abstract class BaseTestHiveCoercion
                 .put("bigint_to_shortdecimal", DECIMAL)
                 .put("bigint_to_longdecimal", DECIMAL)
                 .put("float_to_double", DOUBLE)
+                .put("float_to_string", VARCHAR)
+                .put("float_to_bounded_varchar", VARCHAR)
+                .put("float_infinity_to_string", VARCHAR)
                 .put("double_to_float", floatType)
                 .put("double_to_string", VARCHAR)
                 .put("double_to_bounded_varchar", VARCHAR)
@@ -1371,7 +1308,7 @@ public abstract class BaseTestHiveCoercion
 
     private static void alterTableColumnTypes(String tableName)
     {
-        String floatType = tableName.toLowerCase(ENGLISH).contains("parquet") ? "double" : "float";
+        String floatType = tableName.toLowerCase(ENGLISH).contains("parquet") ? "float" : "float";
 
         onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN row_to_row row_to_row struct<keep:string, ti2si:smallint, si2int:int, int2bi:bigint, bi2vc:string, LOWER2UPPERCASE:bigint>", tableName));
         onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN list_to_list list_to_list array<struct<ti2int:int, si2bi:bigint, bi2vc:string>>", tableName));
@@ -1408,6 +1345,9 @@ public abstract class BaseTestHiveCoercion
         onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN bigint_to_shortdecimal bigint_to_shortdecimal decimal(10,2)", tableName));
         onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN bigint_to_longdecimal bigint_to_longdecimal decimal(20,2)", tableName));
         onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN float_to_double float_to_double double", tableName));
+        onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN float_to_string float_to_string string", tableName));
+        onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN float_to_bounded_varchar float_to_bounded_varchar varchar(12)", tableName));
+        onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN float_infinity_to_string float_infinity_to_string string", tableName));
         onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN double_to_float double_to_float %s", tableName, floatType));
         onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN double_to_string double_to_string string", tableName));
         onHive().executeQuery(format("ALTER TABLE %s CHANGE COLUMN double_to_bounded_varchar double_to_bounded_varchar varchar(12)", tableName));
