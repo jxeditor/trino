@@ -225,8 +225,7 @@ public abstract class BaseIcebergConnectorTest
                  SUPPORTS_REPORTING_WRITTEN_BYTES -> true;
             case SUPPORTS_ADD_COLUMN_NOT_NULL_CONSTRAINT,
                  SUPPORTS_RENAME_MATERIALIZED_VIEW_ACROSS_SCHEMAS,
-                 SUPPORTS_TOPN_PUSHDOWN,
-                 SUPPORTS_TRUNCATE -> false;
+                 SUPPORTS_TOPN_PUSHDOWN -> false;
             default -> super.hasBehavior(connectorBehavior);
         };
     }
@@ -1376,17 +1375,15 @@ public abstract class BaseIcebergConnectorTest
         try (TestTable table = new TestTable(
                 getQueryRunner()::execute,
                 "test_sorted_update",
-                "WITH (sorted_by = ARRAY['comment']) AS TABLE tpch.tiny.lineitem WITH NO DATA")) {
+                "WITH (sorted_by = ARRAY['comment']) AS TABLE tpch.tiny.customer WITH NO DATA")) {
             assertUpdate(
                     withSmallRowGroups,
-                    "INSERT INTO " + table.getName() + " TABLE tpch.tiny.lineitem",
-                    "VALUES 60175");
-            assertUpdate(withSmallRowGroups, "UPDATE " + table.getName() + " SET comment = substring(comment, 2)", 60175);
+                    "INSERT INTO " + table.getName() + " TABLE tpch.tiny.customer",
+                    "VALUES 1500");
+            assertUpdate(withSmallRowGroups, "UPDATE " + table.getName() + " SET comment = substring(comment, 2)", 1500);
             assertQuery(
-                    "SELECT orderkey, partkey, suppkey, linenumber, quantity, extendedprice, discount, tax, returnflag, linestatus, shipdate, " +
-                            "commitdate, receiptdate, shipinstruct, shipmode, comment FROM " + table.getName(),
-                    "SELECT orderkey, partkey, suppkey, linenumber, quantity, extendedprice, discount, tax, returnflag, linestatus, shipdate, " +
-                            "commitdate, receiptdate, shipinstruct, shipmode, substring(comment, 2) FROM lineitem");
+                    "SELECT custkey, name, address, nationkey, phone, acctbal, mktsegment, comment FROM " + table.getName(),
+                    "SELECT custkey, name, address, nationkey, phone, acctbal, mktsegment, substring(comment, 2) FROM customer");
             for (Object filePath : computeActual("SELECT file_path from \"" + table.getName() + "$files\"").getOnlyColumnAsSet()) {
                 assertThat(isFileSorted((String) filePath, "comment")).isTrue();
             }
@@ -6228,6 +6225,15 @@ public abstract class BaseIcebergConnectorTest
     }
 
     @Test
+    public void testEmptyFilesTruncate()
+    {
+        try (TestTable table = new TestTable(getQueryRunner()::execute, "test_empty_files_truncate_", "AS SELECT 1 AS id")) {
+            assertUpdate("TRUNCATE TABLE " + table.getName());
+            assertQueryReturnsEmptyResult("SELECT * FROM \"" + table.getName() + "$files\"");
+        }
+    }
+
+    @Test
     public void testModifyingOldSnapshotIsNotPossible()
     {
         String tableName = "test_modifying_old_snapshot_" + randomNameSuffix();
@@ -7298,7 +7304,7 @@ public abstract class BaseIcebergConnectorTest
         assertQueryFails("UPDATE " + tableName + " SET country = 'AUSTRIA'", "Metadata not found in metadata location for table " + schemaTableName);
         assertQueryFails("DELETE FROM " + tableName, "Metadata not found in metadata location for table " + schemaTableName);
         assertQueryFails("MERGE INTO  " + tableName + " USING (SELECT 1 a) input ON true WHEN MATCHED THEN DELETE", "Metadata not found in metadata location for table " + schemaTableName);
-        assertQueryFails("TRUNCATE TABLE " + tableName, "This connector does not support truncating tables");
+        assertQueryFails("TRUNCATE TABLE " + tableName, "Metadata not found in metadata location for table " + schemaTableName);
         assertQueryFails("COMMENT ON TABLE " + tableName + " IS NULL", "Metadata not found in metadata location for table " + schemaTableName);
         assertQueryFails("COMMENT ON COLUMN " + tableName + ".foo IS NULL", "Metadata not found in metadata location for table " + schemaTableName);
         assertQueryFails("CALL iceberg.system.rollback_to_snapshot(CURRENT_SCHEMA, '" + tableName + "', 8954597067493422955)", "Metadata not found in metadata location for table " + schemaTableName);

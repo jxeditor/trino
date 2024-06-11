@@ -84,8 +84,7 @@ public abstract class BaseIcebergConnectorSmokeTest
     protected boolean hasBehavior(TestingConnectorBehavior connectorBehavior)
     {
         return switch (connectorBehavior) {
-            case SUPPORTS_TOPN_PUSHDOWN,
-                 SUPPORTS_TRUNCATE -> false;
+            case SUPPORTS_TOPN_PUSHDOWN -> false;
             default -> super.hasBehavior(connectorBehavior);
         };
     }
@@ -536,7 +535,11 @@ public abstract class BaseIcebergConnectorSmokeTest
     public void testFileSortingWithLargerTable()
     {
         // Using a larger table forces buffered data to be written to disk
-        Session withSmallRowGroups = withSmallRowGroups(getSession());
+        Session withSmallRowGroups = Session.builder(getSession())
+                .setCatalogSessionProperty("iceberg", "orc_writer_max_stripe_rows", "200")
+                .setCatalogSessionProperty("iceberg", "parquet_writer_block_size", "20kB")
+                .setCatalogSessionProperty("iceberg", "parquet_writer_batch_size", "200")
+                .build();
         try (TestTable table = new TestTable(
                 getQueryRunner()::execute,
                 "test_sorted_lineitem_table",
