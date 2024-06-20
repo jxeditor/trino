@@ -39,6 +39,7 @@ import io.trino.plugin.hive.FileFormatDataSourceStats;
 import io.trino.plugin.hive.parquet.TrinoParquetDataSource;
 import io.trino.spi.type.TimeZoneKey;
 import io.trino.testing.AbstractTestQueryFramework;
+import io.trino.testing.MaterializedRow;
 import io.trino.testing.QueryRunner;
 import io.trino.testing.TestingSession;
 import org.apache.parquet.schema.PrimitiveType;
@@ -103,6 +104,8 @@ public class TestDeltaLakeBasic
             new ResourceTable("timestamp_ntz_partition", "databricks131/timestamp_ntz_partition"),
             new ResourceTable("uniform_iceberg_v1", "databricks133/uniform_iceberg_v1"),
             new ResourceTable("uniform_iceberg_v2", "databricks143/uniform_iceberg_v2"),
+            new ResourceTable("unsupported_writer_feature", "deltalake/unsupported_writer_feature"),
+            new ResourceTable("unsupported_writer_version", "deltalake/unsupported_writer_version"),
             new ResourceTable("variant", "databricks153/variant"));
 
     // The col-{uuid} pattern for delta.columnMapping.physicalName
@@ -506,6 +509,46 @@ public class TestDeltaLakeBasic
         assertQuery(session, format("SELECT * FROM %s WHERE \"Part\" = 11", tableName), "VALUES (1, 11)");
 
         assertUpdate("DROP TABLE " + tableName);
+    }
+
+    @Test
+    public void testAppendOnly()
+            throws Exception
+    {
+        String tableName = "test_append_only_" + randomNameSuffix();
+        Path tableLocation = Files.createTempFile(tableName, null);
+        copyDirectoryContents(new File(Resources.getResource("deltalake/append_only").toURI()).toPath(), tableLocation);
+        assertUpdate("CALL system.register_table(CURRENT_SCHEMA, '%s', '%s')".formatted(tableName, tableLocation.toUri()));
+        assertQuery("SELECT * FROM " + tableName, "VALUES (1, 11), (2, 12)");
+
+        assertQueryFails("UPDATE " + tableName + " SET a = a + 1", "Cannot modify rows from a table with 'delta.appendOnly' set to true");
+        assertQueryFails("DELETE FROM " + tableName + " WHERE a = 1", "Cannot modify rows from a table with 'delta.appendOnly' set to true");
+        assertQueryFails("DELETE FROM " + tableName, "Cannot modify rows from a table with 'delta.appendOnly' set to true");
+        assertQueryFails("TRUNCATE TABLE " + tableName, "Cannot modify rows from a table with 'delta.appendOnly' set to true");
+        assertQuery("SELECT * FROM " + tableName, "VALUES (1, 11), (2, 12)");
+
+        // Verify delta.appendOnly is preserved after DML
+        assertUpdate("COMMENT ON COLUMN " + tableName + ".a IS 'test column comment'");
+        assertUpdate("COMMENT ON TABLE " + tableName + " IS 'test table comment'");
+        assertUpdate("ALTER TABLE " + tableName + " ADD COLUMN new_col INT");
+        assertThat(query("SELECT * FROM \"" + tableName + "$properties\"")).result().rows()
+                .contains(new MaterializedRow(List.of("delta.appendOnly", "true")));
+    }
+
+    @Test
+    public void testCreateOrReplaceTableOnAppendOnlyTableFails()
+            throws Exception
+    {
+        String tableName = "test_append_only_" + randomNameSuffix();
+        Path tableLocation = Files.createTempFile(tableName, null);
+        copyDirectoryContents(new File(Resources.getResource("deltalake/append_only").toURI()).toPath(), tableLocation);
+        assertUpdate("CALL system.register_table(CURRENT_SCHEMA, '%s', '%s')".formatted(tableName, tableLocation.toUri()));
+        assertQuery("SELECT * FROM " + tableName, "VALUES (1, 11), (2, 12)");
+
+        // Delta Lake disallows replacing a table when 'delta.appendOnly' is set to true
+        assertQueryFails("CREATE OR REPLACE TABLE " + tableName + "(a INT, c INT)", "Cannot replace a table when 'delta.appendOnly' is set to true");
+        assertQueryFails("CREATE OR REPLACE TABLE " + tableName + " AS SELECT 1 as e", "Cannot replace a table when 'delta.appendOnly' is set to true");
+        assertQuery("SELECT * FROM " + tableName, "VALUES (1, 11), (2, 12)");
     }
 
     /**
@@ -1585,6 +1628,68 @@ public class TestDeltaLakeBasic
         assertUpdate("CALL system.register_table(CURRENT_SCHEMA, '%s', '%s')".formatted(tableName, tableLocation.toUri()));
 
         assertQueryFails("SELECT * FROM " + tableName, "Type change from 'byte' to 'unsupported' is not supported");
+    }
+
+    /**
+     * @see deltalake.unsupported_writer_feature
+     */
+    @Test
+    public void testUnsupportedWriterFeature()
+    {
+        assertQueryReturnsEmptyResult("SELECT * FROM unsupported_writer_feature");
+
+        assertQueryFails(
+                "ALTER TABLE unsupported_writer_feature ADD COLUMN new_col int",
+                "\\QUnsupported writer features: [generatedColumns]");
+        assertQueryFails(
+                "ALTER TABLE unsupported_writer_feature RENAME COLUMN a TO renamed",
+                "\\QUnsupported writer features: [generatedColumns]");
+        assertQueryFails(
+                "ALTER TABLE unsupported_writer_feature DROP COLUMN b",
+                "\\QUnsupported writer features: [generatedColumns]");
+        assertQueryFails(
+                "ALTER TABLE unsupported_writer_feature ALTER COLUMN b DROP NOT NULL",
+                "\\QUnsupported writer features: [generatedColumns]");
+        assertQueryFails(
+                "ALTER TABLE unsupported_writer_feature EXECUTE OPTIMIZE",
+                "\\QUnsupported writer features: [generatedColumns]");
+        assertQueryFails(
+                "ALTER TABLE unsupported_writer_feature ALTER COLUMN b SET DATA TYPE bigint",
+                "This connector does not support setting column types");
+        assertQueryFails(
+                "COMMENT ON TABLE unsupported_writer_feature IS 'test comment'",
+                "\\QUnsupported writer features: [generatedColumns]");
+        assertQueryFails(
+                "COMMENT ON COLUMN unsupported_writer_feature.a IS 'test column comment'",
+                "\\QUnsupported writer features: [generatedColumns]");
+        assertQueryFails(
+                "CALL delta.system.vacuum('tpch', 'unsupported_writer_feature', '7d')",
+                "\\QCannot execute vacuum procedure with [generatedColumns] writer features");
+    }
+
+    /**
+     * @see deltalake.unsupported_writer_version
+     */
+    @Test
+    public void testUnsupportedWriterVersion()
+    {
+        assertQueryReturnsEmptyResult("SELECT * FROM unsupported_writer_version");
+
+        assertQueryFails(
+                "ALTER TABLE unsupported_writer_version ADD COLUMN new_col int",
+                "Table .* requires Delta Lake writer version 8 which is not supported");
+        assertQueryFails(
+                "COMMENT ON TABLE unsupported_writer_version IS 'test comment'",
+                "Table .* requires Delta Lake writer version 8 which is not supported");
+        assertQueryFails(
+                "COMMENT ON COLUMN unsupported_writer_version.col IS 'test column comment'",
+                "Table .* requires Delta Lake writer version 8 which is not supported");
+        assertQueryFails(
+                "ALTER TABLE unsupported_writer_version EXECUTE OPTIMIZE",
+                "Table .* requires Delta Lake writer version 8 which is not supported");
+        assertQueryFails(
+                "CALL delta.system.vacuum('tpch', 'unsupported_writer_version', '7d')",
+                "Cannot execute vacuum procedure with 8 writer version");
     }
 
     private static MetadataEntry loadMetadataEntry(long entryNumber, Path tableLocation)
