@@ -13,19 +13,7 @@
  */
 package io.trino.client.uri;
 
-public class RestrictedPropertyException
-        extends RuntimeException
+public enum LoggingLevel
 {
-    private final PropertyName name;
-
-    public RestrictedPropertyException(PropertyName name, String message)
-    {
-        super(message);
-        this.name = name;
-    }
-
-    public PropertyName getPropertyName()
-    {
-        return this.name;
-    }
+    NONE, BASIC, HEADERS, BODY;
 }
