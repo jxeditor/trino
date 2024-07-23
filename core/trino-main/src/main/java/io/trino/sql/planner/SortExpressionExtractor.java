@@ -27,7 +27,9 @@ import java.util.Optional;
 import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.collect.ImmutableSet.toImmutableSet;
+import static io.trino.sql.ir.Comparison.Operator.GREATER_THAN_OR_EQUAL;
+import static io.trino.sql.ir.Comparison.Operator.LESS_THAN_OR_EQUAL;
+import static io.trino.sql.planner.SymbolsExtractor.extractAll;
 import static java.util.Comparator.comparing;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toMap;
@@ -124,8 +126,8 @@ public final class SortExpressionExtractor
         {
             // Handle both side of BETWEEN as `GREATER_THAN_OR_EQUAL` expression and `LESS_THAN_OR_EQUAL` expression.
             return ImmutableList.<SortExpressionContext>builder()
-                    .addAll(visitComparison(new Comparison(Comparison.Operator.GREATER_THAN_OR_EQUAL, node.value(), node.min()), context))
-                    .addAll(visitComparison(new Comparison(Comparison.Operator.LESS_THAN_OR_EQUAL, node.value(), node.max()), context))
+                    .addAll(visitComparison(new Comparison(GREATER_THAN_OR_EQUAL, node.value(), node.min()), context))
+                    .addAll(visitComparison(new Comparison(LESS_THAN_OR_EQUAL, node.value(), node.max()), context))
                     .build();
         }
     }
@@ -143,36 +145,6 @@ public final class SortExpressionExtractor
 
     private static boolean hasBuildSymbolReference(Set<Symbol> buildSymbols, Expression expression)
     {
-        return new BuildSymbolReferenceFinder(buildSymbols).process(expression);
-    }
-
-    private static class BuildSymbolReferenceFinder
-            extends IrVisitor<Boolean, Void>
-    {
-        private final Set<String> buildSymbols;
-
-        public BuildSymbolReferenceFinder(Set<Symbol> buildSymbols)
-        {
-            this.buildSymbols = buildSymbols.stream()
-                    .map(Symbol::name)
-                    .collect(toImmutableSet());
-        }
-
-        @Override
-        protected Boolean visitExpression(Expression node, Void context)
-        {
-            for (Expression child : node.children()) {
-                if (process(child, context)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        @Override
-        protected Boolean visitReference(Reference reference, Void context)
-        {
-            return buildSymbols.contains(reference.name());
-        }
+        return extractAll(expression).stream().anyMatch(buildSymbols::contains);
     }
 }
