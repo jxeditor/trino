@@ -115,6 +115,12 @@ catalog named `sales` using the configured connector.
 ```{include} non-transactional-insert.fragment
 ```
 
+(postgresql-fte-support)=
+### Fault-tolerant execution support
+
+The connector supports {doc}`/admin/fault-tolerant-execution` of query
+processing. Read and write operations are both supported with any retry policy.
+
 (postgresql-type-mapping)=
 ## Type mapping
 
@@ -365,19 +371,13 @@ statements, the connector supports the following features:
 ```{include} jdbc-procedures-execute.fragment
 ```
 
-(postgresql-fte-support)=
-## Fault-tolerant execution support
-
-The connector supports {doc}`/admin/fault-tolerant-execution` of query
-processing. Read and write operations are both supported with any retry policy.
-
-## Table functions
+### Table functions
 
 The connector provides specific {doc}`table functions </functions/table>` to
 access PostgreSQL.
 
 (postgresql-query-function)=
-### `query(varchar) -> table`
+#### `query(varchar) -> table`
 
 The `query` function allows you to query the underlying database directly. It
 requires syntax native to PostgreSQL, because the full query is pushed down and

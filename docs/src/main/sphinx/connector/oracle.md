@@ -101,6 +101,12 @@ you name the property file `sales.properties`, Trino creates a catalog named
 ```{include} non-transactional-insert.fragment
 ```
 
+(oracle-fte-support)=
+### Fault-tolerant execution support
+
+The connector supports {doc}`/admin/fault-tolerant-execution` of query
+processing. Read and write operations are both supported with any retry policy.
+
 ## Querying Oracle
 
 The Oracle connector provides a schema for every Oracle database.
@@ -422,12 +428,6 @@ supports the following statements:
 ```{include} alter-table-limitation.fragment
 ```
 
-(oracle-fte-support)=
-## Fault-tolerant execution support
-
-The connector supports {doc}`/admin/fault-tolerant-execution` of query
-processing. Read and write operations are both supported with any retry policy.
-
 ### Procedures
 
 ```{include} jdbc-procedures-flush.fragment
@@ -435,13 +435,13 @@ processing. Read and write operations are both supported with any retry policy.
 ```{include} jdbc-procedures-execute.fragment
 ```
 
-## Table functions
+### Table functions
 
 The connector provides specific {doc}`table functions </functions/table>` to
 access Oracle.
 
 (oracle-query-function)=
-### `query(varchar) -> table`
+#### `query(varchar) -> table`
 
 The `query` function allows you to query the underlying database directly. It
 requires syntax native to Oracle, because the full query is pushed down and
