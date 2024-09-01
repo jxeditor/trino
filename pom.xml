@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>170</version>
+        <version>171</version>
     </parent>
 
     <groupId>io.trino</groupId>
@@ -183,7 +183,7 @@
         <!-- keep dependency properties sorted -->
         <dep.accumulo-hadoop.version>2.7.7-1</dep.accumulo-hadoop.version>
         <dep.accumulo.version>3.0.0</dep.accumulo.version>
-        <dep.airlift.version>261</dep.airlift.version>
+        <dep.airlift.version>262</dep.airlift.version>
         <dep.alluxio.version>2.9.6</dep.alluxio.version>
         <dep.antlr.version>4.13.2</dep.antlr.version>
         <dep.avro.version>1.12.0</dep.avro.version>
@@ -201,13 +201,14 @@
         <dep.jna.version>5.14.0</dep.jna.version>
         <dep.joda.version>2.12.7</dep.joda.version>
         <dep.jsonwebtoken.version>0.12.6</dep.jsonwebtoken.version>
+        <dep.jts.version>1.20.0</dep.jts.version>
         <dep.kafka-clients.version>3.8.0</dep.kafka-clients.version>
         <dep.okio.version>3.9.0</dep.okio.version>
         <dep.packaging.version>${dep.airlift.version}</dep.packaging.version>
         <dep.parquet.version>1.14.2</dep.parquet.version>
         <dep.plugin.failsafe.version>${dep.plugin.surefire.version}</dep.plugin.failsafe.version>
         <dep.protobuf.version>3.25.4</dep.protobuf.version>
-        <dep.snowflake.version>3.18.0</dep.snowflake.version>
+        <dep.snowflake.version>3.19.0</dep.snowflake.version>
         <dep.swagger.version>2.2.23</dep.swagger.version>
         <dep.takari.version>2.1.7</dep.takari.version>
         <dep.tcnative.version>2.0.66.Final</dep.tcnative.version>
@@ -311,7 +312,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>2.27.15</version>
+                <version>2.27.16</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -480,7 +481,7 @@
             <dependency>
                 <groupId>com.exasol</groupId>
                 <artifactId>exasol-jdbc</artifactId>
-                <version>24.1.1</version>
+                <version>24.1.2</version>
             </dependency>
 
             <dependency>
@@ -504,7 +505,7 @@
             <dependency>
                 <groupId>com.github.luben</groupId>
                 <artifactId>zstd-jni</artifactId>
-                <version>1.5.6-4</version>
+                <version>1.5.6-5</version>
             </dependency>
 
             <dependency>
@@ -609,7 +610,7 @@
             <dependency>
                 <groupId>com.nimbusds</groupId>
                 <artifactId>oauth2-oidc-sdk</artifactId>
-                <version>11.18</version>
+                <version>11.19</version>
                 <classifier>jdk11</classifier>
             </dependency>
 
@@ -1189,6 +1190,13 @@
                 <groupId>io.trino</groupId>
                 <artifactId>trino-jdbc</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.trino</groupId>
+                <artifactId>trino-jdbc</artifactId>
+                <version>${project.version}</version>
+                <classifier>non-shaded</classifier>
             </dependency>
 
             <dependency>
@@ -1813,7 +1821,7 @@
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-lang3</artifactId>
-                <version>3.16.0</version>
+                <version>3.17.0</version>
             </dependency>
 
             <dependency>
@@ -2156,13 +2164,13 @@
             <dependency>
                 <groupId>org.locationtech.jts</groupId>
                 <artifactId>jts-core</artifactId>
-                <version>1.19.0</version>
+                <version>${dep.jts.version}</version>
             </dependency>
 
             <dependency>
                 <groupId>org.locationtech.jts.io</groupId>
                 <artifactId>jts-io-common</artifactId>
-                <version>1.19.0</version>
+                <version>${dep.jts.version}</version>
                 <exclusions>
                     <exclusion>
                         <groupId>junit</groupId>
@@ -2462,7 +2470,7 @@
                 <plugin>
                     <groupId>ca.vanzyl.provisio.maven.plugins</groupId>
                     <artifactId>provisio-maven-plugin</artifactId>
-                    <version>1.0.25</version>
+                    <version>1.0.26</version>
                 </plugin>
 
                 <plugin>
