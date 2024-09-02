@@ -370,15 +370,6 @@ public class TracingConnectorMetadata
     }
 
     @Override
-    public void createTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, boolean ignoreExisting)
-    {
-        Span span = startSpan("createTable", tableMetadata.getTable());
-        try (var _ = scopedSpan(span)) {
-            delegate.createTable(session, tableMetadata, ignoreExisting);
-        }
-    }
-
-    @Override
     public void createTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, SaveMode saveMode)
     {
         Span span = startSpan("createTable", tableMetadata.getTable());
@@ -618,15 +609,6 @@ public class TracingConnectorMetadata
         Span span = startSpan("finishStatisticsCollection", tableHandle);
         try (var _ = scopedSpan(span)) {
             delegate.finishStatisticsCollection(session, tableHandle, computedStatistics);
-        }
-    }
-
-    @Override
-    public ConnectorOutputTableHandle beginCreateTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, Optional<ConnectorTableLayout> layout, RetryMode retryMode)
-    {
-        Span span = startSpan("beginCreateTable", tableMetadata.getTable());
-        try (var _ = scopedSpan(span)) {
-            return delegate.beginCreateTable(session, tableMetadata, layout, retryMode);
         }
     }
 
