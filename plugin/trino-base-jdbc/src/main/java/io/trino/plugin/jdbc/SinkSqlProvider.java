@@ -11,22 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.sql.tree;
+package io.trino.plugin.jdbc;
 
-import java.util.Optional;
+import java.util.List;
 
-import static java.util.Objects.requireNonNull;
-
-public record GrantorSpecification(Type type, Optional<PrincipalSpecification> principal)
+public interface SinkSqlProvider
 {
-    public enum Type
-    {
-        PRINCIPAL, CURRENT_USER, CURRENT_ROLE
-    }
-
-    public GrantorSpecification
-    {
-        requireNonNull(type, "type is null");
-        requireNonNull(principal, "principal is null");
-    }
+    String getSinkSql(JdbcClient jdbcClient, JdbcOutputTableHandle outputTableHandle, List<WriteFunction> columnWriters);
 }
