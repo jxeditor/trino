@@ -10,7 +10,7 @@
 
     <groupId>io.trino</groupId>
     <artifactId>trino-root</artifactId>
-    <version>456-SNAPSHOT</version>
+    <version>458-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>${project.artifactId}</name>
@@ -110,6 +110,7 @@
         <module>plugin/trino-session-property-managers</module>
         <module>plugin/trino-singlestore</module>
         <module>plugin/trino-snowflake</module>
+        <module>plugin/trino-spooling-filesystem</module>
         <module>plugin/trino-sqlserver</module>
         <module>plugin/trino-teradata-functions</module>
         <module>plugin/trino-thrift</module>
@@ -147,7 +148,7 @@
     <properties>
         <project.build.targetJdk>22</project.build.targetJdk>
         <!-- for reproducible build support, updated by release plugin -->
-        <project.build.outputTimestamp>2024-08-29T17:05:54Z</project.build.outputTimestamp>
+        <project.build.outputTimestamp>2024-09-07T00:46:40Z</project.build.outputTimestamp>
         <!-- TODO remove this property when no module overrides it -->
         <trino.error-prone.guarded-by>ERROR</trino.error-prone.guarded-by>
 
@@ -538,6 +539,12 @@
                 <groupId>com.google.code.gson</groupId>
                 <artifactId>gson</artifactId>
                 <version>2.11.0</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.google.crypto.tink</groupId>
+                <artifactId>tink</artifactId>
+                <version>1.15.0</version>
             </dependency>
 
             <dependency>
@@ -1467,6 +1474,12 @@
                 <artifactId>trino-spi</artifactId>
                 <version>${project.version}</version>
                 <type>test-jar</type>
+            </dependency>
+
+            <dependency>
+                <groupId>io.trino</groupId>
+                <artifactId>trino-spooling-filesystem</artifactId>
+                <version>${project.version}</version>
             </dependency>
 
             <dependency>
