@@ -11,20 +11,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.server.protocol.spooling;
+package io.trino.spooling.filesystem;
 
-import java.util.Optional;
+import io.trino.spi.Plugin;
+import io.trino.spi.protocol.SpoolingManagerFactory;
 
-/**
- * Responsible for choosing a QueryDataEncoder implementation based on a query Session.
- *
- * Important: needs to be stable across runs as it will be executed on multiple nodes participated in query execution
- * and output generation.
- *
- * Returning Optional.empty() fallbacks to the direct protocol.
- */
-@FunctionalInterface
-public interface QueryDataEncoderSelector
+import java.util.List;
+
+public class FileSystemSpoolingPlugin
+        implements Plugin
 {
-    Optional<QueryDataEncoder.Factory> select(String encodingId);
+    @Override
+    public Iterable<SpoolingManagerFactory> getSpoolingManagerFactories()
+    {
+        return List.of(new FileSystemSpoolingManagerFactory());
+    }
 }

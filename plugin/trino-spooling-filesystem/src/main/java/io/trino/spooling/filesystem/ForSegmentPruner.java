@@ -13,17 +13,14 @@
  */
 package io.trino.spooling.filesystem;
 
-import io.trino.spi.Plugin;
-import io.trino.spi.protocol.SpoolingManagerFactory;
+import com.google.inject.BindingAnnotation;
 
-import java.util.List;
+import java.lang.annotation.Retention;
 
-public class FilesystemSpoolingPlugin
-        implements Plugin
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+@BindingAnnotation
+@Retention(RUNTIME)
+public @interface ForSegmentPruner
 {
-    @Override
-    public Iterable<SpoolingManagerFactory> getSpoolingManagerFactories()
-    {
-        return List.of(new FileSystemSpoolingManagerFactory());
-    }
 }
