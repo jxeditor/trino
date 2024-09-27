@@ -34,7 +34,9 @@ import static io.trino.tpch.TpchTable.NATION;
 import static io.trino.tpch.TpchTable.REGION;
 import static java.util.Objects.requireNonNull;
 
-public class TestJdbcConnectionCreation
+// TODO: Implement dedicated test to count number of queries executed.
+// This test approximates the number of I/O operations by counting number of times connection is opened since we almost always open a new connection to execute a query.
+public class TestJdbcConnectionAccesses
         extends BaseJdbcConnectionCreationTest
 {
     @Override
@@ -46,7 +48,9 @@ public class TestJdbcConnectionCreation
         this.connectionFactory = new ConnectionCountingConnectionFactory(delegate);
         return createH2QueryRunner(
                 ImmutableList.of(NATION, REGION),
-                ImmutableMap.of("connection-url", connectionUrl),
+                ImmutableMap.of("connection-url", connectionUrl,
+                        // disables connection reuse to approximate number of I/O operations since we almost always open a new connection to execute a query
+                        "query.reuse-connection", "false"),
                 // to make sure we always open connections in the same way
                 ImmutableMap.of("node-scheduler.include-coordinator", "false"),
                 new TestingConnectionH2Module(connectionFactory));
@@ -55,27 +59,27 @@ public class TestJdbcConnectionCreation
     @Test
     public void testJdbcConnectionCreations()
     {
-        assertJdbcConnections("SELECT * FROM nation LIMIT 1", 2, Optional.empty());
-        assertJdbcConnections("SELECT * FROM nation ORDER BY nationkey LIMIT 1", 2, Optional.empty());
-        assertJdbcConnections("SELECT * FROM nation WHERE nationkey = 1", 2, Optional.empty());
-        assertJdbcConnections("SELECT avg(nationkey) FROM nation", 2, Optional.empty());
-        assertJdbcConnections("SELECT * FROM nation, region", 3, Optional.empty());
-        assertJdbcConnections("SELECT * FROM nation n, region r WHERE n.regionkey = r.regionkey", 3, Optional.empty());
-        assertJdbcConnections("SELECT * FROM nation JOIN region USING(regionkey)", 3, Optional.empty());
+        assertJdbcConnections("SELECT * FROM nation LIMIT 1", 3, Optional.empty());
+        assertJdbcConnections("SELECT * FROM nation ORDER BY nationkey LIMIT 1", 3, Optional.empty());
+        assertJdbcConnections("SELECT * FROM nation WHERE nationkey = 1", 3, Optional.empty());
+        assertJdbcConnections("SELECT avg(nationkey) FROM nation", 3, Optional.empty());
+        assertJdbcConnections("SELECT * FROM nation, region", 6, Optional.empty());
+        assertJdbcConnections("SELECT * FROM nation n, region r WHERE n.regionkey = r.regionkey", 6, Optional.empty());
+        assertJdbcConnections("SELECT * FROM nation JOIN region USING(regionkey)", 6, Optional.empty());
         assertJdbcConnections("SELECT * FROM information_schema.schemata", 1, Optional.empty());
         assertJdbcConnections("SELECT * FROM information_schema.tables", 1, Optional.empty());
-        assertJdbcConnections("SELECT * FROM information_schema.columns", 1, Optional.empty());
-        assertJdbcConnections("SELECT * FROM nation", 2, Optional.empty());
-        assertJdbcConnections("CREATE TABLE copy_of_nation AS SELECT * FROM nation", 6, Optional.empty());
-        assertJdbcConnections("INSERT INTO copy_of_nation SELECT * FROM nation", 6, Optional.empty());
-        assertJdbcConnections("DELETE FROM copy_of_nation WHERE nationkey = 3", 1, Optional.empty());
-        assertJdbcConnections("UPDATE copy_of_nation SET name = 'POLAND' WHERE nationkey = 1", 1, Optional.empty());
-        assertJdbcConnections("MERGE INTO copy_of_nation n USING region r ON r.regionkey= n.regionkey WHEN MATCHED THEN DELETE", 1, Optional.of(MODIFYING_ROWS_MESSAGE));
-        assertJdbcConnections("DROP TABLE copy_of_nation", 1, Optional.empty());
+        assertJdbcConnections("SELECT * FROM information_schema.columns", 5, Optional.empty());
+        assertJdbcConnections("SELECT * FROM nation", 3, Optional.empty());
+        assertJdbcConnections("CREATE TABLE copy_of_nation AS SELECT * FROM nation", 11, Optional.empty());
+        assertJdbcConnections("INSERT INTO copy_of_nation SELECT * FROM nation", 12, Optional.empty());
+        assertJdbcConnections("DELETE FROM copy_of_nation WHERE nationkey = 3", 3, Optional.empty());
+        assertJdbcConnections("UPDATE copy_of_nation SET name = 'POLAND' WHERE nationkey = 1", 3, Optional.empty());
+        assertJdbcConnections("MERGE INTO copy_of_nation n USING region r ON r.regionkey= n.regionkey WHEN MATCHED THEN DELETE", 4, Optional.of(MODIFYING_ROWS_MESSAGE));
+        assertJdbcConnections("DROP TABLE copy_of_nation", 2, Optional.empty());
         assertJdbcConnections("SHOW SCHEMAS", 1, Optional.empty());
-        assertJdbcConnections("SHOW TABLES", 1, Optional.empty());
-        assertJdbcConnections("SHOW STATS FOR nation", 1, Optional.empty());
-        assertJdbcConnections("SELECT * FROM system.jdbc.columns WHERE table_cat = 'jdbc'", 1, Optional.empty());
+        assertJdbcConnections("SHOW TABLES", 2, Optional.empty());
+        assertJdbcConnections("SHOW STATS FOR nation", 2, Optional.empty());
+        assertJdbcConnections("SELECT * FROM system.jdbc.columns WHERE table_cat = 'jdbc'", 5, Optional.empty());
     }
 
     private static class TestingConnectionH2Module

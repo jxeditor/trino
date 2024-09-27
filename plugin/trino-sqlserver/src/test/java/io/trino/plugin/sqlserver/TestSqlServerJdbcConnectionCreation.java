@@ -11,13 +11,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.postgresql;
+package io.trino.plugin.sqlserver;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Binder;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
+import com.microsoft.sqlserver.jdbc.SQLServerDriver;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.trino.plugin.jdbc.BaseJdbcConnectionCreationTest;
 import io.trino.plugin.jdbc.ConnectionFactory;
@@ -29,12 +30,12 @@ import io.trino.plugin.jdbc.credential.StaticCredentialProvider;
 import io.trino.testing.DistributedQueryRunner;
 import io.trino.testing.QueryRunner;
 import org.junit.jupiter.api.Test;
-import org.postgresql.Driver;
 
 import java.util.Optional;
 import java.util.Properties;
 
 import static io.airlift.configuration.ConfigurationAwareModule.combine;
+import static io.trino.plugin.sqlserver.TestingSqlServer.LATEST_VERSION;
 import static io.trino.plugin.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 import static io.trino.spi.connector.ConnectorMetadata.MODIFYING_ROWS_MESSAGE;
 import static io.trino.testing.QueryAssertions.copyTpchTables;
@@ -42,40 +43,40 @@ import static io.trino.tpch.TpchTable.NATION;
 import static io.trino.tpch.TpchTable.REGION;
 import static java.util.Objects.requireNonNull;
 
-public class TestPostgreSqlJdbcConnectionCreation
+public class TestSqlServerJdbcConnectionCreation
         extends BaseJdbcConnectionCreationTest
 {
     @Override
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        TestingPostgreSqlServer postgreSqlServer = closeAfterClass(new TestingPostgreSqlServer());
-        this.connectionFactory = getConnectionCountingConnectionFactory(postgreSqlServer);
-        DistributedQueryRunner queryRunner = PostgreSqlQueryRunner.builder(postgreSqlServer)
+        TestingSqlServer sqlServer = closeAfterClass(new TestingSqlServer(LATEST_VERSION));
+        this.connectionFactory = getConnectionCountingConnectionFactory(sqlServer);
+        DistributedQueryRunner queryRunner = SqlServerQueryRunner.builder(sqlServer)
                 // to make sure we always open connections in the same way
                 .addCoordinatorProperty("node-scheduler.include-coordinator", "false")
-                .amendSession(sessionBuilder -> sessionBuilder.setCatalog("counting_postgresql"))
+                .amendSession(sessionBuilder -> sessionBuilder.setCatalog("counting_sqlserver"))
                 .setAdditionalSetup(runner -> {
                     runner.installPlugin(new JdbcPlugin(
-                            "counting_postgresql",
-                            combine(new PostgreSqlClientModule(), new TestingPostgreSqlModule(connectionFactory))));
-                    runner.createCatalog("counting_postgresql", "counting_postgresql", ImmutableMap.of(
-                            "connection-url", postgreSqlServer.getJdbcUrl(),
-                            "connection-user", postgreSqlServer.getUser(),
-                            "connection-password", postgreSqlServer.getPassword()));
+                            "counting_sqlserver",
+                            combine(new SqlServerClientModule(), new TestingSqlServerModule(connectionFactory))));
+                    runner.createCatalog("counting_sqlserver", "counting_sqlserver", ImmutableMap.of(
+                            "connection-url", sqlServer.getJdbcUrl(),
+                            "connection-user", sqlServer.getUsername(),
+                            "connection-password", sqlServer.getPassword()));
                 })
                 .build();
         copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, ImmutableList.of(NATION, REGION));
         return queryRunner;
     }
 
-    private static ConnectionCountingConnectionFactory getConnectionCountingConnectionFactory(TestingPostgreSqlServer postgreSqlServer)
+    private static ConnectionCountingConnectionFactory getConnectionCountingConnectionFactory(TestingSqlServer sqlServer)
     {
         Properties connectionProperties = new Properties();
         CredentialProvider credentialProvider = new StaticCredentialProvider(
-                Optional.of(postgreSqlServer.getUser()),
-                Optional.of(postgreSqlServer.getPassword()));
-        DriverConnectionFactory delegate = DriverConnectionFactory.builder(new Driver(), postgreSqlServer.getJdbcUrl(), credentialProvider)
+                Optional.of(sqlServer.getUsername()),
+                Optional.of(sqlServer.getPassword()));
+        DriverConnectionFactory delegate = DriverConnectionFactory.builder(new SQLServerDriver(), sqlServer.getJdbcUrl(), credentialProvider)
                 .setConnectionProperties(connectionProperties)
                 .build();
         return new ConnectionCountingConnectionFactory(delegate);
@@ -95,7 +96,7 @@ public class TestPostgreSqlJdbcConnectionCreation
         assertJdbcConnections("SELECT * FROM information_schema.tables", 1, Optional.empty());
         assertJdbcConnections("SELECT * FROM information_schema.columns", 1, Optional.empty());
         assertJdbcConnections("SELECT * FROM nation", 2, Optional.empty());
-        assertJdbcConnections("SELECT * FROM TABLE (system.query(query => 'SELECT * FROM tpch.nation'))", 2, Optional.empty());
+        assertJdbcConnections("SELECT * FROM TABLE (system.query(query => 'SELECT * FROM dbo.nation'))", 2, Optional.empty());
         assertJdbcConnections("CREATE TABLE copy_of_nation AS SELECT * FROM nation", 6, Optional.empty());
         assertJdbcConnections("INSERT INTO copy_of_nation SELECT * FROM nation", 6, Optional.empty());
         assertJdbcConnections("DELETE FROM copy_of_nation WHERE nationkey = 3", 1, Optional.empty());
@@ -105,15 +106,15 @@ public class TestPostgreSqlJdbcConnectionCreation
         assertJdbcConnections("SHOW SCHEMAS", 1, Optional.empty());
         assertJdbcConnections("SHOW TABLES", 1, Optional.empty());
         assertJdbcConnections("SHOW STATS FOR nation", 2, Optional.empty());
-        assertJdbcConnections("SELECT * FROM system.jdbc.columns WHERE table_cat = 'counting_postgresql'", 1, Optional.empty());
+        assertJdbcConnections("SELECT * FROM system.jdbc.columns WHERE table_cat = 'counting_sqlserver'", 1, Optional.empty());
     }
 
-    private static final class TestingPostgreSqlModule
+    private static final class TestingSqlServerModule
             extends AbstractConfigurationAwareModule
     {
         private final ConnectionCountingConnectionFactory connectionCountingConnectionFactory;
 
-        private TestingPostgreSqlModule(ConnectionCountingConnectionFactory connectionCountingConnectionFactory)
+        private TestingSqlServerModule(ConnectionCountingConnectionFactory connectionCountingConnectionFactory)
         {
             this.connectionCountingConnectionFactory = requireNonNull(connectionCountingConnectionFactory, "connectionCountingConnectionFactory is null");
         }
