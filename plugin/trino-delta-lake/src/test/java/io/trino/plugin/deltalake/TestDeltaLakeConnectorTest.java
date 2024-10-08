@@ -1326,6 +1326,53 @@ public class TestDeltaLakeConnectorTest
     }
 
     @Test
+    public void testCreateTableWithChangeDataFeed()
+    {
+        try (TestTable table = new TestTable(getQueryRunner()::execute, "test_cdf", "(x int) WITH (change_data_feed_enabled = true)")) {
+            assertThat(query("SELECT * FROM \"" + table.getName() + "$properties\""))
+                    .skippingTypesCheck()
+                    .matches("VALUES " +
+                            "('delta.enableChangeDataFeed', 'true')," +
+                            "('delta.enableDeletionVectors', 'false')," +
+                            "('delta.minReaderVersion', '1')," +
+                            "('delta.minWriterVersion', '4')");
+        }
+
+        // timestamp type requires reader version 3 and writer version 7
+        try (TestTable table = new TestTable(getQueryRunner()::execute, "test_cdf", "(x timestamp) WITH (change_data_feed_enabled = true)")) {
+            assertThat(query("SELECT * FROM \"" + table.getName() + "$properties\""))
+                    .skippingTypesCheck()
+                    .matches("VALUES " +
+                            "('delta.enableChangeDataFeed', 'true')," +
+                            "('delta.enableDeletionVectors', 'false')," +
+                            "('delta.minReaderVersion', '3')," +
+                            "('delta.minWriterVersion', '7')," +
+                            "('delta.feature.timestampNtz', 'supported')," +
+                            "('delta.feature.changeDataFeed', 'supported')");
+        }
+    }
+
+    @Test
+    public void testUnsupportedChangeDataFeedAndDeletionVector()
+    {
+        // TODO https://github.com/trinodb/trino/issues/23620 Fix incorrect CDF entry when deletion vector is enabled
+        try (TestTable table = new TestTable(
+                getQueryRunner()::execute,
+                "test_cdf_dv",
+                "(x int) WITH (change_data_feed_enabled = true, deletion_vectors_enabled = true)")) {
+            assertQueryFails("INSERT INTO " + table.getName() + " VALUES 1", "Writing to tables with both change data feed and deletion vectors enabled is not supported");
+            assertQueryFails("UPDATE " + table.getName() + " SET x = 1", "Writing to tables with both change data feed and deletion vectors enabled is not supported");
+            assertQueryFails("DELETE FROM " + table.getName(), "Writing to tables with both change data feed and deletion vectors enabled is not supported");
+            assertQueryFails("MERGE INTO " + table.getName() + " USING (VALUES 42) t(dummy) ON false WHEN NOT MATCHED THEN INSERT VALUES (1)", "Writing to tables with both change data feed and deletion vectors enabled is not supported");
+            assertQueryFails("TRUNCATE TABLE " + table.getName(), "Writing to tables with both change data feed and deletion vectors enabled is not supported");
+            assertQueryFails("ALTER TABLE " + table.getName() + " EXECUTE optimize", "Writing to tables with both change data feed and deletion vectors enabled is not supported");
+
+            // TODO https://github.com/trinodb/trino/issues/22809 Add support for vacuuming tables with deletion vectors
+            assertQueryFails("CALL system.vacuum(current_schema, '" + table.getName() + "', '7d')", "Cannot execute vacuum procedure with deletionVectors writer features");
+        }
+    }
+
+    @Test
     public void testUnsupportedCreateTableWithChangeDataFeed()
     {
         for (String columnName : CHANGE_DATA_FEED_COLUMN_NAMES) {

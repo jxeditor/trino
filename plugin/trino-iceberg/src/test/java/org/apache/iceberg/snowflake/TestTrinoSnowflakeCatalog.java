@@ -216,7 +216,9 @@ public class TestTrinoSnowflakeCatalog
                 (connectorIdentity, fileIOProperties) -> {
                     throw new UnsupportedOperationException();
                 },
-                new TableStatisticsWriter(new NodeVersion("test-version")));
+                new TableStatisticsWriter(new NodeVersion("test-version")),
+                Optional.empty(),
+                false);
         assertThat(icebergMetadata.schemaExists(SESSION, namespace)).as("icebergMetadata.schemaExists(namespace)")
                 .isTrue();
         assertThat(icebergMetadata.schemaExists(SESSION, schema)).as("icebergMetadata.schemaExists(schema)")
@@ -362,7 +364,7 @@ public class TestTrinoSnowflakeCatalog
     {
         TrinoCatalog catalog = createTrinoCatalog(false);
         Map<String, Object> metadata = catalog.loadNamespaceMetadata(SESSION, SNOWFLAKE_TEST_SCHEMA);
-        assertThat(metadata.isEmpty()).isTrue();
+        assertThat(metadata).isEmpty();
     }
 
     @Test
