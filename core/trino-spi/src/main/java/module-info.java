@@ -12,11 +12,10 @@
  * limitations under the License.
  */
 module trino.spi {
-    requires transitive com.fasterxml.jackson.annotation;
-    requires transitive com.google.errorprone.annotations;
+    requires com.fasterxml.jackson.annotation;
+    requires com.google.errorprone.annotations;
     requires transitive io.opentelemetry.api;
-    requires transitive jakarta.annotation;
-    requires java.logging;
+    requires jakarta.annotation;
     requires transitive slice;
 
     exports io.trino.spi;
