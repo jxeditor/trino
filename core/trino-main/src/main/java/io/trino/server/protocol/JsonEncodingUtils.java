@@ -50,6 +50,7 @@ import io.trino.type.SqlIntervalYearMonth;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.function.Consumer;
 
 import static com.google.common.base.Verify.verify;
 import static io.trino.spi.StandardErrorCode.SERIALIZATION_ERROR;
@@ -116,7 +117,7 @@ public class JsonEncodingUtils
         };
     }
 
-    public static void writePagesToJsonGenerator(ConnectorSession connectorSession, JsonGenerator generator, TypeEncoder[] typeEncoders, int[] sourcePageChannels, List<Page> pages)
+    public static void writePagesToJsonGenerator(ConnectorSession connectorSession, Consumer<TrinoException> throwableConsumer, JsonGenerator generator, TypeEncoder[] typeEncoders, int[] sourcePageChannels, List<Page> pages)
     {
         verify(typeEncoders.length == sourcePageChannels.length, "Source page channels and type encoders must have the same length");
         try {
@@ -135,7 +136,7 @@ public class JsonEncodingUtils
             generator.flush(); // final flush to have the data written to the output stream
         }
         catch (Exception e) {
-            throw new TrinoException(SERIALIZATION_ERROR, "Could not serialize data to JSON", e);
+            throwableConsumer.accept(new TrinoException(SERIALIZATION_ERROR, "Could not serialize data to JSON", e));
         }
     }
 
@@ -262,8 +263,7 @@ public class JsonEncodingUtils
                 return;
             }
             Slice slice = VARCHAR.getSlice(block, position);
-            // Optimization: avoid conversion from Slice to String and String to bytes when writing UTF-8 strings
-            generator.writeUTF8String(slice.byteArray(), slice.byteArrayOffset(), slice.length());
+            generator.writeString(slice.toStringUtf8());
         }
     }
 
@@ -286,8 +286,7 @@ public class JsonEncodingUtils
                 return;
             }
             Slice slice = padSpaces(VARCHAR.getSlice(block, position), length);
-            // Optimization: avoid conversion from Slice to String and String to bytes when writing UTF-8 strings
-            generator.writeUTF8String(slice.byteArray(), slice.byteArrayOffset(), slice.length());
+            generator.writeString(slice.toStringUtf8());
         }
     }
 

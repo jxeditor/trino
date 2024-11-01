@@ -14,27 +14,40 @@
 package io.trino.server.protocol;
 
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.google.common.collect.ImmutableList;
 import io.trino.client.QueryData;
+import io.trino.server.protocol.JsonEncodingUtils.TypeEncoder;
+import io.trino.spi.Page;
+import io.trino.spi.TrinoException;
+import io.trino.spi.connector.ConnectorSession;
 
-import java.io.IOException;
+import java.util.List;
+import java.util.function.Consumer;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
+import static io.trino.server.protocol.JsonEncodingUtils.writePagesToJsonGenerator;
 import static java.util.Objects.requireNonNull;
 
 public class JsonBytesQueryData
         implements QueryData
 {
-    private final byte[] json;
+    private final ConnectorSession connectorSession;
+    private final TypeEncoder[] typeEncoders;
+    private final int[] sourcePageChannels;
+    private final List<Page> pages;
+    private final Consumer<TrinoException> exceptionHandler;
 
-    public JsonBytesQueryData(byte[] json)
+    public JsonBytesQueryData(ConnectorSession connectorSession, Consumer<TrinoException> exceptionHandler, TypeEncoder[] typeEncoders, int[] sourcePageChannels, List<Page> pages)
     {
-        this.json = requireNonNull(json, "json is null");
+        this.connectorSession = requireNonNull(connectorSession, "connectorSession");
+        this.exceptionHandler = requireNonNull(exceptionHandler, "exceptionHandler is null");
+        this.typeEncoders = requireNonNull(typeEncoders, "typeEncoders is null");
+        this.sourcePageChannels = requireNonNull(sourcePageChannels, "sourcePageChannels is null");
+        this.pages = ImmutableList.copyOf(pages);
     }
 
     public void writeTo(JsonGenerator generator)
-            throws IOException
     {
-        generator.writeRawValue(new String(json, UTF_8));
+        writePagesToJsonGenerator(connectorSession, exceptionHandler, generator, typeEncoders, sourcePageChannels, pages);
     }
 
     @Override
