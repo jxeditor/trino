@@ -228,7 +228,7 @@
             <dependency>
                 <groupId>com.azure</groupId>
                 <artifactId>azure-sdk-bom</artifactId>
-                <version>1.2.31</version>
+                <version>1.2.32</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -308,7 +308,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>2.30.33</version>
+                <version>2.30.36</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -447,7 +447,7 @@
             <dependency>
                 <groupId>com.github.docker-java</groupId>
                 <artifactId>docker-java-api</artifactId>
-                <version>3.4.1</version>
+                <version>3.4.2</version>
             </dependency>
 
             <dependency>
@@ -1555,7 +1555,7 @@
             <dependency>
                 <groupId>io.trino.benchto</groupId>
                 <artifactId>benchto-driver</artifactId>
-                <version>0.33</version>
+                <version>0.34</version>
                 <exclusions>
                     <exclusion>
                         <groupId>ch.qos.logback</groupId>
