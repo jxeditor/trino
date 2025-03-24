@@ -815,7 +815,12 @@ WHERE "$file_modified_time" > date_trunc('day', CURRENT_TIMESTAMP);
 (iceberg-optimize-manifests)=
 ##### optimize_manifests
 
-Optimize table manifests to speed up planning.
+Rewrites manifest files to cluster them by partitioning columns.
+This can be used to optimize scan planning when there are many small manifest files
+or when there are partition filters in read queries but the manifest files are
+not grouped by partitions.
+The iceberg table property `commit.manifest.target-size-bytes` controls
+the maximum size of manifest files produced by this procedure.
 
 `optimize_manifests` can be run as follows:
 
@@ -1538,6 +1543,51 @@ Retrieve all records that belong to a specific file using
 SELECT *
 FROM example.web.page_views
 WHERE "$file_modified_time" = CAST('2022-07-01 01:02:03.456 UTC' AS TIMESTAMP WITH TIME ZONE)
+```
+
+(iceberg-system-tables)=
+#### System tables
+
+The connector exposes metadata tables in the system schema.
+
+##### `iceberg_tables` table
+
+The `iceberg_tables` table allows listing only Iceberg tables from a given catalog.
+The `SHOW TABLES` statement, `information_schema.tables`, and `jdbc.tables` will all
+return all tables that exist in the underlying metastore, even if the table cannot
+be handled in any way by the iceberg connector. This can happen if other connectors
+like Hive or Delta Lake, use the same metastore, catalog, and schema to store its tables.
+
+The table includes following columns:
+
+:::{list-table} iceberg_tables columns
+:widths: 30, 30, 40
+:header-rows: 1
+
+* - Name
+  - Type
+  - Description
+* - `table_schema`
+  - `VARCHAR`
+  - The name of the schema the table is in.
+* - `table_name`
+  - `VARCHAR`
+  - The name of the table.
+:::
+ 
+The following query lists Iceberg tables from all schemas in the `example` catalog.
+
+```sql
+SELECT * FROM example.system.iceberg_tables;
+```
+
+```text
+ table_schema | table_name  |
+--------------+-------------+
+ tpcds        | store_sales |
+ tpch         | nation      |
+ tpch         | region      |
+ tpch         | orders      |       
 ```
 
 #### DROP TABLE
