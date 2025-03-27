@@ -334,7 +334,6 @@ import static io.trino.operator.DistinctLimitOperator.DistinctLimitOperatorFacto
 import static io.trino.operator.HashArraySizeSupplier.incrementalLoadFactorHashArraySizeSupplier;
 import static io.trino.operator.OperatorFactories.join;
 import static io.trino.operator.OperatorFactories.spillingJoin;
-import static io.trino.operator.OutputSpoolingOperatorFactory.layoutUnionWithSpooledMetadata;
 import static io.trino.operator.OutputSpoolingOperatorFactory.spooledOutputLayout;
 import static io.trino.operator.RetryPolicy.NONE;
 import static io.trino.operator.TableFinishOperator.TableFinishOperatorFactory;
@@ -661,7 +660,7 @@ public class LocalExecutionPlanner
 
         PhysicalOperation physicalOperation = plan.accept(new Visitor(session), context);
 
-        Function<Page, Page> pagePreprocessor = enforceLoadedLayoutProcessor(outputLayout, physicalOperation.getLayout());
+        Function<Page, Page> pagePreprocessor = session.getQueryDataEncoding().isPresent() ? PageChannelSelector.identitySelection() : enforceLoadedLayoutProcessor(outputLayout, physicalOperation.getLayout());
 
         List<Type> outputTypes = outputLayout.stream()
                 .map(Symbol::type)
@@ -991,15 +990,14 @@ public class LocalExecutionPlanner
                     .map(encoders::get)
                     .orElseThrow(() -> new IllegalStateException("Spooled query encoding was not found"));
 
-            Map<Symbol, Integer> spooledLayout = layoutUnionWithSpooledMetadata(operation.layout);
             OutputSpoolingOperatorFactory outputSpoolingOperatorFactory = new OutputSpoolingOperatorFactory(
                     context.getNextOperatorId(),
                     node.getId(),
-                    spooledLayout,
+                    operation.layout,
                     () -> encoderFactory.create(session, spooledOutputLayout(node, operation.layout)),
                     spoolingManager.orElseThrow());
 
-            return new PhysicalOperation(outputSpoolingOperatorFactory, spooledLayout, operation);
+            return new PhysicalOperation(outputSpoolingOperatorFactory, operation.layout, operation);
         }
 
         @Override
