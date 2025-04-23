@@ -26,6 +26,7 @@ import io.trino.sql.tree.AnchorPattern;
 import io.trino.sql.tree.ArithmeticBinaryExpression;
 import io.trino.sql.tree.Array;
 import io.trino.sql.tree.AtTimeZone;
+import io.trino.sql.tree.AutoGroupBy;
 import io.trino.sql.tree.BetweenPredicate;
 import io.trino.sql.tree.BinaryLiteral;
 import io.trino.sql.tree.BooleanLiteral;
@@ -38,6 +39,7 @@ import io.trino.sql.tree.ColumnPosition;
 import io.trino.sql.tree.Comment;
 import io.trino.sql.tree.Commit;
 import io.trino.sql.tree.ComparisonExpression;
+import io.trino.sql.tree.Corresponding;
 import io.trino.sql.tree.CreateCatalog;
 import io.trino.sql.tree.CreateMaterializedView;
 import io.trino.sql.tree.CreateRole;
@@ -66,6 +68,7 @@ import io.trino.sql.tree.DropTable;
 import io.trino.sql.tree.DropView;
 import io.trino.sql.tree.EmptyPattern;
 import io.trino.sql.tree.EmptyTableTreatment;
+import io.trino.sql.tree.Except;
 import io.trino.sql.tree.Execute;
 import io.trino.sql.tree.ExecuteImmediate;
 import io.trino.sql.tree.ExistsPredicate;
@@ -849,9 +852,26 @@ public class TestSqlParser
         assertStatement("SELECT 123 INTERSECT DISTINCT SELECT 123 INTERSECT ALL SELECT 123",
                 query(new Intersect(
                         ImmutableList.of(
-                                new Intersect(ImmutableList.of(createSelect123(), createSelect123()), true),
+                                new Intersect(ImmutableList.of(createSelect123(), createSelect123()), true, Optional.empty()),
                                 createSelect123()),
-                        false)));
+                        false,
+                        Optional.empty())));
+
+        assertStatement("SELECT 123 INTERSECT DISTINCT CORRESPONDING SELECT 123 INTERSECT ALL CORRESPONDING SELECT 123",
+                query(new Intersect(
+                        ImmutableList.of(
+                                new Intersect(ImmutableList.of(createSelect123(), createSelect123()), true, Optional.of(new Corresponding(location(1 ,1), List.of()))),
+                                createSelect123()),
+                        false,
+                        Optional.of(new Corresponding(location(1 ,1), List.of())))));
+
+        assertStatement("SELECT 123 INTERSECT DISTINCT CORRESPONDING BY (x) SELECT 123 INTERSECT ALL CORRESPONDING SELECT 123",
+                query(new Intersect(
+                        ImmutableList.of(
+                                new Intersect(ImmutableList.of(createSelect123(), createSelect123()), true, Optional.of(new Corresponding(location(1 ,1), List.of(identifier("x"))))),
+                                createSelect123()),
+                        false,
+                        Optional.of(new Corresponding(location(1 ,1), List.of())))));
     }
 
     @Test
@@ -860,9 +880,54 @@ public class TestSqlParser
         assertStatement("SELECT 123 UNION DISTINCT SELECT 123 UNION ALL SELECT 123",
                 query(new Union(
                         ImmutableList.of(
-                                new Union(ImmutableList.of(createSelect123(), createSelect123()), true),
+                                new Union(ImmutableList.of(createSelect123(), createSelect123()), true, Optional.empty()),
                                 createSelect123()),
-                        false)));
+                        false,
+                        Optional.empty())));
+
+        assertStatement("SELECT 123 UNION DISTINCT CORRESPONDING SELECT 123 UNION ALL CORRESPONDING SELECT 123",
+                query(new Union(
+                        ImmutableList.of(
+                                new Union(ImmutableList.of(createSelect123(), createSelect123()), true, Optional.of(new Corresponding(location(1 ,1), List.of()))),
+                                createSelect123()),
+                        false,
+                        Optional.of(new Corresponding(location(1 ,1), List.of())))));
+
+        assertStatement("SELECT 123 UNION DISTINCT CORRESPONDING BY (x) SELECT 123 UNION ALL CORRESPONDING SELECT 123",
+                query(new Union(
+                        ImmutableList.of(
+                                new Union(ImmutableList.of(createSelect123(), createSelect123()), true, Optional.of(new Corresponding(location(1 ,1), List.of(identifier("x"))))),
+                                createSelect123()),
+                        false,
+                        Optional.of(new Corresponding(location(1 ,1), List.of())))));
+    }
+
+    @Test
+    public void testExcept()
+    {
+        assertStatement("SELECT 123 EXCEPT DISTINCT SELECT 123 EXCEPT ALL SELECT 123",
+                query(new Except(
+                        location(1, 1),
+                        new Except(location(1, 1), createSelect123(), createSelect123(), true, Optional.empty()),
+                        createSelect123(),
+                        false,
+                        Optional.empty())));
+
+        assertStatement("SELECT 123 EXCEPT DISTINCT CORRESPONDING SELECT 123 EXCEPT ALL CORRESPONDING SELECT 123",
+                query(new Except(
+                        location(1, 1),
+                        new Except(location(1, 1), createSelect123(), createSelect123(), true, Optional.of(new Corresponding(location(1 ,1), List.of()))),
+                        createSelect123(),
+                        false,
+                        Optional.of(new Corresponding(location(1 ,1), List.of())))));
+
+        assertStatement("SELECT 123 EXCEPT DISTINCT CORRESPONDING BY (x) SELECT 123 EXCEPT ALL CORRESPONDING SELECT 123",
+                query(new Except(
+                        location(1, 1),
+                        new Except(location(1, 1), createSelect123(), createSelect123(), true, Optional.of(new Corresponding(location(1 ,1), List.of(identifier("x"))))),
+                        createSelect123(),
+                        false,
+                        Optional.of(new Corresponding(location(1 ,1), List.of())))));
     }
 
     private static QuerySpecification createSelect123()
@@ -1801,6 +1866,69 @@ public class TestSqlParser
                         Optional.empty(),
                         Optional.of(new GroupBy(false, ImmutableList.of(new SimpleGroupBy(ImmutableList.of())))),
                         Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty()));
+
+        assertThat(statement("SELECT * FROM table1 GROUP BY AUTO"))
+                .isEqualTo(new Query(
+                        location(1, 1),
+                        ImmutableList.of(),
+                        ImmutableList.of(),
+                        Optional.empty(),
+                        new QuerySpecification(
+                                location(1, 1),
+                                new Select(location(1, 1), false, ImmutableList.of(new AllColumns(location(1, 8), Optional.empty(), ImmutableList.of()))),
+                                Optional.of(new Table(location(1, 15), qualifiedName(location(1, 15), "table1"))),
+                                Optional.empty(),
+                                Optional.of(new GroupBy(location(1, 31), false, ImmutableList.of(new AutoGroupBy(location(1, 31))))),
+                                Optional.empty(),
+                                ImmutableList.of(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty()),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty()));
+
+        assertThat(statement("SELECT * FROM table1 GROUP BY ALL AUTO"))
+                .isEqualTo(new Query(
+                        location(1, 1),
+                        ImmutableList.of(),
+                        ImmutableList.of(),
+                        Optional.empty(),
+                        new QuerySpecification(
+                                location(1, 1),
+                                new Select(location(1, 1), false, ImmutableList.of(new AllColumns(location(1, 8), Optional.empty(), ImmutableList.of()))),
+                                Optional.of(new Table(location(1, 15), qualifiedName(location(1, 15), "table1"))),
+                                Optional.empty(),
+                                Optional.of(new GroupBy(location(1, 31), false, ImmutableList.of(new AutoGroupBy(location(1, 35))))),
+                                Optional.empty(),
+                                ImmutableList.of(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty()),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty()));
+
+        assertThat(statement("SELECT * FROM table1 GROUP BY DISTINCT AUTO"))
+                .isEqualTo(new Query(
+                        location(1, 1),
+                        ImmutableList.of(),
+                        ImmutableList.of(),
+                        Optional.empty(),
+                        new QuerySpecification(
+                                location(1, 1),
+                                new Select(location(1, 1), false, ImmutableList.of(new AllColumns(location(1, 8), Optional.empty(), ImmutableList.of()))),
+                                Optional.of(new Table(location(1, 15), qualifiedName(location(1, 15), "table1"))),
+                                Optional.empty(),
+                                Optional.of(new GroupBy(location(1, 31), true, ImmutableList.of(new AutoGroupBy(location(1, 40))))),
+                                Optional.empty(),
+                                ImmutableList.of(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty()),
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty()));
