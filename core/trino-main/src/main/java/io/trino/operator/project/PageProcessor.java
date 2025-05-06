@@ -117,19 +117,18 @@ public class PageProcessor
             return WorkProcessor.of();
         }
 
-        SelectedPositions activePositions = positionsRange(0, page.getPositionCount());
-        FilterEvaluator.SelectionResult dynamicFilterResult = new FilterEvaluator.SelectionResult(activePositions, 0);
+        SelectedPositions selectedPositions = positionsRange(0, page.getPositionCount());
         if (dynamicFilterEvaluator.isPresent()) {
-            dynamicFilterResult = dynamicFilterEvaluator.get().evaluate(session, activePositions, page);
-            metrics.recordDynamicFilterMetrics(dynamicFilterResult.filterTimeNanos(), dynamicFilterResult.selectedPositions().size());
+            FilterEvaluator.SelectionResult dynamicFilterResult = dynamicFilterEvaluator.get().evaluate(session, selectedPositions, page);
+            selectedPositions = dynamicFilterResult.selectedPositions();
+            metrics.recordDynamicFilterMetrics(dynamicFilterResult.filterTimeNanos(), selectedPositions.size());
         }
 
-        FilterEvaluator.SelectionResult result = dynamicFilterResult;
         if (filterEvaluator.isPresent()) {
-            result = filterEvaluator.get().evaluate(session, dynamicFilterResult.selectedPositions(), page);
-            metrics.recordFilterTime(result.filterTimeNanos());
+            FilterEvaluator.SelectionResult filterResult = filterEvaluator.get().evaluate(session, selectedPositions, page);
+            selectedPositions = filterResult.selectedPositions();
+            metrics.recordFilterTime(filterResult.filterTimeNanos());
         }
-        SelectedPositions selectedPositions = result.selectedPositions();
 
         if (selectedPositions.isEmpty()) {
             return WorkProcessor.of();
@@ -156,7 +155,6 @@ public class PageProcessor
         private SourcePage page;
         private final Block[] previouslyComputedResults;
         private SelectedPositions selectedPositions;
-        private long retainedSizeInBytes;
 
         // remember if we need to re-use the same batch size if we yield last time
         private boolean lastComputeYielded;
@@ -274,7 +272,7 @@ public class PageProcessor
                 }
             }
 
-            retainedSizeInBytes = INSTANCE_SIZE +
+            long retainedSizeInBytes = INSTANCE_SIZE +
                     selectedPositions.getRetainedSizeInBytes() +
                     sizeOf(previouslyComputedResults) +
                     visitor.getRetainedSizeInBytes();
@@ -371,32 +369,8 @@ public class PageProcessor
         }
     }
 
-    private static class ProcessBatchResult
+    private record ProcessBatchResult(ProcessBatchState state, Page page)
     {
-        private final ProcessBatchState state;
-        private final Page page;
-
-        private ProcessBatchResult(ProcessBatchState state, Page page)
-        {
-            this.state = state;
-            this.page = page;
-        }
-
-        public static ProcessBatchResult processBatchYield()
-        {
-            return new ProcessBatchResult(ProcessBatchState.YIELD, null);
-        }
-
-        public static ProcessBatchResult processBatchTooLarge()
-        {
-            return new ProcessBatchResult(ProcessBatchState.PAGE_TOO_LARGE, null);
-        }
-
-        public static ProcessBatchResult processBatchSuccess(Page page)
-        {
-            return new ProcessBatchResult(ProcessBatchState.SUCCESS, requireNonNull(page));
-        }
-
         public boolean isYieldFinish()
         {
             return state == ProcessBatchState.YIELD;
@@ -416,6 +390,21 @@ public class PageProcessor
         {
             verify(state == ProcessBatchState.SUCCESS);
             return verifyNotNull(page);
+        }
+
+        public static ProcessBatchResult processBatchYield()
+        {
+            return new ProcessBatchResult(ProcessBatchState.YIELD, null);
+        }
+
+        public static ProcessBatchResult processBatchTooLarge()
+        {
+            return new ProcessBatchResult(ProcessBatchState.PAGE_TOO_LARGE, null);
+        }
+
+        public static ProcessBatchResult processBatchSuccess(Page page)
+        {
+            return new ProcessBatchResult(ProcessBatchState.SUCCESS, requireNonNull(page));
         }
 
         private enum ProcessBatchState
