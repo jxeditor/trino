@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>257</version>
+        <version>258</version>
     </parent>
 
     <groupId>io.trino</groupId>
@@ -189,7 +189,7 @@
         <dep.confluent.version>7.8.0</dep.confluent.version>
         <dep.docker.images.version>113</dep.docker.images.version>
         <dep.drift.version>1.22</dep.drift.version>
-        <dep.flyway.version>11.8.0</dep.flyway.version>
+        <dep.flyway.version>11.8.1</dep.flyway.version>
         <dep.frontend-maven-plugin.version>1.15.1</dep.frontend-maven-plugin.version>
         <dep.frontend-node.version>v22.14.0</dep.frontend-node.version>
         <dep.frontend-npm.version>11.2.0</dep.frontend-npm.version>
@@ -307,7 +307,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>2.31.35</version>
+                <version>2.31.40</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -315,7 +315,7 @@
             <dependency>
                 <groupId>com.adobe.testing</groupId>
                 <artifactId>s3mock-testcontainers</artifactId>
-                <version>4.1.1</version>
+                <version>4.2.0</version>
             </dependency>
 
             <dependency>
@@ -470,7 +470,7 @@
             <dependency>
                 <groupId>com.google.cloud.bigdataoss</groupId>
                 <artifactId>gcs-connector</artifactId>
-                <version>3.1.1</version>
+                <version>3.1.2</version>
                 <classifier>shaded</classifier>
                 <exclusions>
                     <exclusion>
@@ -556,13 +556,13 @@
             <dependency>
                 <groupId>com.nimbusds</groupId>
                 <artifactId>nimbus-jose-jwt</artifactId>
-                <version>10.2</version>
+                <version>10.3</version>
             </dependency>
 
             <dependency>
                 <groupId>com.nimbusds</groupId>
                 <artifactId>oauth2-oidc-sdk</artifactId>
-                <version>11.23.1</version>
+                <version>11.24</version>
                 <classifier>jdk11</classifier>
             </dependency>
 
@@ -738,7 +738,7 @@
             <dependency>
                 <groupId>io.azam.ulidj</groupId>
                 <artifactId>ulidj</artifactId>
-                <version>1.0.4</version>
+                <version>1.0.5</version>
             </dependency>
 
             <dependency>
