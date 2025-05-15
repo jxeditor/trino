@@ -11,18 +11,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.blackhole;
+package io.trino.execution.scheduler.faulttolerant;
 
-import io.trino.spi.connector.ConnectorSplit;
+import io.trino.spi.metrics.Metrics;
+import io.trino.sql.planner.plan.PlanNodeId;
 
-public enum BlackHoleSplit
-        implements ConnectorSplit
+public interface SplitSourceMetricsRecorder
 {
-    INSTANCE;
-
-    @Override
-    public long getRetainedSizeInBytes()
-    {
-        return 0;
-    }
+    void record(PlanNodeId nodeId, Metrics metrics, long start);
 }
