@@ -14,6 +14,7 @@
 package io.trino.execution.buffer;
 
 import com.google.common.collect.ImmutableList;
+import io.airlift.slice.Slice;
 import io.trino.spi.Page;
 
 import java.util.List;
@@ -22,7 +23,19 @@ import static com.google.common.base.Preconditions.checkArgument;
 
 public final class PageSplitterUtil
 {
+    private static final int PAGE_SPLIT_THRESHOLD_IN_BYTES = 2 * 1024 * 1024;
+
     private PageSplitterUtil() {}
+
+    public static List<Slice> splitAndSerializePage(Page page, PageSerializer serializer)
+    {
+        List<Page> inputPages = splitPage(page, PAGE_SPLIT_THRESHOLD_IN_BYTES);
+        ImmutableList.Builder<Slice> serializedPages = ImmutableList.builderWithExpectedSize(inputPages.size());
+        for (Page inputPage : inputPages) {
+            serializedPages.add(serializer.serialize(inputPage));
+        }
+        return serializedPages.build();
+    }
 
     public static List<Page> splitPage(Page page, long maxPageSizeInBytes)
     {
@@ -34,8 +47,8 @@ public final class PageSplitterUtil
         checkArgument(page.getPositionCount() > 0, "page is empty");
         checkArgument(maxPageSizeInBytes > 0, "maxPageSizeInBytes must be > 0");
 
-        // for Pages with certain types of Blocks (e.g., RLE blocks) the size in bytes may remain constant
-        // through the recursive calls, which causes the recursion to only terminate when page.getPositionCount() == 1
+        // In case the size in bytes remains constant through the recursive calls,
+        // the recursion would only terminate when page.getPositionCount() == 1
         // and create potentially a large number of Page's of size 1. So we check here that
         // if the size of the page doesn't improve from the previous call we terminate the recursion.
         if (page.getSizeInBytes() == previousPageSize || page.getSizeInBytes() <= maxPageSizeInBytes || page.getPositionCount() == 1) {
