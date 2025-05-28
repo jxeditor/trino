@@ -200,10 +200,10 @@
         <dep.jsonwebtoken.version>0.12.6</dep.jsonwebtoken.version>
         <dep.jts.version>1.20.0</dep.jts.version>
         <dep.kafka-clients.version>4.0.0</dep.kafka-clients.version>
-        <dep.okio.version>3.11.0</dep.okio.version>
+        <dep.okio.version>3.12.0</dep.okio.version>
         <dep.parquet.version>1.15.2</dep.parquet.version>
         <dep.plugin.failsafe.version>${dep.plugin.surefire.version}</dep.plugin.failsafe.version>
-        <dep.protobuf.version>3.25.7</dep.protobuf.version>
+        <dep.protobuf.version>3.25.8</dep.protobuf.version>
         <dep.snowflake.version>3.24.0</dep.snowflake.version>
         <dep.swagger.version>2.2.32</dep.swagger.version>
         <dep.takari.version>2.3.0</dep.takari.version>
@@ -225,7 +225,7 @@
             <dependency>
                 <groupId>com.azure</groupId>
                 <artifactId>azure-sdk-bom</artifactId>
-                <version>1.2.34</version>
+                <version>1.2.35</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -305,7 +305,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>2.31.49</version>
+                <version>2.31.51</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -313,7 +313,7 @@
             <dependency>
                 <groupId>com.adobe.testing</groupId>
                 <artifactId>s3mock-testcontainers</artifactId>
-                <version>4.3.0</version>
+                <version>4.4.0</version>
             </dependency>
 
             <dependency>
@@ -548,7 +548,7 @@
             <dependency>
                 <groupId>com.nimbusds</groupId>
                 <artifactId>oauth2-oidc-sdk</artifactId>
-                <version>11.24</version>
+                <version>11.25</version>
                 <classifier>jdk11</classifier>
             </dependency>
 
@@ -724,7 +724,7 @@
             <dependency>
                 <groupId>io.azam.ulidj</groupId>
                 <artifactId>ulidj</artifactId>
-                <version>1.0.5</version>
+                <version>1.1.0</version>
             </dependency>
 
             <dependency>
@@ -777,7 +777,7 @@
             <dependency>
                 <groupId>io.dropwizard.metrics</groupId>
                 <artifactId>metrics-core</artifactId>
-                <version>4.2.30</version>
+                <version>4.2.32</version>
             </dependency>
 
             <dependency>
@@ -2291,7 +2291,7 @@
             <dependency>
                 <groupId>org.postgresql</groupId>
                 <artifactId>postgresql</artifactId>
-                <version>42.7.5</version>
+                <version>42.7.6</version>
             </dependency>
 
             <dependency>
