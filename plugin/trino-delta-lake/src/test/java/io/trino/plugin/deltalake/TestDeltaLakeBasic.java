@@ -406,7 +406,7 @@ public class TestDeltaLakeBasic
                 while (page != null) {
                     Block block = page.getBlock(0);
                     for (int i = 0; i < block.getPositionCount(); i++) {
-                        List<?> add = (List<?>) addEntryType.getObjectValue(SESSION, block, i);
+                        List<?> add = (List<?>) addEntryType.getObjectValue(block, i);
                         if (add == null) {
                             continue;
                         }
@@ -1691,7 +1691,7 @@ public class TestDeltaLakeBasic
         assertQueryFails("TABLE " + tableName, "Metadata not found in transaction log for tpch." + tableName);
         assertQueryFails("SELECT * FROM \"" + tableName + "$history\"", "Metadata not found in transaction log for tpch." + tableName);
         assertQueryFails("SELECT * FROM \"" + tableName + "$properties\"", "Metadata not found in transaction log for tpch." + tableName);
-        assertQueryFails("SELECT * FROM \"" + tableName + "$partitions\"", "Metadata not found in transaction log for tpch." + tableName + "\\$partitions");
+        assertQueryFails("SELECT * FROM \"" + tableName + "$partitions\"", "Metadata not found in transaction log for tpch." + tableName);
         assertQueryFails("SELECT * FROM " + tableName + " WHERE false", "Metadata not found in transaction log for tpch." + tableName);
         assertQueryFails("SELECT 1 FROM " + tableName + " WHERE false", "Metadata not found in transaction log for tpch." + tableName);
         assertQueryFails("SHOW CREATE TABLE " + tableName, "Metadata not found in transaction log for tpch." + tableName);
