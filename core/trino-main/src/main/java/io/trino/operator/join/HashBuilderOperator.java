@@ -22,6 +22,7 @@ import com.google.errorprone.annotations.ThreadSafe;
 import io.airlift.concurrent.MoreFutures;
 import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
+import io.trino.memory.context.CoarseGrainLocalMemoryContext;
 import io.trino.memory.context.LocalMemoryContext;
 import io.trino.operator.DriverContext;
 import io.trino.operator.HashArraySizeSupplier;
@@ -57,6 +58,7 @@ import static io.airlift.concurrent.MoreFutures.asVoid;
 import static io.airlift.concurrent.MoreFutures.checkSuccess;
 import static io.airlift.concurrent.MoreFutures.getDone;
 import static io.airlift.units.DataSize.succinctBytes;
+import static io.trino.memory.context.CoarseGrainLocalMemoryContext.DEFAULT_GRANULARITY;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
@@ -149,7 +151,8 @@ public class HashBuilderOperator
                     pagesIndexFactory,
                     spillEnabled,
                     singleStreamSpillerFactory,
-                    hashArraySizeSupplier);
+                    hashArraySizeSupplier,
+                    DEFAULT_GRANULARITY);
         }
 
         @Override
@@ -235,6 +238,7 @@ public class HashBuilderOperator
     private Optional<SingleStreamSpiller> spiller = Optional.empty();
     private ListenableFuture<DataSize> spillInProgress = immediateFuture(DataSize.ofBytes(0));
     private Optional<ListenableFuture<List<Page>>> unspillInProgress = Optional.empty();
+    private boolean unspilledPagesAdded;
     @Nullable
     private LookupSourceSupplier lookupSourceSupplier;
     private OptionalLong lookupSourceChecksum = OptionalLong.empty();
@@ -255,7 +259,8 @@ public class HashBuilderOperator
             PagesIndex.Factory pagesIndexFactory,
             boolean spillEnabled,
             SingleStreamSpillerFactory singleStreamSpillerFactory,
-            HashArraySizeSupplier hashArraySizeSupplier)
+            HashArraySizeSupplier hashArraySizeSupplier,
+            long memorySyncGranularity)
     {
         requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
 
@@ -264,8 +269,8 @@ public class HashBuilderOperator
         this.filterFunctionFactory = filterFunctionFactory;
         this.sortChannel = sortChannel;
         this.searchFunctionFactories = searchFunctionFactories;
-        this.localUserMemoryContext = operatorContext.localUserMemoryContext();
-        this.localRevocableMemoryContext = operatorContext.localRevocableMemoryContext();
+        this.localUserMemoryContext = new CoarseGrainLocalMemoryContext(operatorContext.localUserMemoryContext(), memorySyncGranularity);
+        this.localRevocableMemoryContext = new CoarseGrainLocalMemoryContext(operatorContext.localRevocableMemoryContext(), memorySyncGranularity);
 
         this.index = pagesIndexFactory.newPagesIndex(lookupSourceFactory.getTypes(), expectedPositions);
         this.lookupSourceFactory = lookupSourceFactory;
@@ -373,6 +378,7 @@ public class HashBuilderOperator
             long indexSizeAfterCompaction = index.getEstimatedSize().toBytes();
             if (indexSizeAfterCompaction < indexSizeBeforeCompaction * INDEX_COMPACTION_ON_REVOCATION_TARGET) {
                 finishMemoryRevoke = Optional.of(() -> {});
+                localRevocableMemoryContext.setBytes(indexSizeAfterCompaction);
                 return immediateVoidFuture();
             }
 
@@ -495,12 +501,30 @@ public class HashBuilderOperator
             return;
         }
 
-        LookupSourceSupplier partition = buildLookupSource();
+        long memoryRequired = index.getEstimatedMemoryRequiredToCreateLookupSource(
+                hashArraySizeSupplier,
+                sortChannel,
+                hashChannels);
+
+        ListenableFuture<Void> reserved;
         if (spillEnabled) {
-            localRevocableMemoryContext.setBytes(partition.get().getInMemorySizeInBytes());
+            reserved = localRevocableMemoryContext.setBytes(memoryRequired);
         }
         else {
-            localUserMemoryContext.setBytes(partition.get().getInMemorySizeInBytes());
+            reserved = localUserMemoryContext.setBytes(memoryRequired);
+        }
+
+        if (!reserved.isDone()) {
+            // wait for memory
+            return;
+        }
+
+        LookupSourceSupplier partition = buildLookupSource();
+        if (spillEnabled) {
+            localRevocableMemoryContext.setBytes(partition.get().getInMemorySizeInBytes() + index.getExtraPagesIndexMemoryWithLookupSourceBuild());
+        }
+        else {
+            localUserMemoryContext.setBytes(partition.get().getInMemorySizeInBytes() + index.getExtraPagesIndexMemoryWithLookupSourceBuild());
         }
         lookupSourceNotNeeded = Optional.of(lookupSourceFactory.lendPartitionLookupSource(partitionIndex, partition));
 
@@ -545,7 +569,10 @@ public class HashBuilderOperator
         verify(unspillInProgress.isEmpty());
 
         long spilledPagesInMemorySize = getSpiller().getSpilledPagesInMemorySize();
-        localUserMemoryContext.setBytes(spilledPagesInMemorySize + index.getEstimatedSize().toBytes());
+        if (!localUserMemoryContext.setBytes(spilledPagesInMemorySize + index.getEstimatedSize().toBytes()).isDone()) {
+            // wait for memory
+            return;
+        }
         long unspillStartNanos = System.nanoTime();
         unspillInProgress = Optional.of(getSpiller().getAllSpilledPages());
         addSuccessCallback(unspillInProgress.get(), ignored -> {
@@ -554,45 +581,59 @@ public class HashBuilderOperator
         });
 
         state = State.INPUT_UNSPILLING;
+        unspilledPagesAdded = false;
     }
 
     private void finishLookupSourceUnspilling()
     {
         checkState(state == State.INPUT_UNSPILLING);
-        if (!unspillInProgress.get().isDone()) {
-            // Pages have not been unspilled yet.
-            return;
+
+        if (!unspilledPagesAdded) {
+            if (!unspillInProgress.get().isDone()) {
+                // Pages have not been unspilled yet.
+                return;
+            }
+
+            Queue<Page> pages = new ArrayDeque<>(getDone(unspillInProgress.get()));
+            unspillInProgress = Optional.empty();
+            long sizeOfUnspilledPages = pages.stream()
+                    .mapToLong(Page::getSizeInBytes)
+                    .sum();
+            long retainedSizeOfUnspilledPages = pages.stream()
+                    .mapToLong(Page::getRetainedSizeInBytes)
+                    .sum();
+            log.debug(
+                    "Unspilling for operator %s, unspilled partition %d, sizeOfUnspilledPages %s, retainedSizeOfUnspilledPages %s",
+                    operatorContext,
+                    partitionIndex,
+                    succinctBytes(sizeOfUnspilledPages),
+                    succinctBytes(retainedSizeOfUnspilledPages));
+            localUserMemoryContext.setBytes(retainedSizeOfUnspilledPages + index.getEstimatedSize().toBytes());
+
+            while (!pages.isEmpty()) {
+                Page next = pages.remove();
+                index.addPage(next);
+                // There is no attempt to compact index, since unspilled pages are unlikely to have blocks with retained size > logical size.
+                retainedSizeOfUnspilledPages -= next.getRetainedSizeInBytes();
+                localUserMemoryContext.setBytes(retainedSizeOfUnspilledPages + index.getEstimatedSize().toBytes());
+            }
+
+            unspilledPagesAdded = true;
         }
 
-        // Use Queue so that Pages already consumed by Index are not retained by us.
-        Queue<Page> pages = new ArrayDeque<>(getDone(unspillInProgress.get()));
-        unspillInProgress = Optional.empty();
-        long sizeOfUnspilledPages = pages.stream()
-                .mapToLong(Page::getSizeInBytes)
-                .sum();
-        long retainedSizeOfUnspilledPages = pages.stream()
-                .mapToLong(Page::getRetainedSizeInBytes)
-                .sum();
-        log.debug(
-                "Unspilling for operator %s, unspilled partition %d, sizeOfUnspilledPages %s, retainedSizeOfUnspilledPages %s",
-                operatorContext,
-                partitionIndex,
-                succinctBytes(sizeOfUnspilledPages),
-                succinctBytes(retainedSizeOfUnspilledPages));
-        localUserMemoryContext.setBytes(retainedSizeOfUnspilledPages + index.getEstimatedSize().toBytes());
-
-        while (!pages.isEmpty()) {
-            Page next = pages.remove();
-            index.addPage(next);
-            // There is no attempt to compact index, since unspilled pages are unlikely to have blocks with retained size > logical size.
-            retainedSizeOfUnspilledPages -= next.getRetainedSizeInBytes();
-            localUserMemoryContext.setBytes(retainedSizeOfUnspilledPages + index.getEstimatedSize().toBytes());
+        ListenableFuture<Void> reserved = localUserMemoryContext.setBytes(index.getEstimatedMemoryRequiredToCreateLookupSource(
+                hashArraySizeSupplier,
+                sortChannel,
+                hashChannels));
+        if (!reserved.isDone()) {
+            // Wait for memory
+            return;
         }
 
         LookupSourceSupplier partition = buildLookupSource();
         lookupSourceChecksum.ifPresent(checksum ->
                 checkState(partition.checksum() == checksum, "Unspilled lookupSource checksum does not match original one"));
-        localUserMemoryContext.setBytes(partition.get().getInMemorySizeInBytes());
+        localUserMemoryContext.setBytes(partition.get().getInMemorySizeInBytes() + index.getExtraPagesIndexMemoryWithLookupSourceBuild());
 
         spilledLookupSourceHandle.setLookupSource(partition);
 
