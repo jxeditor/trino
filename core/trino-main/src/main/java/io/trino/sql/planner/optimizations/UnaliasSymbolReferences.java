@@ -237,15 +237,13 @@ public class UnaliasSymbolReferences
 
             Symbol newMarkerSymbol = mapper.map(node.getMarkerSymbol());
             List<Symbol> newDistinctSymbols = mapper.mapAndDistinct(node.getDistinctSymbols());
-            Optional<Symbol> newHashSymbol = node.getHashSymbol().map(mapper::map);
 
             return new PlanAndMappings(
                     new MarkDistinctNode(
                             node.getId(),
                             rewrittenSource.getRoot(),
                             newMarkerSymbol,
-                            newDistinctSymbols,
-                            newHashSymbol),
+                            newDistinctSymbols),
                     mapping);
         }
 
@@ -367,7 +365,6 @@ public class UnaliasSymbolReferences
                                 Optional.empty(),
                                 ImmutableSet.of(),
                                 0,
-                                node.getHashSymbol().map(mapper::map),
                                 node.getHandle()),
                         mapping);
             }
