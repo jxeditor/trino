@@ -55,6 +55,7 @@ import io.trino.execution.QueryStateMachine;
 import io.trino.execution.RemoteTask;
 import io.trino.execution.RemoteTaskFactory;
 import io.trino.execution.SqlStage;
+import io.trino.execution.SqlStage.LocalExchangeBucketCountProvider;
 import io.trino.execution.StageId;
 import io.trino.execution.StageInfo;
 import io.trino.execution.StageState;
@@ -77,10 +78,10 @@ import io.trino.execution.scheduler.faulttolerant.PartitionMemoryEstimator.Memor
 import io.trino.execution.scheduler.faulttolerant.SplitAssigner.AssignmentResult;
 import io.trino.execution.scheduler.faulttolerant.SplitAssigner.Partition;
 import io.trino.execution.scheduler.faulttolerant.SplitAssigner.PartitionUpdate;
-import io.trino.failuredetector.FailureDetector;
-import io.trino.metadata.InternalNode;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.Split;
+import io.trino.node.InternalNode;
+import io.trino.node.InternalNodeManager;
 import io.trino.operator.RetryPolicy;
 import io.trino.server.DynamicFilterService;
 import io.trino.spi.ErrorCode;
@@ -127,6 +128,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Queue;
 import java.util.Set;
@@ -170,7 +172,6 @@ import static io.trino.execution.scheduler.SchedulingUtils.canStream;
 import static io.trino.execution.scheduler.faulttolerant.TaskExecutionClass.EAGER_SPECULATIVE;
 import static io.trino.execution.scheduler.faulttolerant.TaskExecutionClass.SPECULATIVE;
 import static io.trino.execution.scheduler.faulttolerant.TaskExecutionClass.STANDARD;
-import static io.trino.failuredetector.FailureDetector.State.GONE;
 import static io.trino.operator.ExchangeOperator.REMOTE_CATALOG_HANDLE;
 import static io.trino.operator.RetryPolicy.TASK;
 import static io.trino.spi.ErrorType.EXTERNAL;
@@ -224,7 +225,7 @@ public class EventDrivenFaultTolerantQueryScheduler
     private final NodePartitioningManager nodePartitioningManager;
     private final ExchangeManager exchangeManager;
     private final NodeAllocatorService nodeAllocatorService;
-    private final FailureDetector failureDetector;
+    private final InternalNodeManager nodeManager;
     private final DynamicFilterService dynamicFilterService;
     private final TaskExecutionStats taskExecutionStats;
     private final Optional<AdaptivePlanner> adaptivePlanner;
@@ -256,7 +257,7 @@ public class EventDrivenFaultTolerantQueryScheduler
             NodePartitioningManager nodePartitioningManager,
             ExchangeManager exchangeManager,
             NodeAllocatorService nodeAllocatorService,
-            FailureDetector failureDetector,
+            InternalNodeManager nodeManager,
             DynamicFilterService dynamicFilterService,
             TaskExecutionStats taskExecutionStats,
             AdaptivePlanner adaptivePlanner,
@@ -281,7 +282,7 @@ public class EventDrivenFaultTolerantQueryScheduler
         this.nodePartitioningManager = requireNonNull(nodePartitioningManager, "partitioningSchemeFactory is null");
         this.exchangeManager = requireNonNull(exchangeManager, "exchangeManager is null");
         this.nodeAllocatorService = requireNonNull(nodeAllocatorService, "nodeAllocatorService is null");
-        this.failureDetector = requireNonNull(failureDetector, "failureDetector is null");
+        this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
         this.dynamicFilterService = requireNonNull(dynamicFilterService, "dynamicFilterService is null");
         this.taskExecutionStats = requireNonNull(taskExecutionStats, "taskExecutionStats is null");
         this.adaptivePlanner = isFaultTolerantExecutionAdaptiveQueryPlanningEnabled(queryStateMachine.getSession()) ?
@@ -357,7 +358,7 @@ public class EventDrivenFaultTolerantQueryScheduler
                     getMaxTasksWaitingForNodePerQuery(session),
                     getMaxTasksWaitingForExecutionPerQuery(session),
                     nodeAllocator,
-                    failureDetector,
+                    nodeManager,
                     stageRegistry,
                     taskExecutionStats,
                     stageExecutionStats,
@@ -370,7 +371,8 @@ public class EventDrivenFaultTolerantQueryScheduler
                     originalPlan,
                     maxPartitionCount,
                     stageEstimationForEagerParentEnabled,
-                    adaptivePlanner);
+                    adaptivePlanner,
+                    nodePartitioningManager::getBucketCount);
             queryExecutor.submit(scheduler::run);
         }
         catch (Throwable t) {
@@ -697,11 +699,12 @@ public class EventDrivenFaultTolerantQueryScheduler
         private final OutputStatsEstimator outputStatsEstimator;
         private final FaultTolerantPartitioningSchemeFactory partitioningSchemeFactory;
         private final ExchangeManager exchangeManager;
+        private final LocalExchangeBucketCountProvider bucketCountProvider;
         private final int maxTaskExecutionAttempts;
         private final int maxTasksWaitingForNode;
         private final int maxTasksWaitingForExecution;
         private final NodeAllocator nodeAllocator;
-        private final FailureDetector failureDetector;
+        private final InternalNodeManager nodeManager;
         private final StageRegistry stageRegistry;
         private final TaskExecutionStats taskExecutionStats;
         private final StageExecutionStats stageExecutionStats;
@@ -756,7 +759,7 @@ public class EventDrivenFaultTolerantQueryScheduler
                 int maxTasksWaitingForNode,
                 int maxTasksWaitingForExecution,
                 NodeAllocator nodeAllocator,
-                FailureDetector failureDetector,
+                InternalNodeManager nodeManager,
                 StageRegistry stageRegistry,
                 TaskExecutionStats taskExecutionStats,
                 StageExecutionStats stageExecutionStats,
@@ -765,7 +768,8 @@ public class EventDrivenFaultTolerantQueryScheduler
                 SubPlan plan,
                 int maxPartitionCount,
                 boolean stageEstimationForEagerParentEnabled,
-                Optional<AdaptivePlanner> adaptivePlanner)
+                Optional<AdaptivePlanner> adaptivePlanner,
+                LocalExchangeBucketCountProvider bucketCountProvider)
         {
             this.queryStateMachine = requireNonNull(queryStateMachine, "queryStateMachine is null");
             this.metadata = requireNonNull(metadata, "metadata is null");
@@ -787,7 +791,7 @@ public class EventDrivenFaultTolerantQueryScheduler
             this.maxTasksWaitingForNode = maxTasksWaitingForNode;
             this.maxTasksWaitingForExecution = maxTasksWaitingForExecution;
             this.nodeAllocator = requireNonNull(nodeAllocator, "nodeAllocator is null");
-            this.failureDetector = requireNonNull(failureDetector, "failureDetector is null");
+            this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
             this.stageRegistry = requireNonNull(stageRegistry, "stageRegistry is null");
             this.taskExecutionStats = requireNonNull(taskExecutionStats, "taskExecutionStats is null");
             this.stageExecutionStats = requireNonNull(stageExecutionStats, "stageExecutionStats is null");
@@ -796,6 +800,7 @@ public class EventDrivenFaultTolerantQueryScheduler
             this.plan = requireNonNull(plan, "plan is null");
             this.maxPartitionCount = maxPartitionCount;
             this.adaptivePlanner = requireNonNull(adaptivePlanner, "adaptivePlanner is null");
+            this.bucketCountProvider = requireNonNull(bucketCountProvider, "bucketCountProvider is null");
             this.stageEstimationForEagerParentEnabled = stageEstimationForEagerParentEnabled;
             this.schedulerSpan = tracer.spanBuilder("scheduler")
                     .setParent(Context.current().with(queryStateMachine.getSession().getQuerySpan()))
@@ -1400,7 +1405,8 @@ public class EventDrivenFaultTolerantQueryScheduler
                         queryStateMachine.getStateMachineExecutor(),
                         tracer,
                         schedulerSpan,
-                        schedulerStats);
+                        schedulerStats,
+                        bucketCountProvider);
                 closer.register(stage::abort);
                 stageRegistry.add(stage);
                 stage.addFinalStageInfoListener(_ -> queryStateMachine.updateQueryInfo(Optional.ofNullable(stageRegistry.getStageInfo())));
@@ -1880,7 +1886,7 @@ public class EventDrivenFaultTolerantQueryScheduler
 
         private ExecutionFailureInfo rewriteTransportFailure(ExecutionFailureInfo executionFailureInfo)
         {
-            if (executionFailureInfo.getRemoteHost() == null || failureDetector.getState(executionFailureInfo.getRemoteHost()) != GONE) {
+            if (executionFailureInfo.getRemoteHost() == null || !nodeManager.isGone(executionFailureInfo.getRemoteHost())) {
                 return executionFailureInfo;
             }
 
@@ -2301,13 +2307,14 @@ public class EventDrivenFaultTolerantQueryScheduler
                     noMoreSplits.add(partitionedSource);
                 }
             }
-
             SpoolingOutputBuffers outputBuffers = SpoolingOutputBuffers.createInitial(exchangeSinkInstanceHandle, sinkPartitioningScheme.getPartitionCount());
             Optional<RemoteTask> task = stage.createTask(
                     node,
                     partitionId,
                     attempt,
                     sinkPartitioningScheme.getBucketToPartitionMap(),
+                    // FTE does not support writer scaling
+                    OptionalInt.empty(),
                     outputBuffers,
                     splits,
                     noMoreSplits,

@@ -15,7 +15,6 @@ package io.trino.dispatcher;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.configuration.secrets.SecretsResolver;
@@ -44,11 +43,11 @@ import io.trino.execution.scheduler.NodeSchedulerConfig;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.metadata.FunctionManager;
 import io.trino.metadata.GlobalFunctionCatalog;
-import io.trino.metadata.InMemoryNodeManager;
-import io.trino.metadata.InternalNodeManager;
 import io.trino.metadata.LanguageFunctionProvider;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.SessionPropertyManager;
+import io.trino.node.InternalNodeManager;
+import io.trino.node.TestingInternalNodeManager;
 import io.trino.operator.OperatorStats;
 import io.trino.plugin.base.security.AllowAllSystemAccessControl;
 import io.trino.plugin.base.security.DefaultSystemAccessControl;
@@ -158,7 +157,7 @@ public class TestLocalDispatchQuery
                 queryStateMachine,
                 Futures.immediateFuture(dataDefinitionExecution),
                 queryMonitor,
-                new TestClusterSizeMonitor(new InMemoryNodeManager(ImmutableSet.of()), new NodeSchedulerConfig()),
+                new TestClusterSizeMonitor(TestingInternalNodeManager.createDefault(), new NodeSchedulerConfig()),
                 executor,
                 queryExecution -> dataDefinitionExecution.start());
         queryStateMachine.addStateChangeListener(state -> {
