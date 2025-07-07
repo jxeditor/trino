@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>272</version>
+        <version>276</version>
     </parent>
 
     <groupId>io.trino</groupId>
@@ -191,7 +191,7 @@
         <dep.checkstyle.version>10.23.1</dep.checkstyle.version>
         <dep.docker.images.version>116</dep.docker.images.version>
         <dep.drift.version>1.23</dep.drift.version>
-        <dep.flyway.version>11.10.0</dep.flyway.version>
+        <dep.flyway.version>11.10.1</dep.flyway.version>
         <dep.frontend-maven-plugin.version>1.15.1</dep.frontend-maven-plugin.version>
         <dep.frontend-node.version>v22.14.0</dep.frontend-node.version>
         <dep.frontend-npm.version>11.2.0</dep.frontend-npm.version>
@@ -202,6 +202,7 @@
         <dep.jsonwebtoken.version>0.12.6</dep.jsonwebtoken.version>
         <dep.jts.version>1.20.0</dep.jts.version>
         <dep.kafka-clients.version>4.0.0</dep.kafka-clients.version>
+        <dep.okhttp.version>5.0.0</dep.okhttp.version>
         <dep.okio.version>3.15.0</dep.okio.version>
         <dep.parquet.version>1.15.2</dep.parquet.version>
         <dep.plugin.failsafe.version>${dep.plugin.surefire.version}</dep.plugin.failsafe.version>
@@ -251,7 +252,7 @@
             <dependency>
                 <groupId>com.squareup.okhttp3</groupId>
                 <artifactId>okhttp-bom</artifactId>
-                <version>4.12.0</version>
+                <version>${dep.okhttp.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -307,7 +308,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>2.31.76</version>
+                <version>2.31.77</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -564,6 +565,12 @@
                 <groupId>com.opencsv</groupId>
                 <artifactId>opencsv</artifactId>
                 <version>5.11.2</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp-jvm</artifactId>
+                <version>${dep.okhttp.version}</version>
             </dependency>
 
             <dependency>
