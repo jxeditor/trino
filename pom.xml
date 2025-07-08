@@ -202,7 +202,7 @@
         <dep.jsonwebtoken.version>0.12.6</dep.jsonwebtoken.version>
         <dep.jts.version>1.20.0</dep.jts.version>
         <dep.kafka-clients.version>4.0.0</dep.kafka-clients.version>
-        <dep.okhttp.version>5.0.0</dep.okhttp.version>
+        <dep.okhttp.version>5.1.0</dep.okhttp.version>
         <dep.okio.version>3.15.0</dep.okio.version>
         <dep.parquet.version>1.15.2</dep.parquet.version>
         <dep.plugin.failsafe.version>${dep.plugin.surefire.version}</dep.plugin.failsafe.version>
@@ -316,7 +316,7 @@
             <dependency>
                 <groupId>com.adobe.testing</groupId>
                 <artifactId>s3mock-testcontainers</artifactId>
-                <version>4.5.1</version>
+                <version>4.6.0</version>
             </dependency>
 
             <dependency>
@@ -453,7 +453,7 @@
             <dependency>
                 <groupId>com.github.docker-java</groupId>
                 <artifactId>docker-java-api</artifactId>
-                <version>3.5.2</version>
+                <version>3.5.3</version>
             </dependency>
 
             <dependency>
@@ -2913,6 +2913,7 @@
                                     -Xep:ErroneousBitwiseExpression:ERROR \
                                     -Xep:ErroneousThreadPoolConstructorChecker:ERROR \
                                     -Xep:EscapedEntity:ERROR \
+                                    -Xep:ExpensiveLenientFormatString:ERROR \
                                     -Xep:ExtendingJUnitAssert:ERROR \
                                     -Xep:ExtendsObject:ERROR \
                                     -Xep:FallThrough:ERROR \
@@ -2965,10 +2966,13 @@
                                     -Xep:ThreeLetterTimeZoneID:ERROR \
                                     -Xep:TraditionalSwitchExpression:ERROR \
                                     -Xep:UnicodeEscape:ERROR \
+                                    -Xep:UnnecessaryCopy:ERROR \
                                     -Xep:UnnecessaryLongToIntConversion:ERROR \
                                     -Xep:UnnecessaryMethodReference:ERROR \
                                     -Xep:UnnecessaryOptionalGet:ERROR \
                                     -Xep:UnnecessaryParentheses:ERROR \
+                                    <!-- false positive from io.airlift.configuration.Config annotation -->
+                                    -Xep:UnnecessaryQualifier:OFF \
                                     -Xep:UnnecessaryStringBuilder:ERROR \
                                     -Xep:UnusedMethod:OFF \
                                     -Xep:UnusedVariable:ERROR \
