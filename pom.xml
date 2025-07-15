@@ -268,7 +268,7 @@
             <dependency>
                 <groupId>io.netty</groupId>
                 <artifactId>netty-bom</artifactId>
-                <version>4.2.2.Final</version>
+                <version>4.2.3.Final</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -917,7 +917,7 @@
             <dependency>
                 <groupId>io.projectreactor</groupId>
                 <artifactId>reactor-core</artifactId>
-                <version>3.7.7</version>
+                <version>3.7.8</version>
             </dependency>
 
             <dependency>
@@ -2218,6 +2218,12 @@
                         <artifactId>slf4j-log4j12</artifactId>
                     </exclusion>
                 </exclusions>
+            </dependency>
+
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>1.81</version>
             </dependency>
 
             <dependency>
