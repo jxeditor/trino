@@ -197,7 +197,7 @@
         <dep.frontend-npm.version>11.2.0</dep.frontend-npm.version>
         <dep.gib.version>4.5.4</dep.gib.version>
         <dep.httpcore5.version>5.3.4</dep.httpcore5.version>
-        <dep.iceberg.version>1.9.1</dep.iceberg.version>
+        <dep.iceberg.version>1.9.2</dep.iceberg.version>
         <dep.jna.version>5.17.0</dep.jna.version>
         <dep.jsonwebtoken.version>0.12.6</dep.jsonwebtoken.version>
         <dep.jts.version>1.20.0</dep.jts.version>
@@ -236,7 +236,7 @@
             <dependency>
                 <groupId>com.google.cloud</groupId>
                 <artifactId>libraries-bom</artifactId>
-                <version>26.63.0</version>
+                <version>26.64.0</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -300,7 +300,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>2.32.1</version>
+                <version>2.32.2</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
