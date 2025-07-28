@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>280</version>
+        <version>282</version>
     </parent>
 
     <groupId>io.trino</groupId>
@@ -181,7 +181,7 @@
         <air.test.jvm.additional-arguments>${air.test.jvm.additional-arguments.default}</air.test.jvm.additional-arguments>
 
         <!-- keep dependency properties sorted -->
-        <dep.airlift.version>341</dep.airlift.version>
+        <dep.airlift.version>342</dep.airlift.version>
         <dep.alluxio.version>2.9.6</dep.alluxio.version>
         <dep.antlr.version>4.13.2</dep.antlr.version>
         <dep.avro.version>1.12.0</dep.avro.version>
@@ -191,7 +191,7 @@
         <dep.checkstyle.version>10.23.1</dep.checkstyle.version>
         <dep.docker.images.version>116</dep.docker.images.version>
         <dep.drift.version>1.23</dep.drift.version>
-        <dep.flyway.version>11.10.3</dep.flyway.version>
+        <dep.flyway.version>11.10.4</dep.flyway.version>
         <dep.frontend-maven-plugin.version>1.15.1</dep.frontend-maven-plugin.version>
         <dep.frontend-node.version>v22.14.0</dep.frontend-node.version>
         <dep.frontend-npm.version>11.2.0</dep.frontend-npm.version>
@@ -300,7 +300,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>2.32.3</version>
+                <version>2.32.9</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -308,7 +308,7 @@
             <dependency>
                 <groupId>com.adobe.testing</groupId>
                 <artifactId>s3mock-testcontainers</artifactId>
-                <version>4.6.0</version>
+                <version>4.7.0</version>
             </dependency>
 
             <dependency>
@@ -543,20 +543,20 @@
             <dependency>
                 <groupId>com.nimbusds</groupId>
                 <artifactId>nimbus-jose-jwt</artifactId>
-                <version>10.3.1</version>
+                <version>10.4</version>
             </dependency>
 
             <dependency>
                 <groupId>com.nimbusds</groupId>
                 <artifactId>oauth2-oidc-sdk</artifactId>
-                <version>11.26</version>
+                <version>11.26.1</version>
                 <classifier>jdk11</classifier>
             </dependency>
 
             <dependency>
                 <groupId>com.opencsv</groupId>
                 <artifactId>opencsv</artifactId>
-                <version>5.11.2</version>
+                <version>5.12.0</version>
             </dependency>
 
             <dependency>
@@ -604,13 +604,13 @@
             <dependency>
                 <groupId>commons-codec</groupId>
                 <artifactId>commons-codec</artifactId>
-                <version>1.18.0</version>
+                <version>1.19.0</version>
             </dependency>
 
             <dependency>
                 <groupId>commons-io</groupId>
                 <artifactId>commons-io</artifactId>
-                <version>2.19.0</version>
+                <version>2.20.0</version>
             </dependency>
 
             <dependency>
@@ -1923,7 +1923,7 @@
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-text</artifactId>
-                <version>1.13.1</version>
+                <version>1.14.0</version>
             </dependency>
 
             <dependency>
@@ -2062,7 +2062,7 @@
             <dependency>
                 <groupId>org.apache.maven</groupId>
                 <artifactId>maven-model</artifactId>
-                <version>3.9.10</version>
+                <version>3.9.11</version>
             </dependency>
 
             <dependency>
@@ -2328,7 +2328,7 @@
             <dependency>
                 <groupId>org.pcollections</groupId>
                 <artifactId>pcollections</artifactId>
-                <version>4.0.2</version>
+                <version>5.0.0</version>
             </dependency>
 
             <dependency>
@@ -2364,7 +2364,7 @@
             <dependency>
                 <groupId>org.xerial.snappy</groupId>
                 <artifactId>snappy-java</artifactId>
-                <version>1.1.10.7</version>
+                <version>1.1.10.8</version>
                 <exclusions>
                     <exclusion>
                         <groupId>org.osgi</groupId>
