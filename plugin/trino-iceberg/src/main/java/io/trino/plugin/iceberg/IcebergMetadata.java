@@ -25,6 +25,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
+import io.airlift.concurrent.MoreFutures;
 import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
@@ -145,6 +146,7 @@ import org.apache.iceberg.DeleteFiles;
 import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.FileMetadata;
 import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.IcebergManifestUtils;
 import org.apache.iceberg.IsolationLevel;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.ManifestFiles;
@@ -216,6 +218,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -456,6 +459,7 @@ public class IcebergMetadata
     private final ExecutorService icebergScanExecutor;
     private final Executor metadataFetchingExecutor;
     private final ExecutorService icebergPlanningExecutor;
+    private final ExecutorService icebergFileDeleteExecutor;
     private final Map<IcebergTableHandle, AtomicReference<TableStatistics>> tableStatisticsCache = new ConcurrentHashMap<>();
 
     private Transaction transaction;
@@ -473,7 +477,8 @@ public class IcebergMetadata
             Predicate<String> allowedExtraProperties,
             ExecutorService icebergScanExecutor,
             Executor metadataFetchingExecutor,
-            ExecutorService icebergPlanningExecutor)
+            ExecutorService icebergPlanningExecutor,
+            ExecutorService icebergFileDeleteExecutor)
     {
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.trinoCatalogHandle = requireNonNull(trinoCatalogHandle, "trinoCatalogHandle is null");
@@ -487,6 +492,7 @@ public class IcebergMetadata
         this.icebergScanExecutor = requireNonNull(icebergScanExecutor, "icebergScanExecutor is null");
         this.metadataFetchingExecutor = requireNonNull(metadataFetchingExecutor, "metadataFetchingExecutor is null");
         this.icebergPlanningExecutor = requireNonNull(icebergPlanningExecutor, "icebergPlanningExecutor is null");
+        this.icebergFileDeleteExecutor = requireNonNull(icebergFileDeleteExecutor, "icebergFileDeleteExecutor is null");
     }
 
     @Override
@@ -2260,11 +2266,18 @@ public class IcebergMetadata
         ImmutableSet.Builder<String> validDataFileNames = ImmutableSet.builder();
 
         for (Snapshot snapshot : table.snapshots()) {
-            if (snapshot.manifestListLocation() != null) {
-                validMetadataFileNames.add(fileName(snapshot.manifestListLocation()));
+            String manifestListLocation = snapshot.manifestListLocation();
+            List<ManifestFile> allManifests;
+            if (manifestListLocation != null) {
+                validMetadataFileNames.add(fileName(manifestListLocation));
+                allManifests = loadAllManifestsFromManifestList(table, manifestListLocation);
+            }
+            else {
+                // This is to maintain support for V1 tables which have embedded manifest lists
+                allManifests = loadAllManifestsFromSnapshot(table, snapshot);
             }
 
-            for (ManifestFile manifest : loadAllManifestsFromSnapshot(table, snapshot)) {
+            for (ManifestFile manifest : allManifests) {
                 if (!processedManifestFilePaths.add(manifest.path())) {
                     // Already read this manifest
                     continue;
@@ -2272,7 +2285,7 @@ public class IcebergMetadata
 
                 validMetadataFileNames.add(fileName(manifest.path()));
                 try (ManifestReader<? extends ContentFile<?>> manifestReader = readerForManifest(table, manifest)) {
-                    for (ContentFile<?> contentFile : manifestReader) {
+                    for (ContentFile<?> contentFile : manifestReader.select(ImmutableList.of("file_path"))) {
                         validDataFileNames.add(fileName(contentFile.location()));
                     }
                 }
@@ -2339,8 +2352,9 @@ public class IcebergMetadata
 
     private void scanAndDeleteInvalidFiles(Table table, ConnectorSession session, SchemaTableName schemaTableName, Instant expiration, Set<String> validFiles, String subfolder, Map<String, String> fileIoProperties)
     {
+        List<Future<?>> deleteFutures = new ArrayList<>();
         try {
-            List<Location> filesToDelete = new ArrayList<>();
+            List<Location> filesToDelete = new ArrayList<>(DELETE_BATCH_SIZE);
             TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), fileIoProperties);
             FileIterator allFiles = fileSystem.listFiles(Location.of(table.location()).appendPath(subfolder));
             while (allFiles.hasNext()) {
@@ -2348,9 +2362,9 @@ public class IcebergMetadata
                 if (entry.lastModified().isBefore(expiration) && !validFiles.contains(entry.location().fileName())) {
                     filesToDelete.add(entry.location());
                     if (filesToDelete.size() >= DELETE_BATCH_SIZE) {
-                        log.debug("Deleting files while removing orphan files for table %s [%s]", schemaTableName, filesToDelete);
-                        fileSystem.deleteFiles(filesToDelete);
-                        filesToDelete.clear();
+                        List<Location> finalFilesToDelete = filesToDelete;
+                        deleteFutures.add(icebergFileDeleteExecutor.submit(() -> deleteFiles(finalFilesToDelete, schemaTableName, fileSystem)));
+                        filesToDelete = new ArrayList<>(DELETE_BATCH_SIZE);
                     }
                 }
                 else {
@@ -2361,6 +2375,22 @@ public class IcebergMetadata
                 log.debug("Deleting files while removing orphan files for table %s %s", schemaTableName, filesToDelete);
                 fileSystem.deleteFiles(filesToDelete);
             }
+
+            deleteFutures.forEach(MoreFutures::getFutureValue);
+        }
+        catch (IOException | UncheckedIOException e) {
+            throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Failed accessing data for table: " + schemaTableName, e);
+        }
+        finally {
+            deleteFutures.forEach(future -> future.cancel(true));
+        }
+    }
+
+    private void deleteFiles(List<Location> files, SchemaTableName schemaTableName, TrinoFileSystem fileSystem)
+    {
+        log.debug("Deleting files while removing orphan files for table %s [%s]", schemaTableName, files);
+        try {
+            fileSystem.deleteFiles(files);
         }
         catch (IOException | UncheckedIOException e) {
             throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Failed accessing data for table: " + schemaTableName, e);
@@ -3463,6 +3493,21 @@ public class IcebergMetadata
     {
         try {
             return snapshot.allManifests(icebergTable.io());
+        }
+        catch (NotFoundException | UncheckedIOException e) {
+            throw new TrinoException(ICEBERG_INVALID_METADATA, "Error accessing manifest file for table %s".formatted(icebergTable.name()), e);
+        }
+    }
+
+    /**
+     * Use instead of loadAllManifestsFromSnapshot when loading manifests from multiple distinct snapshots
+     * Each BaseSnapshot object caches manifest files separately, so loading manifests from multiple distinct snapshots
+     * results in O(num_snapshots^2) copies of the same manifest file metadata in memory
+     */
+    private static List<ManifestFile> loadAllManifestsFromManifestList(Table icebergTable, String manifestListLocation)
+    {
+        try {
+            return IcebergManifestUtils.read(icebergTable.io(), manifestListLocation);
         }
         catch (NotFoundException | UncheckedIOException e) {
             throw new TrinoException(ICEBERG_INVALID_METADATA, "Error accessing manifest file for table %s".formatted(icebergTable.name()), e);
