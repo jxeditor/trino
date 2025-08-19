@@ -2282,14 +2282,14 @@ public class IcebergMetadata
         // Similarly to issues like https://github.com/trinodb/trino/issues/13759, equivalent paths may have different String
         // representations due to things like double slashes. Using file names may result in retaining files which could be removed.
         // However, in practice Iceberg metadata and data files have UUIDs in their names which makes this unlikely.
-        ImmutableSet.Builder<String> validMetadataFileNames = ImmutableSet.builder();
-        ImmutableSet.Builder<String> validDataFileNames = ImmutableSet.builder();
+        Set<String> validFileNames = Sets.newConcurrentHashSet();
+        List<Future<?>> manifestScanFutures = new ArrayList<>();
 
         for (Snapshot snapshot : table.snapshots()) {
             String manifestListLocation = snapshot.manifestListLocation();
             List<ManifestFile> allManifests;
             if (manifestListLocation != null) {
-                validMetadataFileNames.add(fileName(manifestListLocation));
+                validFileNames.add(fileName(manifestListLocation));
                 allManifests = loadAllManifestsFromManifestList(table, manifestListLocation);
             }
             else {
@@ -2303,33 +2303,43 @@ public class IcebergMetadata
                     continue;
                 }
 
-                validMetadataFileNames.add(fileName(manifest.path()));
-                try (ManifestReader<? extends ContentFile<?>> manifestReader = readerForManifest(manifest, table)) {
-                    for (ContentFile<?> contentFile : manifestReader.select(ImmutableList.of("file_path"))) {
-                        validDataFileNames.add(fileName(contentFile.location()));
+                validFileNames.add(fileName(manifest.path()));
+                manifestScanFutures.add(icebergScanExecutor.submit(() -> {
+                    try (ManifestReader<? extends ContentFile<?>> manifestReader = readerForManifest(manifest, table)) {
+                        for (ContentFile<?> contentFile : manifestReader.select(ImmutableList.of("file_path"))) {
+                            validFileNames.add(fileName(contentFile.location()));
+                        }
                     }
-                }
-                catch (IOException | UncheckedIOException e) {
-                    throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Unable to list manifest file content from " + manifest.path(), e);
-                }
-                catch (NotFoundException e) {
-                    throw new TrinoException(ICEBERG_INVALID_METADATA, "Manifest file does not exist: " + manifest.path());
-                }
+                    catch (IOException | UncheckedIOException e) {
+                        throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Unable to list manifest file content from " + manifest.path(), e);
+                    }
+                    catch (NotFoundException e) {
+                        throw new TrinoException(ICEBERG_INVALID_METADATA, "Manifest file does not exist: " + manifest.path());
+                    }
+                }));
             }
         }
 
         metadataFileLocations(table, false).stream()
                 .map(IcebergUtil::fileName)
-                .forEach(validMetadataFileNames::add);
+                .forEach(validFileNames::add);
 
         statisticsFilesLocations(table).stream()
                 .map(IcebergUtil::fileName)
-                .forEach(validMetadataFileNames::add);
+                .forEach(validFileNames::add);
 
-        validMetadataFileNames.add("version-hint.text");
+        validFileNames.add("version-hint.text");
 
-        scanAndDeleteInvalidFiles(table, session, schemaTableName, expiration, validDataFileNames.build(), "data", fileIoProperties);
-        scanAndDeleteInvalidFiles(table, session, schemaTableName, expiration, validMetadataFileNames.build(), "metadata", fileIoProperties);
+        try {
+            manifestScanFutures.forEach(MoreFutures::getFutureValue);
+            // All futures completed normally
+            manifestScanFutures.clear();
+        }
+        finally {
+            // Ensure any futures still running are canceled in case of failure
+            manifestScanFutures.forEach(future -> future.cancel(true));
+        }
+        scanAndDeleteInvalidFiles(table, session, schemaTableName, expiration, validFileNames, fileIoProperties);
     }
 
     public void executeAddFiles(ConnectorSession session, IcebergTableExecuteHandle executeHandle)
@@ -2364,13 +2374,13 @@ public class IcebergMetadata
                 icebergScanExecutor);
     }
 
-    private void scanAndDeleteInvalidFiles(Table table, ConnectorSession session, SchemaTableName schemaTableName, Instant expiration, Set<String> validFiles, String subfolder, Map<String, String> fileIoProperties)
+    private void scanAndDeleteInvalidFiles(Table table, ConnectorSession session, SchemaTableName schemaTableName, Instant expiration, Set<String> validFiles, Map<String, String> fileIoProperties)
     {
         List<Future<?>> deleteFutures = new ArrayList<>();
         try {
             List<Location> filesToDelete = new ArrayList<>(DELETE_BATCH_SIZE);
             TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), fileIoProperties);
-            FileIterator allFiles = fileSystem.listFiles(Location.of(table.location()).appendPath(subfolder));
+            FileIterator allFiles = fileSystem.listFiles(Location.of(table.location()));
             while (allFiles.hasNext()) {
                 FileEntry entry = allFiles.next();
                 if (entry.lastModified().isBefore(expiration) && !validFiles.contains(entry.location().fileName())) {
@@ -2391,11 +2401,14 @@ public class IcebergMetadata
             }
 
             deleteFutures.forEach(MoreFutures::getFutureValue);
+            // All futures completed normally
+            deleteFutures.clear();
         }
         catch (IOException | UncheckedIOException e) {
-            throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Failed accessing data for table: " + schemaTableName, e);
+            throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Failed removing orphan files for table: " + schemaTableName, e);
         }
         finally {
+            // Ensure any futures still running are canceled in case of failure
             deleteFutures.forEach(future -> future.cancel(true));
         }
     }
@@ -2407,7 +2420,7 @@ public class IcebergMetadata
             fileSystem.deleteFiles(files);
         }
         catch (IOException | UncheckedIOException e) {
-            throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Failed accessing data for table: " + schemaTableName, e);
+            throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Failed removing orphan files for table: " + schemaTableName, e);
         }
     }
 
