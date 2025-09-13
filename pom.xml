@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>297</version>
+        <version>298</version>
     </parent>
 
     <groupId>io.trino</groupId>
@@ -181,7 +181,7 @@
         <air.test.jvm.additional-arguments>${air.test.jvm.additional-arguments.default}</air.test.jvm.additional-arguments>
 
         <!-- keep dependency properties sorted -->
-        <dep.airlift.version>353</dep.airlift.version>
+        <dep.airlift.version>357</dep.airlift.version>
         <dep.alluxio.version>2.9.6</dep.alluxio.version>
         <dep.antlr.version>4.13.2</dep.antlr.version>
         <dep.avro.version>1.12.0</dep.avro.version>
@@ -190,7 +190,7 @@
         <dep.checkstyle.version>10.23.1</dep.checkstyle.version>
         <dep.confluent.version>7.8.0</dep.confluent.version>
         <dep.docker.images.version>119</dep.docker.images.version>
-        <dep.drift.version>1.23</dep.drift.version>
+        <dep.drift.version>1.24</dep.drift.version>
         <dep.flyway.version>11.12.0</dep.flyway.version>
         <dep.frontend-maven-plugin.version>1.15.1</dep.frontend-maven-plugin.version>
         <dep.frontend-node.version>v22.14.0</dep.frontend-node.version>
@@ -300,7 +300,7 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
-                <version>2.33.5</version>
+                <version>2.33.7</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -325,12 +325,6 @@
                         <artifactId>joda-time</artifactId>
                     </exclusion>
                 </exclusions>
-            </dependency>
-
-            <dependency>
-                <groupId>com.amazonaws</groupId>
-                <artifactId>aws-java-sdk-dynamodb</artifactId>
-                <version>${dep.aws-sdk.version}</version>
             </dependency>
 
             <dependency>
@@ -368,7 +362,7 @@
             <dependency>
                 <groupId>com.azure</groupId>
                 <artifactId>azure-core-tracing-opentelemetry</artifactId>
-                <version>1.0.0-beta.42</version>
+                <version>1.0.0-beta.60</version>
                 <exclusions>
                     <exclusion>
                         <groupId>com.azure</groupId>
@@ -453,7 +447,7 @@
             <dependency>
                 <groupId>com.google.cloud.bigdataoss</groupId>
                 <artifactId>gcs-connector</artifactId>
-                <version>3.1.6</version>
+                <version>3.1.7</version>
                 <classifier>shaded</classifier>
                 <exclusions>
                     <exclusion>
@@ -467,7 +461,7 @@
             <dependency>
                 <groupId>com.google.code.gson</groupId>
                 <artifactId>gson</artifactId>
-                <version>2.13.1</version>
+                <version>2.13.2</version>
             </dependency>
 
             <dependency>
@@ -914,13 +908,13 @@
             <dependency>
                 <groupId>io.projectreactor</groupId>
                 <artifactId>reactor-core</artifactId>
-                <version>3.7.10</version>
+                <version>3.7.11</version>
             </dependency>
 
             <dependency>
                 <groupId>io.projectreactor.netty</groupId>
                 <artifactId>reactor-netty-core</artifactId>
-                <version>1.2.9</version>
+                <version>1.2.10</version>
             </dependency>
 
             <!-- io.confluent:kafka-avro-serializer uses multiple versions of this transitive dependency -->
@@ -2226,7 +2220,7 @@
             <dependency>
                 <groupId>org.checkerframework</groupId>
                 <artifactId>checker-qual</artifactId>
-                <version>3.50.0</version>
+                <version>3.51.0</version>
             </dependency>
 
             <dependency>
