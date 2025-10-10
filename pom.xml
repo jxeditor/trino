@@ -191,7 +191,7 @@
         <dep.confluent.version>7.8.0</dep.confluent.version>
         <dep.docker.images.version>119</dep.docker.images.version>
         <dep.drift.version>1.24</dep.drift.version>
-        <dep.flyway.version>11.13.3</dep.flyway.version>
+        <dep.flyway.version>11.14.0</dep.flyway.version>
         <dep.frontend-maven-plugin.version>1.15.4</dep.frontend-maven-plugin.version>
         <dep.frontend-node.version>v22.14.0</dep.frontend-node.version>
         <dep.frontend-npm.version>11.2.0</dep.frontend-npm.version>
@@ -203,7 +203,7 @@
         <dep.jts.version>1.20.0</dep.jts.version>
         <dep.kafka-clients.version>4.1.0</dep.kafka-clients.version>
         <dep.okhttp.version>5.2.0</dep.okhttp.version>
-        <dep.okio.version>3.16.0</dep.okio.version>
+        <dep.okio.version>3.16.1</dep.okio.version>
         <dep.parquet.version>1.16.0</dep.parquet.version>
         <dep.plugin.failsafe.version>${dep.plugin.surefire.version}</dep.plugin.failsafe.version>
         <dep.protobuf.version>3.25.8</dep.protobuf.version>
@@ -236,7 +236,7 @@
             <dependency>
                 <groupId>com.google.cloud</groupId>
                 <artifactId>libraries-bom</artifactId>
-                <version>26.69.0</version>
+                <version>26.70.0</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -447,7 +447,7 @@
             <dependency>
                 <groupId>com.google.cloud.bigdataoss</groupId>
                 <artifactId>gcs-connector</artifactId>
-                <version>3.1.8</version>
+                <version>3.1.9</version>
                 <classifier>shaded</classifier>
                 <exclusions>
                     <exclusion>
