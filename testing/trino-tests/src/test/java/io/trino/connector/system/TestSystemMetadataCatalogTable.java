@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Key;
 import io.trino.Session;
 import io.trino.connector.ConnectorServicesProvider;
+import io.trino.metadata.CatalogManager;
 import io.trino.plugin.memory.MemoryPlugin;
 import io.trino.spi.catalog.CatalogName;
 import io.trino.spi.catalog.CatalogProperties;
@@ -36,7 +37,8 @@ public class TestSystemMetadataCatalogTable
         extends AbstractTestQueryFramework
 {
     private CatalogStore catalogStore;
-    private ConnectorServicesProvider catalogManager;
+    private ConnectorServicesProvider connectorServicesProvider;
+    private CatalogManager catalogManager;
 
     @Override
     protected QueryRunner createQueryRunner()
@@ -49,29 +51,38 @@ public class TestSystemMetadataCatalogTable
         queryRunner.installPlugin(new MemoryPlugin());
         queryRunner.createCatalog("healthy_catalog", "memory", ImmutableMap.of("memory.max-data-per-node", "128MB"));
         catalogStore = queryRunner.getCoordinator().getInstance(new Key<>() {});
+        connectorServicesProvider = queryRunner.getCoordinator().getInstance(new Key<>() {});
         catalogManager = queryRunner.getCoordinator().getInstance(new Key<>() {});
         return queryRunner;
     }
 
     @Test
-    public void testCatalogTableShowsOnlyLoadedCatalogs()
+    public void testNewCatalogStatus()
     {
         assertQuery("SELECT * FROM system.metadata.catalogs", "VALUES" +
-                "('healthy_catalog', 'healthy_catalog', 'memory'), " +
-                "('system', 'system', 'system')");
+                "('healthy_catalog', 'healthy_catalog', 'memory', 'OPERATIONAL'), " +
+                "('system', 'system', 'system', 'OPERATIONAL')");
 
         assertUpdate("CREATE CATALOG brain USING memory WITH (\"memory.max-data-per-node\" = '128MB')");
         assertQuery("SELECT * FROM system.metadata.catalogs", "VALUES" +
-                "('healthy_catalog', 'healthy_catalog', 'memory'), " +
-                "('brain', 'brain', 'memory'), " +
-                "('system', 'system', 'system')");
-        CatalogProperties catalogProperties = catalogStore.createCatalogProperties(new CatalogName("broken"), new ConnectorName("memory"), ImmutableMap.of("memory.max-data-per-n", "128MB"));
-        catalogStore.addOrReplaceCatalog(catalogProperties);
-        catalogManager.loadInitialCatalogs();
+                "('healthy_catalog', 'healthy_catalog', 'memory', 'OPERATIONAL'), " +
+                "('brain', 'brain', 'memory', 'OPERATIONAL'), " +
+                "('system', 'system', 'system', 'OPERATIONAL')");
 
+        assertUpdate("DROP CATALOG brain");
+    }
+
+    @Test
+    public void testCatalogNotLoadedCorrectly()
+    {
+        CatalogProperties catalogProperties = catalogStore.createCatalogProperties(new CatalogName("broken"), new ConnectorName("memory"), ImmutableMap.of("memory.max-data-per-n", "128MB"));
+
+        catalogStore.addOrReplaceCatalog(catalogProperties);
+        connectorServicesProvider.loadInitialCatalogs();
         assertQuery("SELECT * FROM system.metadata.catalogs", "VALUES" +
-                "('healthy_catalog', 'healthy_catalog', 'memory'), " +
-                "('brain', 'brain', 'memory'), " +
-                "('system', 'system', 'system')");
+                "('healthy_catalog', 'healthy_catalog', 'memory', 'OPERATIONAL'), " +
+                "('broken', 'broken', 'memory', 'FAILING'), " +
+                "('system', 'system', 'system', 'OPERATIONAL')");
+        catalogManager.dropCatalog(new CatalogName("broken"), false);
     }
 }

@@ -304,17 +304,6 @@ public class MapType
     }
 
     @Override
-    public void appendTo(Block block, int position, BlockBuilder blockBuilder)
-    {
-        if (block.isNull(position)) {
-            blockBuilder.appendNull();
-        }
-        else {
-            writeObject(blockBuilder, getObject(block, position));
-        }
-    }
-
-    @Override
     public SqlMap getObject(Block block, int position)
     {
         return read((MapBlock) block.getUnderlyingValueBlock(), block.getUnderlyingValuePosition(position));
@@ -333,8 +322,8 @@ public class MapType
 
         ((MapBlockBuilder) blockBuilder).buildEntry((keyBuilder, valueBuilder) -> {
             for (int i = 0; i < sqlMap.getSize(); i++) {
-                keyType.appendTo(rawKeyBlock, rawOffset + i, keyBuilder);
-                valueType.appendTo(rawValueBlock, rawOffset + i, valueBuilder);
+                keyBuilder.append(rawKeyBlock.getUnderlyingValueBlock(), rawKeyBlock.getUnderlyingValuePosition(rawOffset + i));
+                valueBuilder.append(rawValueBlock.getUnderlyingValueBlock(), rawValueBlock.getUnderlyingValuePosition(rawOffset + i));
             }
         });
     }
