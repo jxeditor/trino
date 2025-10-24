@@ -11,27 +11,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.base;
-
-import com.google.inject.Binder;
-import com.google.inject.Module;
-import io.trino.spi.catalog.CatalogName;
+package io.trino.spi;
 
 import static java.util.Objects.requireNonNull;
 
-public class CatalogNameModule
-        implements Module
+public final class NodeVersion
 {
-    private final String catalogName;
+    private final String version;
 
-    public CatalogNameModule(String catalogName)
+    public NodeVersion(String version)
     {
-        this.catalogName = requireNonNull(catalogName, "catalogName is null");
+        this.version = requireNonNull(version, "version is null");
     }
 
     @Override
-    public void configure(Binder binder)
+    public String toString()
     {
-        binder.bind(CatalogName.class).toInstance(new CatalogName(catalogName));
+        return version;
     }
 }
