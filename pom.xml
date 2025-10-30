@@ -10,7 +10,7 @@
 
     <groupId>io.trino</groupId>
     <artifactId>trino-root</artifactId>
-    <version>478-SNAPSHOT</version>
+    <version>479-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>${project.artifactId}</name>
@@ -150,7 +150,7 @@
     <properties>
         <project.build.targetJdk>24</project.build.targetJdk>
         <!-- for reproducible build support, updated by release plugin -->
-        <project.build.outputTimestamp>2025-09-24T23:09:23Z</project.build.outputTimestamp>
+        <project.build.outputTimestamp>2025-10-29T18:00:28Z</project.build.outputTimestamp>
         <!-- TODO remove this property when no module overrides it -->
         <trino.error-prone.guarded-by>ERROR</trino.error-prone.guarded-by>
 
@@ -186,7 +186,7 @@
         <dep.alluxio.version>2.9.6</dep.alluxio.version>
         <dep.antlr.version>4.13.2</dep.antlr.version>
         <dep.avro.version>1.12.1</dep.avro.version>
-        <dep.aws-sdk.version>1.12.792</dep.aws-sdk.version>
+        <dep.aws-sdk.version>1.12.793</dep.aws-sdk.version>
         <dep.cassandra.version>4.17.0</dep.cassandra.version>
         <dep.confluent.version>7.8.0</dep.confluent.version>
         <dep.docker.images.version>119</dep.docker.images.version>
@@ -208,7 +208,7 @@
         <dep.plugin.failsafe.version>${dep.plugin.surefire.version}</dep.plugin.failsafe.version>
         <dep.protobuf.version>3.25.8</dep.protobuf.version>
         <dep.snowflake.version>3.27.0</dep.snowflake.version>
-        <dep.swagger.version>2.2.39</dep.swagger.version>
+        <dep.swagger.version>2.2.40</dep.swagger.version>
         <dep.takari.version>2.3.2</dep.takari.version>
         <dep.tcnative.version>2.0.74.Final</dep.tcnative.version>
         <dep.tempto.version>202</dep.tempto.version>
