@@ -71,10 +71,10 @@ final class S3OutputFile
     @Override
     public OutputStream create(AggregatedMemoryContext memoryContext)
     {
-        return create(memoryContext, context.exclusiveWriteSupported());
+        return create(memoryContext, false);
     }
 
-    public OutputStream create(AggregatedMemoryContext memoryContext, boolean exclusive)
+    private OutputStream create(AggregatedMemoryContext memoryContext, boolean exclusive)
     {
         return new S3OutputStream(memoryContext, uploadExecutor, client, context, location, exclusive, key);
     }
