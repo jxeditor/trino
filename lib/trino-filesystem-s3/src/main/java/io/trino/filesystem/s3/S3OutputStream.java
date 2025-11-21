@@ -181,6 +181,10 @@ final class S3OutputStream
         }
         catch (SdkException e) {
             abortUploadSuppressed(e);
+            // when `location` already exists, the operation will fail with `412 Precondition Failed`
+            if (e instanceof S3Exception s3Exception && s3Exception.statusCode() == HTTP_PRECON_FAILED) {
+                throw new FileAlreadyExistsException(location.toString());
+            }
             throw new IOException(e);
         }
     }
@@ -311,11 +315,11 @@ final class S3OutputStream
                     .key(location.key())
                     .storageClass(storageClass)
                     .applyMutation(builder ->
-                        key.ifPresentOrElse(
-                                encryption ->
-                                    builder.sseCustomerKey(encoded(encryption))
-                                            .sseCustomerAlgorithm(encryption.algorithm())
-                                            .sseCustomerKeyMD5(md5Checksum(encryption)),
+                            key.ifPresentOrElse(
+                                    encryption ->
+                                            builder.sseCustomerKey(encoded(encryption))
+                                                    .sseCustomerAlgorithm(encryption.algorithm())
+                                                    .sseCustomerKeyMD5(md5Checksum(encryption)),
                                     () -> setEncryptionSettings(builder, context.s3SseContext())))
                     .build();
 
@@ -332,12 +336,12 @@ final class S3OutputStream
                 .uploadId(uploadId.get())
                 .partNumber(currentPartNumber)
                 .applyMutation(builder ->
-                    key.ifPresentOrElse(
-                            encryption ->
-                                builder.sseCustomerKey(encoded(encryption))
-                                        .sseCustomerAlgorithm(encryption.algorithm())
-                                        .sseCustomerKeyMD5(md5Checksum(encryption)),
-                            () -> setEncryptionSettings(builder, context.s3SseContext())))
+                        key.ifPresentOrElse(
+                                encryption ->
+                                        builder.sseCustomerKey(encoded(encryption))
+                                                .sseCustomerAlgorithm(encryption.algorithm())
+                                                .sseCustomerKeyMD5(md5Checksum(encryption)),
+                                () -> setEncryptionSettings(builder, context.s3SseContext())))
                 .build();
 
         ByteBuffer bytes = ByteBuffer.wrap(data, 0, length);
