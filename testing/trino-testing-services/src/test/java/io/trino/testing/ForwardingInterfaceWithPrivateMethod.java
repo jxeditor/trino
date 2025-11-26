@@ -11,11 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.spi.testing;
+package io.trino.testing;
 
 import static java.util.Objects.requireNonNull;
 
-public class ForwardingInterfaceWithPrivateMethod
+final class ForwardingInterfaceWithPrivateMethod
         implements InterfaceWithPrivateMethod
 {
     // Declared as field for brevity. In a typical Forwarding class this would be delegate() abstract method
