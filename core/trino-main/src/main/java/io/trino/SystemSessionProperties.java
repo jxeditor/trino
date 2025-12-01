@@ -68,7 +68,6 @@ public final class SystemSessionProperties
     public static final String MAX_HASH_PARTITION_COUNT = "max_hash_partition_count";
     public static final String MIN_HASH_PARTITION_COUNT = "min_hash_partition_count";
     public static final String MIN_HASH_PARTITION_COUNT_FOR_WRITE = "min_hash_partition_count_for_write";
-    public static final String PREFER_STREAMING_OPERATORS = "prefer_streaming_operators";
     public static final String TASK_MIN_WRITER_COUNT = "task_min_writer_count";
     public static final String TASK_MAX_WRITER_COUNT = "task_max_writer_count";
     public static final String TASK_CONCURRENCY = "task_concurrency";
@@ -127,7 +126,6 @@ public final class SystemSessionProperties
     public static final String PREFER_PARTIAL_AGGREGATION = "prefer_partial_aggregation";
     public static final String OPTIMIZE_TOP_N_RANKING = "optimize_top_n_ranking";
     public static final String MAX_GROUPING_SETS = "max_grouping_sets";
-    public static final String STATISTICS_CPU_TIMER_ENABLED = "statistics_cpu_timer_enabled";
     public static final String ENABLE_STATS_CALCULATOR = "enable_stats_calculator";
     public static final String STATISTICS_PRECALCULATION_FOR_PUSHDOWN_ENABLED = "statistics_precalculation_for_pushdown_enabled";
     public static final String COLLECT_PLAN_STATISTICS_FOR_ALL_QUERIES = "collect_plan_statistics_for_all_queries";
@@ -300,11 +298,6 @@ public final class SystemSessionProperties
                         "Minimum number of partitions for distributed joins and aggregations in write queries",
                         queryManagerConfig.getMinHashPartitionCountForWrite(),
                         value -> validateIntegerValue(value, MIN_HASH_PARTITION_COUNT_FOR_WRITE, 1, false),
-                        false),
-                booleanProperty(
-                        PREFER_STREAMING_OPERATORS,
-                        "Prefer source table layouts that produce streaming operators",
-                        false,
                         false),
                 integerProperty(
                         TASK_MIN_WRITER_COUNT,
@@ -609,11 +602,6 @@ public final class SystemSessionProperties
                         "Maximum number of grouping sets in a GROUP BY",
                         featuresConfig.getMaxGroupingSets(),
                         true),
-                booleanProperty(
-                        STATISTICS_CPU_TIMER_ENABLED,
-                        "Experimental: Enable cpu time tracking for automatic column statistics collection on write",
-                        taskManagerConfig.isStatisticsCpuTimerEnabled(),
-                        false),
                 booleanProperty(
                         ENABLE_STATS_CALCULATOR,
                         "Enable statistics calculator",
@@ -1208,11 +1196,6 @@ public final class SystemSessionProperties
         return session.getSystemProperty(MIN_HASH_PARTITION_COUNT_FOR_WRITE, Integer.class);
     }
 
-    public static boolean preferStreamingOperators(Session session)
-    {
-        return session.getSystemProperty(PREFER_STREAMING_OPERATORS, Boolean.class);
-    }
-
     public static int getTaskMinWriterCount(Session session)
     {
         return session.getSystemProperty(TASK_MIN_WRITER_COUNT, Integer.class);
@@ -1587,11 +1570,6 @@ public final class SystemSessionProperties
                     format("%s must be in the range [%.2f, %.2f]: %.2f", property, lowerBoundIncluded, upperBoundIncluded, doubleValue));
         }
         return doubleValue;
-    }
-
-    public static boolean isStatisticsCpuTimerEnabled(Session session)
-    {
-        return session.getSystemProperty(STATISTICS_CPU_TIMER_ENABLED, Boolean.class);
     }
 
     public static boolean isEnableStatsCalculator(Session session)
