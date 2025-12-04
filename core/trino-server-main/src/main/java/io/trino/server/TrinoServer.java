@@ -24,7 +24,7 @@ public final class TrinoServer
 {
     private TrinoServer() {}
 
-    public static void main()
+    public static void main(String[] args)
     {
         Runtime.Version javaVersion = Runtime.version();
         int requiredVersion = requiredJavaVersion();
@@ -40,7 +40,7 @@ public final class TrinoServer
     private static int requiredJavaVersion()
     {
         Properties properties = new Properties();
-        try (InputStream inputStream = Resources.getResource("io/trino/server/build.properties").openStream()) {
+        try (InputStream inputStream = Resources.getResource("io/trino/main/build.properties").openStream()) {
             properties.load(inputStream);
             return Integer.parseInt(properties.getProperty("target.jdk"));
         }
