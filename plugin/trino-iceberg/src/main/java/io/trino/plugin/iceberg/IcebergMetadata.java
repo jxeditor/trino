@@ -3928,12 +3928,9 @@ public class IcebergMetadata
                     firstTableChange = firstTableChange
                             .map(epochMilli -> Math.min(epochMilli, snapshot.timestampMillis()));
                 }
-                case UnknownTableChange() -> {
+                case UnknownTableChange(), GoneOrCorruptedTableChange() -> {
                     hasStaleIcebergTables = true;
                     firstTableChange = Optional.empty();
-                }
-                case CorruptedTableChange() -> {
-                    return new MaterializedViewFreshness(STALE, Optional.empty());
                 }
             }
         }
@@ -3972,7 +3969,7 @@ public class IcebergMetadata
 
         if (tableHandle == null || tableHandle instanceof CorruptedIcebergTableHandle) {
             // Base table is gone or table is corrupted
-            return new CorruptedTableChange();
+            return new GoneOrCorruptedTableChange();
         }
         Optional<Long> snapshotAtRefresh;
         if (value.isEmpty()) {
@@ -4098,7 +4095,7 @@ public class IcebergMetadata
     }
 
     private sealed interface TableChangeInfo
-            permits NoTableChange, FirstChangeSnapshot, UnknownTableChange, CorruptedTableChange {}
+            permits NoTableChange, FirstChangeSnapshot, UnknownTableChange, GoneOrCorruptedTableChange {}
 
     private record NoTableChange()
             implements TableChangeInfo {}
@@ -4115,7 +4112,7 @@ public class IcebergMetadata
     private record UnknownTableChange()
             implements TableChangeInfo {}
 
-    private record CorruptedTableChange()
+    private record GoneOrCorruptedTableChange()
             implements TableChangeInfo {}
 
     private static TableStatistics getIncrementally(
