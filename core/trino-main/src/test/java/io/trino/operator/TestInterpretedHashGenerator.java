@@ -17,7 +17,6 @@ import com.google.common.collect.ImmutableList;
 import io.trino.operator.scalar.CombineHashFunction;
 import io.trino.spi.Page;
 import io.trino.spi.block.Block;
-import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.RunLengthEncodedBlock;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.MapType;
@@ -26,11 +25,11 @@ import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeOperators;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
 import java.util.List;
 
 import static io.trino.block.BlockAssertions.createRandomBlockForType;
-import static io.trino.operator.PageAssertions.assertPageEquals;
+import static io.trino.block.BlockAssertions.createRandomDictionaryBlock;
+import static io.trino.operator.InterpretedHashGenerator.createPagePrefixHashGenerator;
 import static io.trino.spi.function.InvocationConvention.InvocationArgumentConvention.BLOCK_POSITION;
 import static io.trino.spi.function.InvocationConvention.InvocationReturnConvention.FAIL_ON_NULL;
 import static io.trino.spi.function.InvocationConvention.simpleConvention;
@@ -52,48 +51,38 @@ import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.type.IpAddressType.IPADDRESS;
 import static java.util.Collections.nCopies;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
-class TestFlatHashStrategy
+class TestInterpretedHashGenerator
 {
-    private static final int FIXED_CHUNK_OFFSET = 11;
-    private static final int VARIABLE_CHUNK_OFFSET = 17;
-
     private final TypeOperators typeOperators = new TypeOperators();
-    private final FlatHashStrategyCompiler compiler = new FlatHashStrategyCompiler(typeOperators, new NullSafeHashCompiler(typeOperators));
+    private final NullSafeHashCompiler compiler = new NullSafeHashCompiler(typeOperators);
 
     @Test
-    void test()
+    void testHashPosition()
     {
         List<Type> bigTypeSet = createTestingTypes(typeOperators);
         for (int typeCount : List.of(1, 500, 501, 999, 1000, 1001, 2000, 2001)) {
             List<Type> types = bigTypeSet.subList(0, typeCount);
-            FlatHashStrategy flatHashStrategy = compiler.getFlatHashStrategy(types);
-            assertThat(flatHashStrategy.isAnyVariableWidth()).isEqualTo(types.stream().anyMatch(Type::isFlatVariableWidth));
-            int flatFixedLength = flatHashStrategy.getTotalFlatFixedLength();
-            assertThat(flatFixedLength).isEqualTo(types.stream().mapToInt(Type::getFlatFixedSize).sum() + types.size());
+            InterpretedHashGenerator hashGenerator = createPagePrefixHashGenerator(types, compiler);
 
             Block[] blocks = createRandomData(types, 10, 0.0f);
             for (int position : List.of(0, 5, 9)) {
-                int variableWidth = flatHashStrategy.getTotalVariableWidth(blocks, position);
-                assertThat(variableWidth).isEqualTo(manualGetTotalVariableWidth(types, blocks, position));
-                assertThat(flatHashStrategy.hash(blocks, position)).isEqualTo(manualHash(types, blocks, position));
+                assertThat(hashGenerator.hashPosition(position, new Page(blocks))).isEqualTo(manualHash(types, blocks, position));
 
-                byte[] fixedChunk = new byte[flatFixedLength + FIXED_CHUNK_OFFSET];
-                byte[] variableChunk = new byte[variableWidth + VARIABLE_CHUNK_OFFSET];
-                flatHashStrategy.writeFlat(blocks, position, fixedChunk, FIXED_CHUNK_OFFSET, variableChunk, VARIABLE_CHUNK_OFFSET);
-                assertThat(fixedChunk).startsWith(new byte[FIXED_CHUNK_OFFSET]);
-                assertThat(variableChunk).startsWith(new byte[VARIABLE_CHUNK_OFFSET]);
+                // Convert all blocks to RunLengthEncoded and re-check result matches
+                Block[] rleBlocks = new Block[blocks.length];
+                for (int i = 0; i < blocks.length; i++) {
+                    rleBlocks[i] = RunLengthEncodedBlock.create(blocks[i].getSingleValueBlock(position), 10);
+                }
+                assertThat(hashGenerator.hashPosition(position, new Page(rleBlocks))).isEqualTo(manualHash(types, blocks, position));
 
-                assertThat(flatHashStrategy.hash(fixedChunk, FIXED_CHUNK_OFFSET, variableChunk, VARIABLE_CHUNK_OFFSET)).isEqualTo(manualHash(types, blocks, position));
-                assertThat(flatHashStrategy.valueIdentical(fixedChunk, FIXED_CHUNK_OFFSET, variableChunk, VARIABLE_CHUNK_OFFSET, blocks, position)).isTrue();
-                assertThat(flatHashStrategy.valueIdentical(fixedChunk, FIXED_CHUNK_OFFSET, variableChunk, VARIABLE_CHUNK_OFFSET, blocks, 3)).isFalse();
-
-                BlockBuilder[] blockBuilders = types.stream().map(type -> type.createBlockBuilder(null, 1)).toArray(BlockBuilder[]::new);
-                flatHashStrategy.readFlat(fixedChunk, FIXED_CHUNK_OFFSET, variableChunk, VARIABLE_CHUNK_OFFSET, blockBuilders);
-                List<Block> output = Arrays.stream(blockBuilders).map(BlockBuilder::build).toList();
-                Page actualPage = new Page(output.toArray(Block[]::new));
-                Page expectedPage = new Page(blocks).getSingleValuePage(position);
-                assertPageEquals(types, actualPage, expectedPage);
+                // Convert all blocks to Dictionary and check result matches
+                Block[] dictionaryBlocks = new Block[blocks.length];
+                for (int i = 0; i < blocks.length; i++) {
+                    dictionaryBlocks[i] = createRandomDictionaryBlock(blocks[i], 10);
+                }
+                assertThat(hashGenerator.hashPosition(position, new Page(dictionaryBlocks))).isEqualTo(manualHash(types, dictionaryBlocks, position));
             }
         }
     }
@@ -101,33 +90,88 @@ class TestFlatHashStrategy
     @Test
     void testBatchedRawHashesMatchSinglePositionHashes()
     {
+        testBatchedRawHashesMatchSinglePositionHashes(true);
+        testBatchedRawHashesMatchSinglePositionHashes(false);
+    }
+
+    private void testBatchedRawHashesMatchSinglePositionHashes(boolean hashBlocksBatched)
+    {
         List<Type> types = createTestingTypes(typeOperators);
-        FlatHashStrategy flatHashStrategy = compiler.getFlatHashStrategy(types);
-        InterpretedHashGenerator hashGenerator = compiler.getInterpretedHashGenerator(types);
+        InterpretedHashGenerator hashGenerator = createPagePrefixHashGenerator(types, compiler);
 
         int positionCount = 1024;
         Block[] blocks = createRandomData(types, positionCount, 0.25f);
 
         long[] hashes = new long[positionCount];
-        hashGenerator.hashBlocksBatched(blocks, hashes, 0, positionCount);
-        assertHashesEqual(types, blocks, hashes, flatHashStrategy);
-
-        // Convert all blocks to RunLengthEncoded and re-check results match
-        for (int i = 0; i < blocks.length; i++) {
-            blocks[i] = RunLengthEncodedBlock.create(blocks[i].getSingleValueBlock(0), positionCount);
+        if (hashBlocksBatched) {
+            hashGenerator.hashBlocksBatched(blocks, hashes, 0, positionCount);
         }
-        hashGenerator.hashBlocksBatched(blocks, hashes, 0, positionCount);
-        assertHashesEqual(types, blocks, hashes, flatHashStrategy);
+        else {
+            hashGenerator.hash(new Page(blocks), 0, positionCount, hashes);
+        }
+        assertHashesEqual(types, blocks, hashes, hashGenerator);
 
-        // Ensure the formatting logic produces a real string and doesn't blow up since otherwise this code wouldn't be exercised
-        assertThat(singleRowTypesAndValues(types, blocks, 0)).isNotNull();
+        // Convert all blocks to RunLengthEncoded and re-check result matches
+        Block[] rleBlocks = new Block[blocks.length];
+        for (int i = 0; i < blocks.length; i++) {
+            rleBlocks[i] = RunLengthEncodedBlock.create(blocks[i].getSingleValueBlock(0), positionCount);
+        }
+        if (hashBlocksBatched) {
+            hashGenerator.hashBlocksBatched(rleBlocks, hashes, 0, positionCount);
+        }
+        else {
+            hashGenerator.hash(new Page(rleBlocks), 0, positionCount, hashes);
+        }
+        assertHashesEqual(types, rleBlocks, hashes, hashGenerator);
+
+        // Convert all blocks to Dictionary and check result matches
+        Block[] dictionaryBlocks = new Block[blocks.length];
+        for (int i = 0; i < blocks.length; i++) {
+            // Effective dictionaries
+            dictionaryBlocks[i] = createRandomDictionaryBlock(blocks[i].getRegion(0, 6), positionCount + 1);
+            // Add an ids offset to the dictionary blocks for better test coverage
+            dictionaryBlocks[i] = dictionaryBlocks[i].getRegion(1, positionCount);
+        }
+        if (hashBlocksBatched) {
+            hashGenerator.hashBlocksBatched(dictionaryBlocks, hashes, 0, positionCount);
+        }
+        else {
+            hashGenerator.hash(new Page(dictionaryBlocks), 0, positionCount, hashes);
+        }
+        assertHashesEqual(types, dictionaryBlocks, hashes, hashGenerator);
+
+        for (int i = 0; i < blocks.length; i++) {
+            // In-effective dictionaries
+            dictionaryBlocks[i] = createRandomDictionaryBlock(blocks[i], positionCount + 1);
+            // Add an ids offset to the dictionary blocks for better test coverage
+            dictionaryBlocks[i] = dictionaryBlocks[i].getRegion(1, positionCount);
+        }
+        if (hashBlocksBatched) {
+            hashGenerator.hashBlocksBatched(dictionaryBlocks, hashes, 0, positionCount);
+        }
+        else {
+            hashGenerator.hash(new Page(dictionaryBlocks), 0, positionCount, hashes);
+        }
+        assertHashesEqual(types, dictionaryBlocks, hashes, hashGenerator);
     }
 
-    private void assertHashesEqual(List<Type> types, Block[] blocks, long[] batchedHashes, FlatHashStrategy flatHashStrategy)
+    @Test
+    void testBatchedRawHashesZeroLength()
+    {
+        List<Type> types = createTestingTypes(typeOperators);
+        InterpretedHashGenerator hashGenerator = createPagePrefixHashGenerator(types, compiler);
+
+        int positionCount = 10;
+        // Attempting to touch any of the blocks would result in a NullPointerException
+        assertThatCode(() -> hashGenerator.hashBlocksBatched(new Block[types.size()], new long[positionCount], 0, 0))
+                .doesNotThrowAnyException();
+    }
+
+    private void assertHashesEqual(List<Type> types, Block[] blocks, long[] batchedHashes, InterpretedHashGenerator hashGenerator)
     {
         for (int position = 0; position < batchedHashes.length; position++) {
             long manualRowHash = manualHash(types, blocks, position);
-            long singleRowHash = flatHashStrategy.hash(blocks, position);
+            long singleRowHash = hashGenerator.hashPosition(position, new Page(blocks));
             assertThat(singleRowHash).isEqualTo(manualRowHash);
             assertThat(singleRowHash).isEqualTo(batchedHashes[position]);
         }
@@ -140,21 +184,6 @@ class TestFlatHashStrategy
             blocks[i] = createRandomBlockForType(types.get(i), positionCount, nullRate);
         }
         return blocks;
-    }
-
-    private static long manualGetTotalVariableWidth(List<Type> types, Block[] blocks, int position)
-    {
-        long totalVariableWidth = 0;
-        for (int i = 0; i < types.size(); i++) {
-            Type type = types.get(i);
-            Block block = blocks[i];
-            if (type.isFlatVariableWidth()) {
-                if (!block.isNull(position)) {
-                    totalVariableWidth += type.getFlatVariableWidthSize(block, position);
-                }
-            }
-        }
-        return totalVariableWidth;
     }
 
     private long manualHash(List<Type> types, Block[] blocks, int position)
@@ -206,19 +235,5 @@ class TestFlatHashStrategy
             builder.add(new MapType(baseType, baseType, typeOperators));
         }
         return nCopies(500, builder.build()).stream().flatMap(List::stream).limit(2001).toList();
-    }
-
-    private static String singleRowTypesAndValues(List<Type> types, Block[] blocks, int position)
-    {
-        StringBuilder builder = new StringBuilder();
-        int column = 0;
-        for (Type type : types) {
-            builder.append("\n\t");
-            builder.append(type);
-            builder.append(": ");
-            builder.append(type.getObjectValue(blocks[column], position));
-            column++;
-        }
-        return builder.toString();
     }
 }
