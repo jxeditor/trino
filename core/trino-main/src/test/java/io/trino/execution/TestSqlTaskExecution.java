@@ -215,7 +215,7 @@ public class TestSqlTaskExecution
     private PartitionedOutputBuffer newTestingOutputBuffer(ScheduledExecutorService taskNotificationExecutor)
     {
         return new PartitionedOutputBuffer(
-                TASK_ID.toString(),
+                TASK_ID.attemptId(),
                 new OutputBufferStateMachine(TASK_ID, taskNotificationExecutor),
                 PipelinedOutputBuffers.createInitial(PARTITIONED)
                         .withBuffer(OUTPUT_BUFFER_ID, 0)
@@ -266,11 +266,11 @@ public class TestSqlTaskExecution
                         .describedAs("bufferComplete is set before enough positions are consumed")
                         .isFalse();
                 BufferResult results = outputBuffer.get(outputBufferId, sequenceId, DataSize.of(1, MEGABYTE)).get(nanoUntil - System.nanoTime(), TimeUnit.NANOSECONDS);
-                bufferComplete = results.isBufferComplete();
-                for (Slice serializedPage : results.getSerializedPages()) {
+                bufferComplete = results.bufferComplete();
+                for (Slice serializedPage : results.serializedPages()) {
                     surplusPositions += getSerializedPagePositionCount(serializedPage);
                 }
-                sequenceId += results.getSerializedPages().size();
+                sequenceId += results.serializedPages().size();
             }
         }
 
@@ -281,11 +281,11 @@ public class TestSqlTaskExecution
             long nanoUntil = System.nanoTime() + timeout.toMillis() * 1_000_000;
             while (!bufferComplete) {
                 BufferResult results = outputBuffer.get(outputBufferId, sequenceId, DataSize.of(1, MEGABYTE)).get(nanoUntil - System.nanoTime(), TimeUnit.NANOSECONDS);
-                bufferComplete = results.isBufferComplete();
-                for (Slice serializedPage : results.getSerializedPages()) {
+                bufferComplete = results.bufferComplete();
+                for (Slice serializedPage : results.serializedPages()) {
                     assertThat(getSerializedPagePositionCount(serializedPage)).isEqualTo(0);
                 }
-                sequenceId += results.getSerializedPages().size();
+                sequenceId += results.serializedPages().size();
             }
         }
 
