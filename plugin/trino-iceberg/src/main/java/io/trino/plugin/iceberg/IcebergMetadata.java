@@ -198,9 +198,11 @@ import org.apache.iceberg.expressions.Literal;
 import org.apache.iceberg.expressions.Term;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.types.Type;
+import org.apache.iceberg.types.Type.NestedType;
 import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.types.Types;
 import org.apache.iceberg.types.Types.IntegerType;
+import org.apache.iceberg.types.Types.ListType;
 import org.apache.iceberg.types.Types.NestedField;
 import org.apache.iceberg.types.Types.StringType;
 import org.apache.iceberg.types.Types.StructType;
@@ -249,7 +251,6 @@ import static com.google.common.base.Verify.verifyNotNull;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
-import static com.google.common.collect.Iterables.getLast;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.Iterables.size;
 import static com.google.common.collect.Maps.transformValues;
@@ -2765,25 +2766,11 @@ public class IcebergMetadata
     @Override
     public void addField(ConnectorSession session, ConnectorTableHandle tableHandle, List<String> parentPath, String fieldName, io.trino.spi.type.Type type, boolean ignoreExisting)
     {
-        // Iceberg disallows ambiguous field names in a table. e.g. (a row(b int), "a.b" int)
-        String parentName = String.join(".", parentPath);
-
         Table icebergTable = catalog.loadTable(session, ((IcebergTableHandle) tableHandle).getSchemaTableName());
-        NestedField parent = icebergTable.schema().caseInsensitiveFindField(parentName);
-
+        NestedField parent = icebergTable.schema().caseInsensitiveFindField(String.join(".", parentPath));
         String caseSensitiveParentName = icebergTable.schema().findColumnName(parent.fieldId());
 
-        Types.StructType structType;
-        if (parent.type().isListType()) {
-            // list(struct...)
-            structType = parent.type().asListType().elementType().asStructType();
-        }
-        else {
-            // just struct
-            structType = parent.type().asStructType();
-        }
-
-        NestedField field = structType.caseInsensitiveField(fieldName);
+        NestedField field = icebergTable.schema().caseInsensitiveFindField(caseSensitiveParentName + "." + fieldName);
         if (field != null) {
             if (ignoreExisting) {
                 return;
@@ -2870,16 +2857,13 @@ public class IcebergMetadata
     public void renameField(ConnectorSession session, ConnectorTableHandle tableHandle, List<String> fieldPath, String target)
     {
         Table icebergTable = catalog.loadTable(session, ((IcebergTableHandle) tableHandle).getSchemaTableName());
-        String parentPath = String.join(".", fieldPath.subList(0, fieldPath.size() - 1));
-        NestedField parent = icebergTable.schema().caseInsensitiveFindField(parentPath);
+        NestedField field = icebergTable.schema().caseInsensitiveFindField(String.join(".", fieldPath));
+        verify(field != null, "Field %s not found", String.join(".", fieldPath));
 
-        String caseSensitiveParentName = icebergTable.schema().findColumnName(parent.fieldId());
-        NestedField source = parent.type().asStructType().caseInsensitiveField(getLast(fieldPath));
-
-        String sourcePath = caseSensitiveParentName + "." + source.name();
+        String caseSensitiveFieldName = icebergTable.schema().findColumnName(field.fieldId());
         try {
             icebergTable.updateSchema()
-                    .renameColumn(sourcePath, target)
+                    .renameColumn(caseSensitiveFieldName, target)
                     .commit();
         }
         catch (RuntimeException e) {
@@ -2917,44 +2901,61 @@ public class IcebergMetadata
             schemaUpdate.updateColumn(name, newType.asPrimitiveType());
             return;
         }
-        if (sourceType instanceof StructType sourceRowType && newType instanceof StructType newRowType) {
-            // Add, update or delete fields
-            List<NestedField> fields = Streams.concat(sourceRowType.fields().stream(), newRowType.fields().stream())
-                    .distinct()
-                    .collect(toImmutableList());
-            for (NestedField field : fields) {
-                if (fieldExists(sourceRowType, field.name()) && fieldExists(newRowType, field.name())) {
-                    buildUpdateSchema(name + "." + field.name(), sourceRowType.fieldType(field.name()), newRowType.fieldType(field.name()), schemaUpdate);
-                }
-                else if (fieldExists(newRowType, field.name())) {
-                    schemaUpdate.addColumn(name, field.name(), field.type());
-                }
-                else {
-                    schemaUpdate.deleteColumn(name + "." + field.name());
-                }
-            }
 
-            // Order fields based on the new column type
-            String currentName = null;
-            for (NestedField field : newRowType.fields()) {
-                String path = name + "." + field.name();
-                if (currentName == null) {
-                    schemaUpdate.moveFirst(path);
-                }
-                else {
-                    schemaUpdate.moveAfter(path, currentName);
-                }
-                currentName = path;
+        switch (sourceType) {
+            case StructType sourceStructType when newType instanceof StructType newStructType -> {
+                updateFields(name, sourceStructType, newStructType, schemaUpdate);
+                orderFields(name, newStructType, schemaUpdate);
             }
-
-            return;
+            case ListType sourceListType when newType instanceof ListType newListType -> {
+                buildUpdateSchema(name + ".element", sourceListType.elementType(), newListType.elementType(), schemaUpdate);
+            }
+            case Types.MapType sourceMapType when newType instanceof Types.MapType newMapType -> {
+                buildUpdateSchema(name + ".key", sourceMapType.keyType(), newMapType.keyType(), schemaUpdate);
+                buildUpdateSchema(name + ".value", sourceMapType.valueType(), newMapType.valueType(), schemaUpdate);
+            }
+            default -> throw new IllegalArgumentException("Cannot change type from %s to %s".formatted(sourceType, newType));
         }
-        throw new IllegalArgumentException("Cannot change type from %s to %s".formatted(sourceType, newType));
     }
 
-    private static boolean fieldExists(StructType structType, String fieldName)
+    private static void updateFields(String name, NestedType sourceNestedType, NestedType newNestedType, UpdateSchema schemaUpdate)
     {
-        for (NestedField field : structType.fields()) {
+        List<String> fieldNames = Streams.concat(sourceNestedType.fields().stream(), newNestedType.fields().stream())
+                .map(NestedField::name)
+                .distinct()
+                .collect(toImmutableList());
+
+        for (String fieldName : fieldNames) {
+            if (fieldExists(sourceNestedType, fieldName) && fieldExists(newNestedType, fieldName)) {
+                buildUpdateSchema(name + "." + fieldName, sourceNestedType.fieldType(fieldName), newNestedType.fieldType(fieldName), schemaUpdate);
+            }
+            else if (fieldExists(newNestedType, fieldName)) {
+                schemaUpdate.addColumn(name, fieldName, newNestedType.fieldType(fieldName));
+            }
+            else {
+                schemaUpdate.deleteColumn(name + "." + fieldName);
+            }
+        }
+    }
+
+    private static void orderFields(String name, NestedType newNestedType, UpdateSchema schemaUpdate)
+    {
+        String currentName = null;
+        for (NestedField field : newNestedType.fields()) {
+            String path = name + "." + field.name();
+            if (currentName == null) {
+                schemaUpdate.moveFirst(path);
+            }
+            else {
+                schemaUpdate.moveAfter(path, currentName);
+            }
+            currentName = path;
+        }
+    }
+
+    private static boolean fieldExists(NestedType nestedType, String fieldName)
+    {
+        for (NestedField field : nestedType.fields()) {
             if (field.name().equals(fieldName)) {
                 return true;
             }
@@ -2966,38 +2967,14 @@ public class IcebergMetadata
     public void setFieldType(ConnectorSession session, ConnectorTableHandle tableHandle, List<String> fieldPath, io.trino.spi.type.Type type)
     {
         Table icebergTable = catalog.loadTable(session, ((IcebergTableHandle) tableHandle).getSchemaTableName());
-        String parentPath = String.join(".", fieldPath.subList(0, fieldPath.size() - 1));
-        NestedField parent = icebergTable.schema().caseInsensitiveFindField(parentPath);
+        NestedField field = icebergTable.schema().caseInsensitiveFindField(String.join(".", fieldPath));
+        String caseSensitiveFieldName = icebergTable.schema().findColumnName(field.fieldId());
 
-        String caseSensitiveParentName = icebergTable.schema().findColumnName(parent.fieldId());
-
-        Types.StructType structType;
-        if (parent.type().isListType()) {
-            // list(struct...)
-            structType = parent.type().asListType().elementType().asStructType();
-            caseSensitiveParentName += ".element";
-        }
-        else {
-            // just struct
-            structType = parent.type().asStructType();
-        }
-        NestedField field = structType.caseInsensitiveField(getLast(fieldPath));
-
-        // TODO: Add support for changing non-primitive field type
-        if (!field.type().isPrimitiveType()) {
-            throw new TrinoException(NOT_SUPPORTED, "Iceberg doesn't support changing field type from non-primitive types");
-        }
-
-        String name = caseSensitiveParentName + "." + field.name();
-        // Pass dummy AtomicInteger. The field id will be discarded because the subsequent logic disallows non-primitive types.
         Type icebergType = toIcebergTypeForNewColumn(type, new AtomicInteger());
-        if (!icebergType.isPrimitiveType()) {
-            throw new TrinoException(NOT_SUPPORTED, "Iceberg doesn't support changing field type to non-primitive types");
-        }
+        UpdateSchema schemaUpdate = icebergTable.updateSchema();
         try {
-            icebergTable.updateSchema()
-                    .updateColumn(name, icebergType.asPrimitiveType())
-                    .commit();
+            buildUpdateSchema(caseSensitiveFieldName, field.type(), icebergType, schemaUpdate);
+            schemaUpdate.commit();
         }
         catch (RuntimeException e) {
             throw new TrinoException(ICEBERG_COMMIT_ERROR, "Failed to set field type: " + requireNonNullElse(e.getMessage(), e), e);

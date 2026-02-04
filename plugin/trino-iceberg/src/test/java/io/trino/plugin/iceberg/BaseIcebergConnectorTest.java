@@ -9347,6 +9347,11 @@ public abstract class BaseIcebergConnectorTest
             return Optional.of(setup.withNewValueLiteral("TIMESTAMP '2020-02-12 14:03:00.123000 +00:00'"));
         }
         switch ("%s -> %s".formatted(setup.sourceColumnType(), setup.newColumnType())) {
+            // Iceberg allows updating column types if the update is safe. Safe updates are:
+            // - int to bigint
+            // - float to double
+            // - decimal(P,S) to decimal(P2,S) when P2 > P (scale cannot change)
+            // https://iceberg.apache.org/docs/latest/spark-ddl/#alter-table--alter-column
             case "tinyint -> smallint":
             case "bigint -> integer":
             case "bigint -> smallint":
@@ -9356,16 +9361,12 @@ public abstract class BaseIcebergConnectorTest
             case "varchar -> char(20)":
             case "time(6) -> time(3)":
             case "timestamp(6) -> timestamp(3)":
-            case "array(integer) -> array(bigint)":
-                // Iceberg allows updating column types if the update is safe. Safe updates are:
-                // - int to bigint
-                // - float to double
-                // - decimal(P,S) to decimal(P2,S) when P2 > P (scale cannot change)
-                // https://iceberg.apache.org/docs/latest/spark-ddl/#alter-table--alter-column
+            // Iceberg cannot update map keys
+            case "map(integer, varchar) -> map(bigint, varchar)":
                 return Optional.of(setup.asUnsupported());
 
+            // Iceberg connector ignores the varchar length
             case "varchar(100) -> varchar(50)":
-                // Iceberg connector ignores the varchar length
                 return Optional.empty();
         }
         return Optional.of(setup);
@@ -9376,7 +9377,8 @@ public abstract class BaseIcebergConnectorTest
     {
         assertThat(e).hasMessageMatching(".*(Failed to set column type: Cannot change (column type:|type from .* to )" +
                 "|Time(stamp)? precision \\(3\\) not supported for Iceberg. Use \"time(stamp)?\\(6\\)\" instead" +
-                "|Type not supported for Iceberg: tinyint|smallint|char\\(20\\)).*");
+                "|Type not supported for Iceberg: (tinyint|smallint|char\\(20\\))" +
+                "|Cannot update map keys).*");
     }
 
     @Override
@@ -9387,6 +9389,11 @@ public abstract class BaseIcebergConnectorTest
             return Optional.of(setup.withNewValueLiteral("TIMESTAMP '2020-02-12 14:03:00.123000 +00:00'"));
         }
         switch ("%s -> %s".formatted(setup.sourceColumnType(), setup.newColumnType())) {
+            // Iceberg allows updating column types if the update is safe. Safe updates are:
+            // - int to bigint
+            // - float to double
+            // - decimal(P,S) to decimal(P2,S) when P2 > P (scale cannot change)
+            // https://iceberg.apache.org/docs/latest/spark-ddl/#alter-table--alter-column
             case "tinyint -> smallint":
             case "bigint -> integer":
             case "bigint -> smallint":
@@ -9396,25 +9403,12 @@ public abstract class BaseIcebergConnectorTest
             case "varchar -> char(20)":
             case "time(6) -> time(3)":
             case "timestamp(6) -> timestamp(3)":
-            case "array(integer) -> array(bigint)":
-            case "row(x integer) -> row(\"x\" bigint)":
-            case "row(x integer) -> row(\"y\" integer)":
-            case "row(x integer, y integer) -> row(\"x\" integer, \"z\" integer)":
-            case "row(x integer) -> row(\"x\" integer, \"y\" integer)":
-            case "row(x integer, y integer) -> row(\"x\" integer)":
-            case "row(x integer, y integer) -> row(\"y\" integer, \"x\" integer)":
-            case "row(x integer, y integer) -> row(\"z\" integer, \"y\" integer, \"x\" integer)":
-            case "row(x row(nested integer)) -> row(\"x\" row(\"nested\" bigint))":
-            case "row(x row(a integer, b integer)) -> row(\"x\" row(\"b\" integer, \"a\" integer))":
-                // Iceberg allows updating column types if the update is safe. Safe updates are:
-                // - int to bigint
-                // - float to double
-                // - decimal(P,S) to decimal(P2,S) when P2 > P (scale cannot change)
-                // https://iceberg.apache.org/docs/latest/spark-ddl/#alter-table--alter-column
+            // Iceberg cannot update map keys
+            case "map(integer, varchar) -> map(bigint, varchar)":
                 return Optional.of(setup.asUnsupported());
 
+            // Iceberg connector ignores the varchar length
             case "varchar(100) -> varchar(50)":
-                // Iceberg connector ignores the varchar length
                 return Optional.empty();
         }
         return Optional.of(setup);
@@ -9425,8 +9419,8 @@ public abstract class BaseIcebergConnectorTest
     {
         assertThat(e).hasMessageMatching(".*(Failed to set field type: Cannot change (column type:|type from .* to )" +
                 "|Time(stamp)? precision \\(3\\) not supported for Iceberg. Use \"time(stamp)?\\(6\\)\" instead" +
-                "|Type not supported for Iceberg: tinyint|smallint|char\\(20\\)" +
-                "|Iceberg doesn't support changing field type (from|to) non-primitive types).*");
+                "|Type not supported for Iceberg: (tinyint|smallint|char\\(20\\))" +
+                "|Cannot update map keys).*");
     }
 
     @Override
