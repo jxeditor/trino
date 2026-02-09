@@ -206,6 +206,7 @@ import static org.apache.iceberg.TableProperties.PARQUET_COMPRESSION;
 import static org.apache.iceberg.TableProperties.WRITE_DATA_LOCATION;
 import static org.apache.iceberg.TableProperties.WRITE_LOCATION_PROVIDER_IMPL;
 import static org.apache.iceberg.TableUtil.formatVersion;
+import static org.apache.iceberg.expressions.Expressions.lit;
 import static org.apache.iceberg.types.Type.TypeID.BINARY;
 import static org.apache.iceberg.types.Type.TypeID.FIXED;
 import static org.apache.iceberg.util.LocationUtil.stripTrailingSlash;
@@ -303,7 +304,7 @@ public final class IcebergUtil
         List<Integer> path = requireNonNull(indexPaths.get(fieldId));
         if (!path.isEmpty()) {
             baseField = indexById.get(path.getFirst());
-            path = ImmutableList.<Integer>builder()
+            path = ImmutableList.<Integer>builderWithExpectedSize(path.size())
                     .addAll(path.subList(1, path.size())) // Base column id shouldn't exist in IcebergColumnHandle.path
                     .add(fieldId) // Append the leaf field id
                     .build();
@@ -432,18 +433,16 @@ public final class IcebergUtil
     public static List<ColumnMetadata> getColumnMetadatas(Schema schema, TypeManager typeManager)
     {
         List<NestedField> icebergColumns = schema.columns();
-        ImmutableList.Builder<ColumnMetadata> columns = builderWithExpectedSize(icebergColumns.size() + 2);
-
-        icebergColumns.stream()
-                .map(column ->
-                        ColumnMetadata.builder()
-                                .setName(column.name())
-                                .setType(toTrinoType(column.type(), typeManager))
-                                .setNullable(column.isOptional())
-                                .setComment(Optional.ofNullable(column.doc()))
-                                .setDefaultValue(formatIcebergDefaultAsSql(column.writeDefault(), column.type()))
-                                .build())
-                .forEach(columns::add);
+        ImmutableList.Builder<ColumnMetadata> columns = builderWithExpectedSize(icebergColumns.size() + 3);
+        for (NestedField column : icebergColumns) {
+            columns.add(ColumnMetadata.builder()
+                    .setName(column.name())
+                    .setType(toTrinoType(column.type(), typeManager))
+                    .setNullable(column.isOptional())
+                    .setComment(Optional.ofNullable(column.doc()))
+                    .setDefaultValue(formatIcebergDefaultAsSql(column.writeDefault(), column.type()))
+                    .build());
+        }
         columns.add(partitionColumnMetadata());
         columns.add(pathColumnMetadata());
         columns.add(fileModifiedTimeColumnMetadata());
@@ -819,7 +818,7 @@ public final class IcebergUtil
             Set<IcebergColumnHandle> identityPartitionColumns,
             Map<Integer, Optional<String>> partitionKeys)
     {
-        ImmutableMap.Builder<ColumnHandle, NullableValue> bindings = ImmutableMap.builder();
+        ImmutableMap.Builder<ColumnHandle, NullableValue> bindings = ImmutableMap.builderWithExpectedSize(identityPartitionColumns.size());
         for (IcebergColumnHandle partitionColumn : identityPartitionColumns) {
             Object partitionValue = deserializePartitionValue(
                     partitionColumn.getType(),
@@ -859,15 +858,15 @@ public final class IcebergUtil
                         .isOptional(column.isNullable())
                         .withName(column.getName())
                         .ofType(type)
-                        .withDoc(column.getComment());
+                        .withDoc(column.getComment().orElse(null));
 
                 // Set initial-default and write-default if present
                 // Note: DEFAULT NULL results in icebergDefault=null, which we skip since null is already the implicit default
                 column.getDefaultValue().ifPresent(defaultValue -> {
                     Object icebergDefault = parseDefaultValue(defaultValue, column.getType(), type);
                     if (icebergDefault != null) {
-                        fieldBuilder.withInitialDefault(icebergDefault);
-                        fieldBuilder.withWriteDefault(icebergDefault);
+                        fieldBuilder.withInitialDefault(lit(icebergDefault));
+                        fieldBuilder.withWriteDefault(lit(icebergDefault));
                     }
                 });
 
