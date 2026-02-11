@@ -458,7 +458,7 @@ public class QueryMonitor
         ImmutableList.Builder<QueryInputMetadata> inputs = ImmutableList.builderWithExpectedSize(queryInfo.getInputs().size());
         for (Input input : queryInfo.getInputs()) {
             // Note: input table can be mapped to multiple operators
-            Collection<OperatorStats> inputTableOperatorStats = planNodeStats.get(new FragmentNode(input.getFragmentId(), input.getPlanNodeId()));
+            Collection<OperatorStats> inputTableOperatorStats = planNodeStats.get(new FragmentNode(input.fragmentId(), input.planNodeId()));
 
             OptionalLong physicalInputBytes = OptionalLong.empty();
             OptionalLong physicalInputPositions = OptionalLong.empty();
@@ -476,15 +476,15 @@ public class QueryMonitor
                     .reduce(Metrics.EMPTY, Metrics::mergeWith);
 
             inputs.add(new QueryInputMetadata(
-                    input.getConnectorName(),
-                    input.getCatalogName(),
-                    input.getCatalogVersion(),
-                    input.getSchema(),
-                    input.getTable(),
-                    input.getColumns().stream()
-                            .map(column -> new QueryInputMetadata.Column(column.getName(), column.getType()))
+                    input.connectorName(),
+                    input.catalogName(),
+                    input.catalogVersion(),
+                    input.schema(),
+                    input.table(),
+                    input.columns().stream()
+                            .map(column -> new QueryInputMetadata.Column(column.name(), column.type()))
                             .collect(toImmutableList()),
-                    input.getConnectorInfo(),
+                    input.connectorInfo(),
                     connectorMetrics,
                     physicalInputBytes,
                     physicalInputPositions));
@@ -501,8 +501,8 @@ public class QueryMonitor
             Optional<List<OutputColumnMetadata>> outputColumnsMetadata = queryInfo.getOutput().get().getColumns()
                     .map(columns -> columns.stream()
                             .map(column -> new OutputColumnMetadata(
-                                    column.getColumn().getName(),
-                                    column.getColumn().getType(),
+                                    column.getColumn().name(),
+                                    column.getColumn().type(),
                                     column.getSourceColumns().stream()
                                             .map(Analysis.SourceColumn::getColumnDetail)
                                             .collect(toImmutableSet())))

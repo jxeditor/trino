@@ -67,7 +67,6 @@ import io.trino.sql.analyzer.PatternRecognitionAnalysis.Navigation;
 import io.trino.sql.analyzer.PatternRecognitionAnalysis.NavigationMode;
 import io.trino.sql.analyzer.PatternRecognitionAnalysis.PatternInputAnalysis;
 import io.trino.sql.analyzer.PatternRecognitionAnalysis.ScalarInputDescriptor;
-import io.trino.sql.ir.optimizer.IrExpressionEvaluator;
 import io.trino.sql.tree.ArithmeticBinaryExpression;
 import io.trino.sql.tree.ArithmeticUnaryExpression;
 import io.trino.sql.tree.Array;
@@ -1403,7 +1402,7 @@ public class ExpressionAnalyzer
             }
 
             if (node.getArguments().size() > 127) {
-                throw semanticException(TOO_MANY_ARGUMENTS, node, "Too many arguments for function call %s()", function.signature().getName().getFunctionName());
+                throw semanticException(TOO_MANY_ARGUMENTS, node, "Too many arguments for function call %s()", function.signature().getName().functionName());
             }
 
             if (node.getOrderBy().isPresent()) {
@@ -3979,8 +3978,7 @@ public class ExpressionAnalyzer
             }
         }
 
-        IrExpressionEvaluator expressionEvaluator = new IrExpressionEvaluator(plannerContext);
-        expressionEvaluator.evaluate(
+        plannerContext.getExpressionEvaluator().evaluate(
                 new io.trino.sql.ir.Cast(new io.trino.sql.ir.Constant(literalType, value), type),
                 session,
                 ImmutableMap.of());
