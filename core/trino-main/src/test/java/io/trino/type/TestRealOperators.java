@@ -531,7 +531,7 @@ public class TestRealOperators
                 .isEqualTo("Infinity");
 
         assertThat(assertions.expression("CAST(a AS VARCHAR)")
-                .binding("a", "CAST(nan() AS REAL)"))
+                .binding("a", "REAL 'NaN'"))
                 .hasType(VARCHAR)
                 .isEqualTo("NaN");
 
@@ -584,7 +584,7 @@ public class TestRealOperators
                 .hasErrorCode(INVALID_CAST_ARGUMENT);
 
         assertTrinoExceptionThrownBy(() -> assertions.expression("CAST(a AS varchar(2))")
-                .binding("a", "nan()").evaluate())
+                .binding("a", "REAL 'NaN'").evaluate())
                 .hasMessage("Value NaN (NaN) cannot be represented as varchar(2)")
                 .hasErrorCode(INVALID_CAST_ARGUMENT);
 
@@ -717,6 +717,14 @@ public class TestRealOperators
         assertThat(assertions.expression("cast(a as DOUBLE)")
                 .binding("a", "REAL 'NaN'"))
                 .isEqualTo(Double.NaN);
+
+        assertThat(assertions.expression("cast(a as DOUBLE)")
+                .binding("a", "REAL '+Infinity'"))
+                .isEqualTo(Double.POSITIVE_INFINITY);
+
+        assertThat(assertions.expression("cast(a as DOUBLE)")
+                .binding("a", "REAL '-Infinity'"))
+                .isEqualTo(Double.NEGATIVE_INFINITY);
     }
 
     @Test

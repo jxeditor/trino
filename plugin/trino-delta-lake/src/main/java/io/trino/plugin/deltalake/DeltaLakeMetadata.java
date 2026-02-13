@@ -359,6 +359,7 @@ import static io.trino.spi.type.TypeUtils.isFloatingPointNaN;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.lang.Math.floorDiv;
+import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
 import static java.time.Instant.EPOCH;
 import static java.util.Collections.unmodifiableMap;
@@ -1138,11 +1139,11 @@ public class DeltaLakeMetadata
             }
         }
 
-        for (Map.Entry<SchemaTableName, ConnectorViewDefinition> entry : getViews(session, schemaName).entrySet()) {
+        for (Entry<SchemaTableName, ConnectorViewDefinition> entry : getViews(session, schemaName).entrySet()) {
             relationColumns.put(entry.getKey(), RelationColumnsMetadata.forView(entry.getKey(), entry.getValue().getColumns()));
         }
 
-        for (Map.Entry<SchemaTableName, ConnectorMaterializedViewDefinition> entry : getMaterializedViews(session, schemaName).entrySet()) {
+        for (Entry<SchemaTableName, ConnectorMaterializedViewDefinition> entry : getMaterializedViews(session, schemaName).entrySet()) {
             relationColumns.put(entry.getKey(), RelationColumnsMetadata.forMaterializedView(entry.getKey(), entry.getValue().getColumns()));
         }
 
@@ -2803,7 +2804,7 @@ public class DeltaLakeMetadata
     {
         // using Hashmap because partition values can be null
         Map<String, String> partitionValuesMap = new HashMap<>();
-        for (Map.Entry<String, Optional<String>> entry : canonicalPartitionValues.entrySet()) {
+        for (Entry<String, Optional<String>> entry : canonicalPartitionValues.entrySet()) {
             partitionValuesMap.put(entry.getKey(), entry.getValue().orElse(null));
         }
         return unmodifiableMap(partitionValuesMap);
@@ -3617,7 +3618,7 @@ public class DeltaLakeMetadata
         ImmutableMap.Builder<ConnectorExpression, Variable> newVariablesBuilder = ImmutableMap.builder();
         ImmutableSet.Builder<DeltaLakeColumnHandle> projectedColumnsBuilder = ImmutableSet.builder();
 
-        for (Map.Entry<ConnectorExpression, ProjectedColumnRepresentation> entry : columnProjections.entrySet()) {
+        for (Entry<ConnectorExpression, ProjectedColumnRepresentation> entry : columnProjections.entrySet()) {
             ConnectorExpression expression = entry.getKey();
             ProjectedColumnRepresentation projectedColumn = entry.getValue();
 
@@ -3731,7 +3732,7 @@ public class DeltaLakeMetadata
                 .addAll(projectedColumn.getDereferenceIndices())
                 .build();
 
-        for (Map.Entry<String, ColumnHandle> entry : assignments.entrySet()) {
+        for (Entry<String, ColumnHandle> entry : assignments.entrySet()) {
             DeltaLakeColumnHandle column = (DeltaLakeColumnHandle) entry.getValue();
             if (column.baseColumnName().equals(baseColumnName) &&
                     column.projectionInfo()
@@ -4620,19 +4621,15 @@ public class DeltaLakeMetadata
 
     private static boolean isNotFinite(Optional<Object> value, Type type)
     {
-        if (type.equals(DOUBLE)) {
-            return value
-                    .map(Double.class::cast)
-                    .filter(val -> !Double.isFinite(val))
-                    .isPresent();
+        if (value.isEmpty()) {
+            return false;
         }
-        if (type.equals(REAL)) {
-            return value
-                    .map(Long.class::cast)
-                    .map(Math::toIntExact)
-                    .map(Float::intBitsToFloat)
-                    .filter(val -> !Float.isFinite(val))
-                    .isPresent();
+        Object object = value.get();
+        if (type == DOUBLE) {
+            return !Double.isFinite((double) object);
+        }
+        if (type == REAL) {
+            return !Float.isFinite(Float.intBitsToFloat(toIntExact((long) object)));
         }
         return false;
     }
