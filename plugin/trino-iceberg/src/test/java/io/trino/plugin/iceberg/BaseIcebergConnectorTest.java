@@ -130,11 +130,11 @@ import static io.trino.SystemSessionProperties.TASK_MAX_WRITER_COUNT;
 import static io.trino.SystemSessionProperties.TASK_MIN_WRITER_COUNT;
 import static io.trino.SystemSessionProperties.TASK_SCALE_WRITERS_ENABLED;
 import static io.trino.SystemSessionProperties.USE_PREFERRED_WRITE_PARTITIONING;
-import static io.trino.hive.formats.compression.CompressionKind.ZSTD;
 import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_INVALID_METADATA;
 import static io.trino.plugin.iceberg.IcebergFileFormat.AVRO;
 import static io.trino.plugin.iceberg.IcebergFileFormat.ORC;
 import static io.trino.plugin.iceberg.IcebergFileFormat.PARQUET;
+import static io.trino.plugin.iceberg.IcebergMetadata.toCompressionCodecTableProperty;
 import static io.trino.plugin.iceberg.IcebergQueryRunner.ICEBERG_CATALOG;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.BUCKET_EXECUTION_ENABLED;
 import static io.trino.plugin.iceberg.IcebergSessionProperties.COLLECT_EXTENDED_STATISTICS_ON_WRITE;
@@ -189,7 +189,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.offset;
 import static org.assertj.core.api.Fail.fail;
-import static org.junit.jupiter.api.Assumptions.abort;
 
 public abstract class BaseIcebergConnectorTest
         extends BaseConnectorTest
@@ -1396,6 +1395,36 @@ public abstract class BaseIcebergConnectorTest
                     .matches("VALUES (TIMESTAMP '2021-07-24 03:43:57.987654', 1)");
             assertThat(query("SELECT partition.ts_day_2 FROM \"" + table.getName() + "$partitions\""))
                     .matches("VALUES DATE '2021-07-24'");
+        }
+    }
+
+    @Test // regression test for https://github.com/trinodb/trino/issues/26492
+    public void testAlterPartitionColumnPreservesExistingPartitions()
+    {
+        try (TestTable table = newTrinoTable("test_alter_partition", "(part_day timestamp, part_month timestamp, ts timestamp) WITH (partitioning = ARRAY['day(part_day)'])")) {
+            assertUpdate("ALTER TABLE " + table.getName() + " SET PROPERTIES partitioning = ARRAY['day(part_day)','ts']");
+            assertUpdate("INSERT INTO " + table.getName() + " VALUES (TIMESTAMP '2021-07-24 03:43:57.987654', TIMESTAMP '2021-07-24 03:43:57.987654', TIMESTAMP '2021-09-01 03:43:57.987654')", 1);
+
+            assertThat(query("TABLE " + table.getName()))
+                    .matches("VALUES (TIMESTAMP '2021-07-24 03:43:57.987654', TIMESTAMP '2021-07-24 03:43:57.987654', TIMESTAMP '2021-09-01 03:43:57.987654')");
+            assertThat(query("SELECT partition.part_day_day FROM \"" + table.getName() + "$partitions\""))
+                    .matches("VALUES DATE '2021-07-24'");
+            assertThat(query("SELECT partition.ts FROM \"" + table.getName() + "$partitions\""))
+                    .matches("VALUES TIMESTAMP '2021-09-01 03:43:57.987654'");
+            assertThat((String) computeScalar("SHOW CREATE TABLE " + table.getName()))
+                    .contains("partitioning = ARRAY['day(part_day)','ts']");
+
+            assertUpdate("ALTER TABLE " + table.getName() + " SET PROPERTIES partitioning = ARRAY['day(part_day)', 'month(part_month)']");
+            assertUpdate("INSERT INTO " + table.getName() + " VALUES (TIMESTAMP '2021-07-24 03:43:57.987654', TIMESTAMP '2021-07-24 03:43:57.987654', TIMESTAMP '2021-09-01 03:43:57.987654')", 1);
+            assertThat(query("TABLE " + table.getName()))
+                    .matches("VALUES (TIMESTAMP '2021-07-24 03:43:57.987654', TIMESTAMP '2021-07-24 03:43:57.987654', TIMESTAMP '2021-09-01 03:43:57.987654'), " +
+                            "(TIMESTAMP '2021-07-24 03:43:57.987654', TIMESTAMP '2021-07-24 03:43:57.987654', TIMESTAMP '2021-09-01 03:43:57.987654')");
+            assertThat(query("SELECT partition.part_day_day FROM \"" + table.getName() + "$partitions\""))
+                    .matches("VALUES DATE '2021-07-24', DATE '2021-07-24'");
+            assertThat(query("SELECT partition.ts FROM \"" + table.getName() + "$partitions\""))
+                    .matches("VALUES NULL, TIMESTAMP '2021-09-01 03:43:57.987654'");
+            assertThat(query("SELECT partition.part_month_month FROM \"" + table.getName() + "$partitions\""))
+                    .matches("VALUES NULL, 618");
         }
     }
 
@@ -5263,7 +5292,15 @@ public abstract class BaseIcebergConnectorTest
     @Override
     protected TestTable createTableWithDefaultColumns()
     {
-        return abort("Iceberg connector does not support column default values");
+        return new TestTable(
+                getQueryRunner()::execute,
+                "tpch.table",
+                "(col_required BIGINT NOT NULL," +
+                        "col_nullable BIGINT," +
+                        "col_default BIGINT DEFAULT 43," +
+                        "col_nonnull_default BIGINT DEFAULT 42 NOT NULL," +
+                        "col_required2 BIGINT NOT NULL)" +
+                        "WITH (format_version = 3)");
     }
 
     @Override
@@ -6913,7 +6950,7 @@ public abstract class BaseIcebergConnectorTest
 
                 assertThat(getTableProperties(tableName))
                         .containsEntry(DEFAULT_FILE_FORMAT, format.toString())
-                        .containsEntry(compressionProperty, compressionCodec.name());
+                        .containsEntry(compressionProperty, toCompressionCodecTableProperty(format, compressionCodec));
 
                 assertThat(query("SELECT * FROM " + tableName)).matches("SELECT * FROM nation");
                 assertThat(query(format("SELECT count(*) FROM \"%s$files\" WHERE file_path LIKE '%%.%s'", tableName, format.name().toLowerCase(ENGLISH))))
@@ -6958,13 +6995,13 @@ public abstract class BaseIcebergConnectorTest
                     .matches("SELECT count(*) FROM nation WHERE nationkey < 10");
             assertThat(getTableProperties(tableName))
                     .containsEntry(DEFAULT_FILE_FORMAT, format.toString())
-                    .containsEntry(compressionProperty, initialCompressionCodec.name());
+                    .containsEntry(compressionProperty, toCompressionCodecTableProperty(format, initialCompressionCodec));
 
             if (isCompressionCodecSupportedForFormat(format, compressionCodec)) {
                 assertUpdate(format("ALTER TABLE %s SET PROPERTIES compression_codec = '%s'", tableName, newCompressionCodec));
                 assertThat(getTableProperties(tableName))
                         .containsEntry(DEFAULT_FILE_FORMAT, format.toString())
-                        .containsEntry(compressionProperty, newCompressionCodec);
+                        .containsEntry(compressionProperty, toCompressionCodecTableProperty(format, compressionCodec));
                 assertUpdate(
                         "INSERT INTO " + tableName + " SELECT * FROM nation WHERE nationkey >= 10",
                         "SELECT count(*) FROM nation WHERE nationkey >= 10");
@@ -6976,7 +7013,7 @@ public abstract class BaseIcebergConnectorTest
             else {
                 assertQueryFails(
                         format("ALTER TABLE %s SET PROPERTIES compression_codec = '%s'", tableName, newCompressionCodec),
-                        "Compression codec LZ4 not supported for .*");
+                        "Compression codec %s not supported for .*".formatted(newCompressionCodec));
             }
             assertUpdate("DROP TABLE " + tableName);
         }
@@ -7002,17 +7039,17 @@ public abstract class BaseIcebergConnectorTest
 
                     assertThat(getTableProperties(tableName))
                             .containsEntry(DEFAULT_FILE_FORMAT, format.toString())
-                            .containsEntry(compressionProperty, compressionCodec.name());
+                            .containsEntry(compressionProperty, toCompressionCodecTableProperty(format, compressionCodec));
 
                     fileCounter.put(format, 1);
 
-                    compressionProperty = getCompressionPropertyName(fileFormat);
+                    String newCompressionProperty = getCompressionPropertyName(fileFormat);
 
                     if (isCompressionCodecSupportedForFormat(fileFormat, compressionCodec)) {
                         assertUpdate("ALTER TABLE " + tableName + " SET PROPERTIES format = '" + fileFormat + "'");
                         assertThat(getTableProperties(tableName))
                                 .containsEntry(DEFAULT_FILE_FORMAT, fileFormat.toString())
-                                .containsEntry(compressionProperty, compressionCodec.name());
+                                .containsEntry(newCompressionProperty, toCompressionCodecTableProperty(fileFormat, compressionCodec));
                         assertUpdate(
                                 "INSERT INTO " + tableName + " SELECT * FROM nation WHERE nationkey >= 10",
                                 "SELECT count(*) FROM nation WHERE nationkey >= 10");
@@ -7028,14 +7065,14 @@ public abstract class BaseIcebergConnectorTest
                     }
                     else {
                         assertQueryFails("ALTER TABLE " + tableName + " SET PROPERTIES format = '" + fileFormat + "'",
-                                "Compression codec LZ4 not supported for .*");
+                                "Compression codec %s not supported for .*".formatted(compressionCodec.name()));
                     }
 
                     assertUpdate("DROP TABLE " + tableName);
                 }
                 else {
-                    assertQueryFails(format("CREATE TABLE %s WITH (format = '%s', compression_codec = '%s') AS SELECT * FROM nation", tableName, format, compressionCodec),
-                            "Compression codec LZ4 not supported for .*");
+                    assertQueryFails(format("CREATE TABLE %s WITH (format = '%s', compression_codec = '%s') AS SELECT * FROM nation", tableName, format, compressionCodec.name()),
+                            "Compression codec %s not supported for .*".formatted(compressionCodec.name()));
                 }
             }
         }
@@ -7063,7 +7100,7 @@ public abstract class BaseIcebergConnectorTest
                         "SELECT count(*) FROM nation WHERE nationkey < 10");
                 assertThat(getTableProperties(tableName))
                         .containsEntry(DEFAULT_FILE_FORMAT, format.toString())
-                        .containsEntry(compressionProperty, initialCompressionCodec.name());
+                        .containsEntry(compressionProperty, toCompressionCodecTableProperty(format, initialCompressionCodec));
 
                 fileCounter.put(format, 1);
 
@@ -7074,7 +7111,7 @@ public abstract class BaseIcebergConnectorTest
                     assertUpdate(format("ALTER TABLE %s SET PROPERTIES format = '%s', compression_codec = '%s'", tableName, fileFormat, newCompressionCodec));
                     assertThat(getTableProperties(tableName))
                             .containsEntry(DEFAULT_FILE_FORMAT, fileFormat.toString())
-                            .containsEntry(compressionProperty, newCompressionCodec);
+                            .containsEntry(compressionProperty, toCompressionCodecTableProperty(fileFormat, compressionCodec));
                     assertUpdate(
                             "INSERT INTO " + tableName + " SELECT * FROM nation WHERE nationkey >= 10",
                             "SELECT count(*) FROM nation WHERE nationkey >= 10");
@@ -7108,7 +7145,7 @@ public abstract class BaseIcebergConnectorTest
 
             assertThat(getTableProperties(table.getName()))
                     .containsEntry(DEFAULT_FILE_FORMAT, AVRO.name())
-                    .containsEntry(AVRO_COMPRESSION, ZSTD.name());
+                    .containsEntry(AVRO_COMPRESSION, toCompressionCodecTableProperty(AVRO, HiveCompressionCodec.ZSTD));
         }
     }
 

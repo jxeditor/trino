@@ -259,8 +259,12 @@ public class TestingTrinoClient
             return new BigDecimal((String) value);
         }
         if (type == NUMBER) {
-            //noinspection RedundantCast
-            return (BigDecimal) value;
+            return switch ((String) value) {
+                case "NaN" -> Double.NaN;
+                case "+Infinity" -> Double.POSITIVE_INFINITY;
+                case "-Infinity" -> Double.NEGATIVE_INFINITY;
+                case String string -> new BigDecimal(string);
+            };
         }
         if (type == UUID) {
             return java.util.UUID.fromString((String) value);

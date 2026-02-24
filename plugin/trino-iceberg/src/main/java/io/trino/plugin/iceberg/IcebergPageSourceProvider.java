@@ -266,7 +266,8 @@ public class IcebergPageSourceProvider
                 .collect(toImmutableList());
         IcebergTableHandle tableHandle = (IcebergTableHandle) connectorTable;
         Schema schema = SchemaParser.fromJson(tableHandle.getTableSchemaJson());
-        PartitionSpec partitionSpec = PartitionSpecParser.fromJson(schema, split.getPartitionSpecJson());
+        String partitionSpecJson = tableHandle.getPartitionSpecJsons().get(split.getSpecId());
+        PartitionSpec partitionSpec = PartitionSpecParser.fromJson(schema, partitionSpecJson);
         org.apache.iceberg.types.Type[] partitionColumnTypes = partitionSpec.fields().stream()
                 .map(field -> field.transform().getResultType(schema.findType(field.sourceId())))
                 .toArray(org.apache.iceberg.types.Type[]::new);
@@ -1064,12 +1065,12 @@ public class IcebergPageSourceProvider
             ConnectorPageSource pageSource = new ParquetPageSource(parquetReader);
             pageSource = transforms.build(pageSource);
 
-            Optional<Long> startRowPosition = Optional.empty();
-            Optional<Long> endRowPosition = Optional.empty();
+            OptionalLong startRowPosition = OptionalLong.empty();
+            OptionalLong endRowPosition = OptionalLong.empty();
             if (!rowGroups.isEmpty()) {
-                startRowPosition = Optional.of(rowGroups.getFirst().fileRowOffset());
+                startRowPosition = OptionalLong.of(rowGroups.getFirst().fileRowOffset());
                 RowGroupInfo lastRowGroup = rowGroups.getLast();
-                endRowPosition = Optional.of(lastRowGroup.fileRowOffset() + lastRowGroup.prunedBlockMetadata().getRowCount());
+                endRowPosition = OptionalLong.of(lastRowGroup.fileRowOffset() + lastRowGroup.prunedBlockMetadata().getRowCount());
             }
 
             return new ReaderPageSourceWithRowPositions(
@@ -1243,8 +1244,8 @@ public class IcebergPageSourceProvider
 
             return new ReaderPageSourceWithRowPositions(
                     pageSource,
-                    Optional.empty(),
-                    Optional.empty());
+                    OptionalLong.empty(),
+                    OptionalLong.empty());
         }
         catch (IOException | UncheckedIOException e) {
             throw new TrinoException(ICEBERG_CANNOT_OPEN_SPLIT, e);
@@ -1490,8 +1491,8 @@ public class IcebergPageSourceProvider
 
     public record ReaderPageSourceWithRowPositions(
             ConnectorPageSource pageSource,
-            Optional<Long> startRowPosition,
-            Optional<Long> endRowPosition)
+            OptionalLong startRowPosition,
+            OptionalLong endRowPosition)
     {
         public ReaderPageSourceWithRowPositions
         {

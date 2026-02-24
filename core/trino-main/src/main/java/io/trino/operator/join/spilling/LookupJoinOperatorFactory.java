@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.operator.join;
+package io.trino.operator.join.spilling;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Ints;
@@ -23,8 +23,12 @@ import io.trino.operator.ProcessorContext;
 import io.trino.operator.WorkProcessor;
 import io.trino.operator.WorkProcessorOperator;
 import io.trino.operator.WorkProcessorOperatorFactory;
-import io.trino.operator.join.JoinProbe.JoinProbeFactory;
+import io.trino.operator.join.JoinBridgeManager;
+import io.trino.operator.join.JoinOperatorFactory;
+import io.trino.operator.join.JoinType;
 import io.trino.operator.join.LookupOuterOperator.LookupOuterOperatorFactory;
+import io.trino.operator.join.LookupSourceFactory;
+import io.trino.operator.join.spilling.JoinProbe.JoinProbeFactory;
 import io.trino.spi.Page;
 import io.trino.spi.type.Type;
 import io.trino.spiller.PartitioningSpillerFactory;
@@ -38,21 +42,13 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.operator.InterpretedHashGenerator.createChannelsHashGenerator;
-import static io.trino.operator.join.LookupJoinOperatorFactory.JoinType.INNER;
-import static io.trino.operator.join.LookupJoinOperatorFactory.JoinType.PROBE_OUTER;
+import static io.trino.operator.join.JoinType.INNER;
+import static io.trino.operator.join.JoinType.PROBE_OUTER;
 import static java.util.Objects.requireNonNull;
 
 public class LookupJoinOperatorFactory
         implements JoinOperatorFactory, WorkProcessorOperatorFactory
 {
-    public enum JoinType
-    {
-        INNER,
-        PROBE_OUTER, // the Probe is the outer side of the join
-        LOOKUP_OUTER, // The LookupSource is the outer side of the join
-        FULL_OUTER,
-    }
-
     private final int operatorId;
     private final PlanNodeId planNodeId;
     private final List<Type> probeTypes;

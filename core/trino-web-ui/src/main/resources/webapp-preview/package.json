@@ -26,7 +26,7 @@
     "@mui/material": "^7.3.7",
     "@mui/x-charts": "^8.27.0",
     "@xyflow/react": "^12.10.0",
-    "axios": "^1.13.4",
+    "axios": "^1.13.5",
     "lodash": "^4.17.23",
     "react": "^19.1.4",
     "react-calendar-timeline": "^0.30.0-beta.4",
@@ -43,7 +43,7 @@
     "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^8.44.1",
     "@typescript-eslint/parser": "^8.44.1",
-    "@vitejs/plugin-react": "^5.1.3",
+    "@vitejs/plugin-react": "^5.1.4",
     "eslint": "^9.39.2",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -51,7 +51,7 @@
     "globals": "^16.5.0",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.54.0",
+    "typescript-eslint": "^8.55.0",
     "vite": "^7.1.7"
   },
   "overrides": {
