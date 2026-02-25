@@ -13,11 +13,11 @@
  */
 package io.trino.plugin.postgresql;
 
-public class TestPostgreSqlTypeMapping
+public class TestPostgreSqlTypeMappingLatest
         extends BasePostgreSqlTypeMappingTest
 {
-    protected TestPostgreSqlTypeMapping()
+    protected TestPostgreSqlTypeMappingLatest()
     {
-        super(TestingPostgreSqlServer.DEFAULT_IMAGE_NAME);
+        super(TestingPostgreSqlServer.LATEST_IMAGE_NAME);
     }
 }

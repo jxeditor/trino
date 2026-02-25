@@ -13,11 +13,16 @@
  */
 package io.trino.plugin.postgresql;
 
-public class TestPostgreSqlTypeMapping
+/**
+ * Test PostgreSQL connector type mappings with PostgreSQL 15,
+ * the first PostgreSQL version that expanded PostgreSQL numeric type
+ * to include unconstrained numerics, negative scale, NaN and +Infinity values.
+ */
+public class TestPostgreSqlTypeMapping15
         extends BasePostgreSqlTypeMappingTest
 {
-    protected TestPostgreSqlTypeMapping()
+    protected TestPostgreSqlTypeMapping15()
     {
-        super(TestingPostgreSqlServer.DEFAULT_IMAGE_NAME);
+        super(TestingPostgreSqlServer.IMAGE_15_NAME);
     }
 }
