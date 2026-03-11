@@ -670,10 +670,10 @@ class TestTupleDomain
                         Block.class, new TestingBlockJsonSerde.Deserializer(new TestingBlockEncodingSerde()),
                         ColumnHandle.class, new JsonDeserializer<ColumnHandle>() {
                             @Override
-                            public ColumnHandle deserialize(JsonParser parser, DeserializationContext ctxt)
+                            public ColumnHandle deserialize(JsonParser parser, DeserializationContext context)
                                     throws IOException
                             {
-                                return parser.readValueAs(TestingColumnHandle.class);
+                                return context.readValue(parser, TestingColumnHandle.class);
                             }
                         }))
                 .withJsonSerializers(Map.of(
