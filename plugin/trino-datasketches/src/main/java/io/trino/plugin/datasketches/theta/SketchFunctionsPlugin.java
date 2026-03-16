@@ -11,34 +11,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.jdbc;
+package io.trino.plugin.datasketches.theta;
 
-import java.math.RoundingMode;
+import com.google.common.collect.ImmutableSet;
+import io.trino.spi.Plugin;
+import io.trino.spi.connector.ConnectorFactory;
 
-public interface DecimalConfig
+public class SketchFunctionsPlugin
+        implements Plugin
 {
-    DecimalMapping getDecimalMapping();
-
-    int getDecimalDefaultScale();
-
-    RoundingMode getDecimalRoundingMode();
-
-    enum DecimalMapping
+    @Override
+    public Iterable<ConnectorFactory> getConnectorFactories()
     {
-        MAP_TO_NUMBER,
-
-        /**
-         * @deprecated Map to Trino NUMBER instead.
-         */
-        @Deprecated
-        STRICT,
-
-        /**
-         * @deprecated Map to Trino NUMBER instead.
-         */
-        @Deprecated
-        ALLOW_OVERFLOW,
-
-        /**/;
+        return ImmutableSet.of(new SketchFunctionsConnectorFactory());
     }
 }
