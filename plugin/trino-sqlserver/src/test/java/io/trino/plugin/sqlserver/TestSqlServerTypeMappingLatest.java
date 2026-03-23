@@ -11,19 +11,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.mysql;
+package io.trino.plugin.sqlserver;
 
 import io.trino.testing.QueryRunner;
 
-public class TestMySqlTypeMapping
-        extends BaseMySqlTypeMappingTest
+public class TestSqlServerTypeMappingLatest
+        extends BaseSqlServerTypeMapping
 {
     @Override
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        mySqlServer = closeAfterClass(new TestingMySqlServer());
-        return MySqlQueryRunner.builder(mySqlServer)
+        sqlServer = closeAfterClass(new TestingSqlServer(TestingSqlServer.LATEST_VERSION));
+        return SqlServerQueryRunner.builder(sqlServer)
                 .build();
     }
 }

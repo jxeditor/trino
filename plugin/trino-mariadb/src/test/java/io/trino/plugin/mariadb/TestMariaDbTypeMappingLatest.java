@@ -11,19 +11,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.mysql;
+package io.trino.plugin.mariadb;
 
 import io.trino.testing.QueryRunner;
 
-public class TestMySqlTypeMapping
-        extends BaseMySqlTypeMappingTest
+public class TestMariaDbTypeMappingLatest
+        extends BaseMariaDbTypeMappingTest
 {
     @Override
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        mySqlServer = closeAfterClass(new TestingMySqlServer());
-        return MySqlQueryRunner.builder(mySqlServer)
-                .build();
+        server = closeAfterClass(new TestingMariaDbServer(TestingMariaDbServer.LATEST_VERSION));
+        return MariaDbQueryRunner.builder(server).build();
     }
 }

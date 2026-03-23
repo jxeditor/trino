@@ -15,14 +15,14 @@ package io.trino.plugin.mysql;
 
 import io.trino.testing.QueryRunner;
 
-public class TestMySqlTypeMapping
+public class TestMySqlTypeMappingLatest
         extends BaseMySqlTypeMappingTest
 {
     @Override
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        mySqlServer = closeAfterClass(new TestingMySqlServer());
+        mySqlServer = closeAfterClass(new TestingMySqlServer(TestingMySqlServer.LATEST_IMAGE));
         return MySqlQueryRunner.builder(mySqlServer)
                 .build();
     }
