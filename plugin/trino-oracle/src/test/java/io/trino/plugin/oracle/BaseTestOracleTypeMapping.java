@@ -73,7 +73,7 @@ import static org.junit.jupiter.api.parallel.ExecutionMode.CONCURRENT;
 
 @TestInstance(PER_CLASS)
 @Execution(CONCURRENT)
-public abstract class AbstractTestOracleTypeMapping
+public abstract class BaseTestOracleTypeMapping
         extends AbstractTestQueryFramework
 {
     protected static final int MAX_CHAR_ON_READ = 2000;
@@ -516,6 +516,19 @@ public abstract class AbstractTestOracleTypeMapping
     }
 
     @Test
+    public void testNumberWithDefaultScaleOnly()
+    {
+        // Test that when only number_default_scale is set (without rounding mode),
+        // Oracle NUMBER maps to DECIMAL for backwards compatibility
+        SqlDataTypeTest.create()
+                .addRoundTrip("number", "1", createDecimalType(38, 9), "CAST(1 AS DECIMAL(38, 9))")
+                .addRoundTrip("number", "99", createDecimalType(38, 9), "CAST(99 AS DECIMAL(38, 9))")
+                .addRoundTrip("number", "9999999999999999999999999999.999999999", createDecimalType(38, 9), "CAST('9999999999999999999999999999.999999999' AS DECIMAL(38, 9))")
+                .addRoundTrip("number", "-9999999999999999999999999999.999999999", createDecimalType(38, 9), "CAST('-9999999999999999999999999999.999999999' AS DECIMAL(38, 9))")
+                .execute(getQueryRunner(), numberDefaultScaleOnly(9), oracleCreateAndInsert("default_scale_only"));
+    }
+
+    @Test
     public void testRoundingOfUnspecifiedNumber()
     {
         try (TestTable table = oracleTable("rounding", "col NUMBER", "(0.123456789)")) {
@@ -634,6 +647,14 @@ public abstract class AbstractTestOracleTypeMapping
                 .setCatalogSessionProperty("oracle", NUMBER_ROUNDING_MODE, roundingMode.name());
         scale.ifPresent(value -> builder.setCatalogSessionProperty("oracle", NUMBER_DEFAULT_SCALE, value.toString()));
         return builder.build();
+    }
+
+    private Session numberDefaultScaleOnly(int scale)
+    {
+        // Only set default scale, without rounding mode
+        return Session.builder(getSession())
+                .setCatalogSessionProperty("oracle", NUMBER_DEFAULT_SCALE, String.valueOf(scale))
+                .build();
     }
 
     @Test
