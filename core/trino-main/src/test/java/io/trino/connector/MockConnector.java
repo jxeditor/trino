@@ -54,6 +54,7 @@ import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplit;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorSplitSource;
+import io.trino.spi.connector.ConnectorTableCredentials;
 import io.trino.spi.connector.ConnectorTableExecuteHandle;
 import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.ConnectorTableLayout;
@@ -1042,19 +1043,34 @@ public class MockConnector
             implements ConnectorPageSinkProvider
     {
         @Override
-        public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorOutputTableHandle outputTableHandle, ConnectorPageSinkId pageSinkId)
+        public ConnectorPageSink createPageSink(
+                ConnectorTransactionHandle transactionHandle,
+                ConnectorSession session,
+                ConnectorOutputTableHandle outputTableHandle,
+                Optional<ConnectorTableCredentials> tableCredentials,
+                ConnectorPageSinkId pageSinkId)
         {
             return new MockPageSink();
         }
 
         @Override
-        public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorInsertTableHandle insertTableHandle, ConnectorPageSinkId pageSinkId)
+        public ConnectorPageSink createPageSink(
+                ConnectorTransactionHandle transactionHandle,
+                ConnectorSession session,
+                ConnectorInsertTableHandle insertTableHandle,
+                Optional<ConnectorTableCredentials> tableCredentials,
+                ConnectorPageSinkId pageSinkId)
         {
             return new MockPageSink();
         }
 
         @Override
-        public ConnectorMergeSink createMergeSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorMergeTableHandle mergeHandle, ConnectorPageSinkId pageSinkId)
+        public ConnectorMergeSink createMergeSink(
+                ConnectorTransactionHandle transactionHandle,
+                ConnectorSession session,
+                ConnectorMergeTableHandle mergeHandle,
+                Optional<ConnectorTableCredentials> tableCredentials,
+                ConnectorPageSinkId pageSinkId)
         {
             return new MockPageSink();
         }
@@ -1092,7 +1108,14 @@ public class MockConnector
             implements ConnectorPageSourceProvider
     {
         @Override
-        public ConnectorPageSource createPageSource(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorSplit split, ConnectorTableHandle table, List<ColumnHandle> columns, DynamicFilter dynamicFilter)
+        public ConnectorPageSource createPageSource(
+                ConnectorTransactionHandle transaction,
+                ConnectorSession session,
+                ConnectorSplit split,
+                ConnectorTableHandle table,
+                Optional<ConnectorTableCredentials> tableCredentials,
+                List<ColumnHandle> columns,
+                DynamicFilter dynamicFilter)
         {
             MockConnectorTableHandle handle = (MockConnectorTableHandle) table;
             SchemaTableName tableName = handle.getTableName();
