@@ -1853,12 +1853,26 @@ public interface ConnectorMetadata
         return WriterScalingOptions.DISABLED;
     }
 
+    /**
+     * Returns credentials that can be used in {@link ConnectorPageSourceProvider}.
+     */
     default Optional<ConnectorTableCredentials> getTableCredentials(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
         return Optional.empty();
     }
 
+    /**
+     * Returns credentials that can be used in {@link ConnectorPageSinkProvider}.
+     */
     default Optional<ConnectorTableCredentials> getTableCredentials(ConnectorSession session, ConnectorWritableTableHandle tableHandle)
+    {
+        return Optional.empty();
+    }
+
+    /**
+     * Returns {@link ConnectorTableCredentials} for specified {@link ConnectorTableFunctionHandle} or {@link Optional#empty} if there are no credentials.
+     */
+    default Optional<ConnectorTableCredentials> getTableCredentials(ConnectorSession session, ConnectorTableFunctionHandle tableFunctionHandle)
     {
         return Optional.empty();
     }

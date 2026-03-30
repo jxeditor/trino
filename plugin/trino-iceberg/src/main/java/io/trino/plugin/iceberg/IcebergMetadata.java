@@ -55,6 +55,7 @@ import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.delete.DeletionVectorWriter;
 import io.trino.plugin.iceberg.delete.DeletionVectorWriter.DeletionVectorInfo;
 import io.trino.plugin.iceberg.functions.IcebergFunctionProvider;
+import io.trino.plugin.iceberg.functions.tablechanges.TableChangesFunctionHandle;
 import io.trino.plugin.iceberg.procedure.IcebergAddFilesFromTableHandle;
 import io.trino.plugin.iceberg.procedure.IcebergAddFilesHandle;
 import io.trino.plugin.iceberg.procedure.IcebergDropExtendedStatsHandle;
@@ -133,6 +134,7 @@ import io.trino.spi.function.FunctionDependencyDeclaration;
 import io.trino.spi.function.FunctionId;
 import io.trino.spi.function.FunctionMetadata;
 import io.trino.spi.function.SchemaFunctionName;
+import io.trino.spi.function.table.ConnectorTableFunctionHandle;
 import io.trino.spi.metrics.Metrics;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.NullableValue;
@@ -592,6 +594,12 @@ public class IcebergMetadata
         return getOrLoadTableCredentials(session, getSchemaTableName(tableHandle));
     }
 
+    @Override
+    public Optional<ConnectorTableCredentials> getTableCredentials(ConnectorSession session, ConnectorTableFunctionHandle tableFunctionHandle)
+    {
+        return getOrLoadTableCredentials(session, getSchemaTableName(tableFunctionHandle));
+    }
+
     private Optional<ConnectorTableCredentials> getOrLoadTableCredentials(ConnectorSession session, SchemaTableName schemaTableName)
     {
         try {
@@ -615,6 +623,14 @@ public class IcebergMetadata
             return handle.getSchemaTableName();
         }
         throw new IllegalArgumentException("Unsupported ConnectorTableHandle type: " + tableHandle.getClass().getName());
+    }
+
+    private static SchemaTableName getSchemaTableName(ConnectorTableFunctionHandle tableFunctionHandle)
+    {
+        if (tableFunctionHandle instanceof TableChangesFunctionHandle handle) {
+            return handle.schemaTableName();
+        }
+        throw new IllegalArgumentException("Unsupported ConnectorTableFunctionHandle type: " + tableFunctionHandle.getClass().getName());
     }
 
     private static SchemaTableName getSchemaTableName(ConnectorWritableTableHandle tableHandle)
@@ -924,8 +940,6 @@ public class IcebergMetadata
             return Optional.empty();
         }
 
-        tableCredentialsCache.put(tableName, IcebergTableCredentials.forFileIO(table.io()));
-
         TableType tableType = IcebergTableName.tableTypeFrom(tableName.getTableName());
         return switch (tableType) {
             case DATA, MATERIALIZED_VIEW_STORAGE -> throw new VerifyException("Unexpected table type: " + tableType); // Handled above.
@@ -997,12 +1011,12 @@ public class IcebergMetadata
                                         columns::get,
                                         columnId -> {
                                             IcebergColumnHandle column = columns.get(columnId);
-                                            Object prestoValue = deserializePartitionValue(
+                                            Object partitionValue = deserializePartitionValue(
                                                     column.getType(),
                                                     partitionColumnValueStrings.get(columnId).orElse(null),
                                                     column.getName());
 
-                                            return new NullableValue(column.getType(), prestoValue);
+                                            return new NullableValue(column.getType(), partitionValue);
                                         }));
 
                         return TupleDomain.fromFixedValues(partitionValues);
