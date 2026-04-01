@@ -41,6 +41,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static io.airlift.slice.Slices.utf8Slice;
+import static io.airlift.slice.Slices.wrappedBuffer;
 import static io.trino.spi.variant.Header.BasicType.OBJECT;
 import static io.trino.spi.variant.Header.BasicType.PRIMITIVE;
 import static io.trino.spi.variant.Header.arrayFieldOffsetSize;
@@ -96,25 +97,22 @@ import static io.trino.spi.variant.VariantUtils.checkState;
 import static io.trino.spi.variant.VariantUtils.findFieldIndex;
 import static io.trino.spi.variant.VariantUtils.readOffset;
 import static io.trino.spi.variant.VariantUtils.verify;
+import static java.lang.Math.floorDiv;
+import static java.lang.Math.floorMod;
 import static java.lang.Math.multiplyExact;
-import static java.lang.Math.toIntExact;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
 
-public final class Variant
+public record Variant(Slice data, Metadata metadata, BasicType basicType, PrimitiveType primitiveType)
 {
-    public static final Variant NULL_VALUE = from(EMPTY_METADATA, Slices.wrappedBuffer(primitiveHeader(PrimitiveType.NULL)));
+    public static final Variant NULL_VALUE = from(EMPTY_METADATA, wrappedBuffer(primitiveHeader(PrimitiveType.NULL)));
     public static final Variant EMPTY_ARRAY;
     public static final Variant EMPTY_OBJECT;
-    private final Slice data;
-    private final Metadata metadata;
-    private final BasicType basicType;
-    private final PrimitiveType primitiveType;
 
     static {
-        IntUnaryOperator emptyIndexedOperator = index -> {
+        IntUnaryOperator emptyIndexedOperator = _ -> {
             throw new IndexOutOfBoundsException();
         };
 
@@ -127,42 +125,18 @@ public final class Variant
         EMPTY_OBJECT = from(EMPTY_METADATA, emptyObjectValue);
     }
 
-    public Variant(Slice data, Metadata metadata, BasicType basicType, PrimitiveType primitiveType)
+    public Variant
     {
         requireNonNull(data, "data is null");
         requireNonNull(metadata, "metadata is null");
         requireNonNull(basicType, "basicType is null");
-        checkArgument(basicType == PRIMITIVE || primitiveType == null, "primitiveType must be null for non-primitive basicType");
-        checkArgument(basicType != PRIMITIVE || primitiveType != null, "primitiveType must be non-null for primitive basicType");
+
+        checkArgument(basicType == PRIMITIVE == (primitiveType != null), "primitiveType must be non-null if and only if basicType is PRIMITIVE");
 
         // not need to retain metadata for non-container types
         if (!basicType.isContainer()) {
             metadata = EMPTY_METADATA;
         }
-        this.data = data;
-        this.metadata = metadata;
-        this.basicType = basicType;
-        this.primitiveType = primitiveType;
-    }
-
-    public Slice data()
-    {
-        return data;
-    }
-
-    public Metadata metadata()
-    {
-        return metadata;
-    }
-
-    public BasicType basicType()
-    {
-        return basicType;
-    }
-
-    public PrimitiveType primitiveType()
-    {
-        return primitiveType;
     }
 
     public static Variant from(Metadata metadata, Slice data)
@@ -560,13 +534,13 @@ public final class Variant
         int nanoOfSecond;
         if (primitiveType == PrimitiveType.TIMESTAMP_UTC_MICROS) {
             long micros = getTimestampMicros();
-            seconds = Math.floorDiv(micros, 1_000_000);
-            nanoOfSecond = toIntExact(Math.floorMod(micros, 1_000_000) * 1_000L);
+            seconds = floorDiv(micros, 1_000_000);
+            nanoOfSecond = floorMod(micros, 1_000_000) * 1_000;
         }
         else if (primitiveType == PrimitiveType.TIMESTAMP_UTC_NANOS) {
             long nanos = getTimestampNanos();
-            seconds = Math.floorDiv(nanos, 1_000_000_000L);
-            nanoOfSecond = (int) Math.floorMod(nanos, 1_000_000_000L);
+            seconds = floorDiv(nanos, 1_000_000_000L);
+            nanoOfSecond = floorMod(nanos, 1_000_000_000);
         }
         else {
             throw new IllegalStateException("Expected primitive TIMESTAMP but got " + primitiveType);
@@ -580,13 +554,13 @@ public final class Variant
         int nanoOfSecond;
         if (primitiveType == PrimitiveType.TIMESTAMP_NTZ_MICROS) {
             long micros = getTimestampMicros();
-            seconds = Math.floorDiv(micros, 1_000_000);
-            nanoOfSecond = toIntExact(Math.floorMod(micros, 1_000_000) * 1_000L);
+            seconds = floorDiv(micros, 1_000_000);
+            nanoOfSecond = floorMod(micros, 1_000_000) * 1_000;
         }
         else if (primitiveType == PrimitiveType.TIMESTAMP_NTZ_NANOS) {
             long nanos = getTimestampNanos();
-            seconds = Math.floorDiv(nanos, 1_000_000_000L);
-            nanoOfSecond = (int) Math.floorMod(nanos, 1_000_000_000L);
+            seconds = floorDiv(nanos, 1_000_000_000L);
+            nanoOfSecond = floorMod(nanos, 1_000_000_000);
         }
         else {
             throw new IllegalStateException("Expected primitive TIMESTAMP but got " + primitiveType);
@@ -636,7 +610,7 @@ public final class Variant
     public int getArrayLength()
     {
         verifyType(BasicType.ARRAY);
-        int count = arrayIsLarge(data.getByte(0)) ? data.getInt(1) : (data.getByte(1) & 0xFF);
+        int count = arrayIsLarge(data.getByte(0)) ? data.getInt(1) : data.getByte(1) & 0xFF;
         checkState(count >= 0, () -> "Corrupt array count: " + count);
         return count;
     }
@@ -648,7 +622,7 @@ public final class Variant
         boolean large = arrayIsLarge(header);
         int offSize = arrayFieldOffsetSize(header);
 
-        int count = large ? data.getInt(1) : (data.getByte(1) & 0xFF);
+        int count = large ? data.getInt(1) : data.getByte(1) & 0xFF;
         Objects.checkIndex(index, count);
 
         int offsetsStart = 1 + (large ? 4 : 1);
@@ -668,7 +642,7 @@ public final class Variant
         boolean large = arrayIsLarge(header);
         int offsetSize = arrayFieldOffsetSize(header);
 
-        int count = large ? data.getInt(1) : (data.getByte(1) & 0xFF);
+        int count = large ? data.getInt(1) : data.getByte(1) & 0xFF;
 
         int offsetsStart = 1 + (large ? 4 : 1);
         int valuesStart = offsetsStart + (count + 1) * offsetSize;
@@ -685,7 +659,7 @@ public final class Variant
     public int getObjectFieldCount()
     {
         verifyType(OBJECT);
-        int count = objectIsLarge(data.getByte(0)) ? data.getInt(1) : (data.getByte(1) & 0xFF);
+        int count = objectIsLarge(data.getByte(0)) ? data.getInt(1) : data.getByte(1) & 0xFF;
         checkState(count >= 0, () -> "Corrupt object field count: " + count);
         return count;
     }
@@ -703,7 +677,7 @@ public final class Variant
         boolean large = objectIsLarge(header);
         int idSize = objectFieldIdSize(header);
         int offsetSize = objectFieldOffsetSize(header);
-        int count = large ? data.getInt(1) : (data.getByte(1) & 0xFF);
+        int count = large ? data.getInt(1) : data.getByte(1) & 0xFF;
         checkState(count >= 0, () -> "Corrupt object field count: " + count);
         int idsStart = 1 + (large ? 4 : 1);
         int offsetsStart = idsStart + count * idSize;
@@ -728,7 +702,7 @@ public final class Variant
         boolean large = objectIsLarge(header);
         int idSize = objectFieldIdSize(header);
         int offsetSize = objectFieldOffsetSize(header);
-        int count = large ? data.getInt(1) : (data.getByte(1) & 0xFF);
+        int count = large ? data.getInt(1) : data.getByte(1) & 0xFF;
         checkState(count >= 0, () -> "Corrupt object field count: " + count);
         int idsStart = 1 + (large ? 4 : 1);
         int offsetsStart = idsStart + count * idSize;
@@ -751,7 +725,7 @@ public final class Variant
         boolean large = objectIsLarge(header);
         int idSize = objectFieldIdSize(header);
 
-        int count = large ? data.getInt(1) : (data.getByte(1) & 0xFF);
+        int count = large ? data.getInt(1) : data.getByte(1) & 0xFF;
 
         int idsStart = 1 + (large ? 4 : 1);
 
@@ -1004,29 +978,29 @@ public final class Variant
             case byte[] bytes -> encodedBinarySize(bytes.length);
             case String s -> encodedStringSize(utf8Slice(s).length());
             case List<?> list -> containerSizeCache.computeIfAbsent(list, _ -> {
-                        int totalElementsLength = 0;
-                        for (Object element : list) {
-                            totalElementsLength += computeEncodedSize(element, fieldIdByName, fieldRemappers, containerSizeCache);
-                        }
-                        return encodedArraySize(list.size(), totalElementsLength);
-                    });
+                int totalElementsLength = 0;
+                for (Object element : list) {
+                    totalElementsLength += computeEncodedSize(element, fieldIdByName, fieldRemappers, containerSizeCache);
+                }
+                return encodedArraySize(list.size(), totalElementsLength);
+            });
             case Map<?, ?> map -> containerSizeCache.computeIfAbsent(map, _ -> {
-                        if (map.isEmpty()) {
-                            return ENCODED_EMPTY_OBJECT_SIZE;
-                        }
+                if (map.isEmpty()) {
+                    return ENCODED_EMPTY_OBJECT_SIZE;
+                }
 
-                        int maxFieldId = -1;
-                        for (Object key : map.keySet()) {
-                            maxFieldId = Math.max(maxFieldId, requireNonNull(fieldIdByName.get(castMapKey(key))));
-                        }
+                int maxFieldId = -1;
+                for (Object key : map.keySet()) {
+                    maxFieldId = Math.max(maxFieldId, requireNonNull(fieldIdByName.get(castMapKey(key))));
+                }
 
-                        int totalValuesLength = 0;
-                        for (Object entry : map.values()) {
-                            totalValuesLength += computeEncodedSize(entry, fieldIdByName, fieldRemappers, containerSizeCache);
-                        }
+                int totalValuesLength = 0;
+                for (Object entry : map.values()) {
+                    totalValuesLength += computeEncodedSize(entry, fieldIdByName, fieldRemappers, containerSizeCache);
+                }
 
-                        return encodedObjectSize(maxFieldId, map.size(), totalValuesLength);
-                    });
+                return encodedObjectSize(maxFieldId, map.size(), totalValuesLength);
+            });
             default -> throw new IllegalArgumentException("Unsupported object type for VARIANT: " + value.getClass().getName());
         };
     }
@@ -1056,7 +1030,7 @@ public final class Variant
             case LocalDateTime dateTime -> encodeTimestampNanosNtz(dateTime, out, offset);
             case UUID uuid -> encodeUuid(uuid, out, offset);
             case Slice slice -> encodeBinary(slice, out, offset);
-            case byte[] bytes -> encodeBinary(Slices.wrappedBuffer(bytes), out, offset);
+            case byte[] bytes -> encodeBinary(wrappedBuffer(bytes), out, offset);
             case String string -> encodeString(utf8Slice(string), out, offset);
             case List<?> list -> {
                 int written = encodeArrayHeading(

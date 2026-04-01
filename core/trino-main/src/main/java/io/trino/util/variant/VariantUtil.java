@@ -58,7 +58,6 @@ import io.trino.spi.variant.Variant;
 import io.trino.type.BigintOperators;
 import io.trino.type.BooleanOperators;
 import io.trino.type.DateOperators;
-import io.trino.type.DateTimes;
 import io.trino.type.DoubleOperators;
 import io.trino.type.IntegerOperators;
 import io.trino.type.JsonType;
@@ -106,14 +105,18 @@ import static io.trino.spi.type.VarcharType.UNBOUNDED_LENGTH;
 import static io.trino.spi.type.VariantType.VARIANT;
 import static io.trino.spi.variant.Header.BasicType.PRIMITIVE;
 import static io.trino.spi.variant.Header.PrimitiveType.BINARY;
+import static io.trino.type.BooleanOperators.castToVarchar;
 import static io.trino.type.DateTimes.MICROSECONDS_PER_DAY;
 import static io.trino.type.DateTimes.NANOSECONDS_PER_DAY;
 import static io.trino.type.DateTimes.PICOSECONDS_PER_DAY;
+import static io.trino.type.DateTimes.formatTimestamp;
+import static io.trino.type.DateTimes.formatTimestampWithTimeZone;
 import static io.trino.type.DateTimes.round;
 import static io.trino.type.JsonType.JSON;
 import static io.trino.util.JsonUtil.createJsonGenerator;
 import static java.lang.Float.floatToRawIntBits;
-import static java.lang.Math.toIntExact;
+import static java.lang.Math.floorDiv;
+import static java.lang.Math.floorMod;
 import static java.lang.String.format;
 import static java.math.RoundingMode.HALF_UP;
 import static java.time.ZoneOffset.UTC;
@@ -124,6 +127,7 @@ public final class VariantUtil
             .disable(CANONICALIZE_FIELD_NAMES)
             // prevents characters outside BMP (e.g., emoji) from being escaped as surrogate pairs
             .enable(COMBINE_UNICODE_SURROGATES_IN_UTF8)
+            .disable(ESCAPE_NON_ASCII)
             .build());
 
     private VariantUtil() {}
@@ -157,8 +161,8 @@ public final class VariantUtil
             return mapType.getKeyType() instanceof VarcharType &&
                     canCastToVariant(mapType.getValueType());
         }
-        if (type instanceof RowType) {
-            return type.getTypeParameters().stream().allMatch(VariantUtil::canCastToVariant);
+        if (type instanceof RowType rowType) {
+            return rowType.getTypeParameters().stream().allMatch(VariantUtil::canCastToVariant);
         }
         return false;
     }
@@ -191,8 +195,8 @@ public final class VariantUtil
         if (type instanceof MapType mapType) {
             return mapType.getKeyType() instanceof VarcharType && canCastFromVariant(mapType.getValueType());
         }
-        if (type instanceof RowType) {
-            return type.getTypeParameters().stream().allMatch(VariantUtil::canCastFromVariant);
+        if (type instanceof RowType rowType) {
+            return rowType.getTypeParameters().stream().allMatch(VariantUtil::canCastFromVariant);
         }
         return false;
     }
@@ -204,8 +208,8 @@ public final class VariantUtil
             case PRIMITIVE -> switch (variant.primitiveType()) {
                 case NULL -> null;
                 case STRING -> variant.getString();
-                case BOOLEAN_TRUE -> BooleanOperators.castToVarchar(UNBOUNDED_LENGTH, true);
-                case BOOLEAN_FALSE -> BooleanOperators.castToVarchar(UNBOUNDED_LENGTH, false);
+                case BOOLEAN_TRUE -> castToVarchar(UNBOUNDED_LENGTH, true);
+                case BOOLEAN_FALSE -> castToVarchar(UNBOUNDED_LENGTH, false);
                 case INT8 -> utf8Slice(String.valueOf(variant.getByte()));
                 case INT16 -> utf8Slice(String.valueOf(variant.getShort()));
                 case INT32 -> utf8Slice(String.valueOf(variant.getInt()));
@@ -217,22 +221,22 @@ public final class VariantUtil
                 case TIME_NTZ_MICROS -> TimeOperators.castToVarchar(UNBOUNDED_LENGTH, 6, variant.getTimeMicros() * 1_000_000L);
                 case TIMESTAMP_UTC_MICROS -> {
                     long micros = variant.getTimestampMicros();
-                    long epochMillis = Math.floorDiv(micros, 1_000L);
-                    int picosOfMilli = toIntExact(Math.floorMod(micros, 1_000L) * 1_000_000L);
-                    yield utf8Slice(DateTimes.formatTimestampWithTimeZone(6, epochMillis, picosOfMilli, UTC_KEY.getZoneId()));
+                    long epochMillis = floorDiv(micros, 1_000L);
+                    int picosOfMilli = floorMod(micros, 1_000) * 1_000_000;
+                    yield utf8Slice(formatTimestampWithTimeZone(6, epochMillis, picosOfMilli, UTC_KEY.getZoneId()));
                 }
-                case TIMESTAMP_NTZ_MICROS -> utf8Slice(DateTimes.formatTimestamp(6, variant.getTimestampMicros(), 0, UTC));
+                case TIMESTAMP_NTZ_MICROS -> utf8Slice(formatTimestamp(6, variant.getTimestampMicros(), 0, UTC));
                 case TIMESTAMP_UTC_NANOS -> {
                     long nanos = variant.getTimestampNanos();
-                    long epochMillis = Math.floorDiv(nanos, 1_000_000L);
-                    int picosOfMilli = toIntExact(Math.floorMod(nanos, 1_000_000L) * 1_000L);
-                    yield utf8Slice(DateTimes.formatTimestampWithTimeZone(9, epochMillis, picosOfMilli, UTC_KEY.getZoneId()));
+                    long epochMillis = floorDiv(nanos, 1_000_000L);
+                    int picosOfMilli = floorMod(nanos, 1_000_000) * 1_000;
+                    yield utf8Slice(formatTimestampWithTimeZone(9, epochMillis, picosOfMilli, UTC_KEY.getZoneId()));
                 }
                 case TIMESTAMP_NTZ_NANOS -> {
                     long nanos = variant.getTimestampNanos();
-                    long epochMicros = Math.floorDiv(nanos, 1_000L);
-                    int picosOfMicros = toIntExact(Math.floorMod(nanos, 1_000L) * 1_000L);
-                    yield utf8Slice(DateTimes.formatTimestamp(9, epochMicros, picosOfMicros, UTC));
+                    long epochMicros = floorDiv(nanos, 1_000L);
+                    int picosOfMicros = floorMod(nanos, 1_000) * 1_000;
+                    yield utf8Slice(formatTimestamp(9, epochMicros, picosOfMicros, UTC));
                 }
                 case UUID -> utf8Slice(variant.getUuid().toString());
                 default -> throw new VariantCastException("Unsupported VARIANT primitive type for cast to VARCHAR: " + variant.primitiveType());
@@ -490,8 +494,8 @@ public final class VariantUtil
                 case DATE -> (long) variant.getDate();
                 case TIMESTAMP_UTC_MICROS, TIMESTAMP_NTZ_MICROS -> {
                     long micros = variant.getTimestampMicros();
-                    long epochSeconds = Math.floorDiv(micros, 1_000_000L);
-                    int nanoAdjustment = (int) Math.floorMod(micros, 1_000_000L) * 1_000;
+                    long epochSeconds = floorDiv(micros, 1_000_000L);
+                    int nanoAdjustment = floorMod(micros, 1_000_000) * 1_000;
                     yield Instant.ofEpochSecond(epochSeconds, nanoAdjustment)
                             .atZone(UTC)
                             .toLocalDate()
@@ -499,8 +503,8 @@ public final class VariantUtil
                 }
                 case TIMESTAMP_UTC_NANOS, TIMESTAMP_NTZ_NANOS -> {
                     long nanos = variant.getTimestampNanos();
-                    long epochSeconds = Math.floorDiv(nanos, 1_000_000_000L);
-                    int nanoAdjustment = (int) Math.floorMod(nanos, 1_000_000_000L);
+                    long epochSeconds = floorDiv(nanos, 1_000_000_000L);
+                    int nanoAdjustment = floorMod(nanos, 1_000_000_000);
                     yield Instant.ofEpochSecond(epochSeconds, nanoAdjustment)
                             .atZone(UTC)
                             .toLocalDate()
@@ -525,13 +529,13 @@ public final class VariantUtil
                     yield round(timePicos, MAX_PRECISION - precision) % PICOSECONDS_PER_DAY;
                 }
                 case TIMESTAMP_UTC_MICROS, TIMESTAMP_NTZ_MICROS -> {
-                    long micros = Math.floorMod(variant.getTimestampMicros(), MICROSECONDS_PER_DAY);
+                    long micros = floorMod(variant.getTimestampMicros(), MICROSECONDS_PER_DAY);
                     long timePicos = micros * 1_000_000L;
                     // round can round up to a value equal to 24h, so we need to compute module 24h
                     yield round(timePicos, MAX_PRECISION - precision) % PICOSECONDS_PER_DAY;
                 }
                 case TIMESTAMP_UTC_NANOS, TIMESTAMP_NTZ_NANOS -> {
-                    long nanos = Math.floorMod(variant.getTimestampNanos(), NANOSECONDS_PER_DAY);
+                    long nanos = floorMod(variant.getTimestampNanos(), NANOSECONDS_PER_DAY);
                     long timePicos = nanos * 1_000L;
                     // round can round up to a value equal to 24h, so we need to compute module 24h
                     yield round(timePicos, MAX_PRECISION - precision) % PICOSECONDS_PER_DAY;
@@ -591,8 +595,8 @@ public final class VariantUtil
                     if (precision < 9) {
                         nanos = round(nanos, 9 - precision);
                     }
-                    long micros = Math.floorDiv(nanos, 1_000L);
-                    int picosOfMicro = toIntExact(Math.floorMod(nanos, 1_000L) * 1_000L);
+                    long micros = floorDiv(nanos, 1_000L);
+                    int picosOfMicro = floorMod(nanos, 1_000) * 1_000;
                     yield new LongTimestamp(micros, picosOfMicro);
                 }
                 case STRING -> VarcharToTimestampCast.castToLongTimestamp(precision, variant.getString().toStringUtf8());
@@ -644,8 +648,8 @@ public final class VariantUtil
                     if (precision < 6) {
                         micros = round(micros, 6 - precision);
                     }
-                    long millis = Math.floorDiv(micros, 1_000L);
-                    int picosOfMillis = toIntExact(Math.floorMod(micros, 1_000L) * 1_000_000L);
+                    long millis = floorDiv(micros, 1_000L);
+                    int picosOfMillis = floorMod(micros, 1_000) * 1_000_000;
                     yield fromEpochMillisAndFraction(millis, picosOfMillis, UTC_KEY);
                 }
                 case TIMESTAMP_UTC_NANOS, TIMESTAMP_NTZ_NANOS -> {
@@ -653,8 +657,8 @@ public final class VariantUtil
                     if (precision < 9) {
                         nanos = round(nanos, 9 - precision);
                     }
-                    long millis = Math.floorDiv(nanos, 1_000_000L);
-                    int picosOfMillis = toIntExact(Math.floorMod(nanos, 1_000_000L) * 1_000L);
+                    long millis = floorDiv(nanos, 1_000_000L);
+                    int picosOfMillis = floorMod(nanos, 1_000_000) * 1_000;
                     yield fromEpochMillisAndFraction(millis, picosOfMillis, UTC_KEY);
                 }
                 case STRING -> asLongTimestampWithTimeZone(variant.getString(), precision);
@@ -1211,12 +1215,9 @@ public final class VariantUtil
 
     public static Slice asJson(Variant variant)
     {
-        try {
-            SliceOutput output = new DynamicSliceOutput(40);
-            try (JsonGenerator jsonGenerator = createJsonGenerator(JSON_MAPPER, output)) {
-                jsonGenerator.configure(ESCAPE_NON_ASCII.mappedFeature(), false);
-                toJsonValue(jsonGenerator, variant);
-            }
+        try (SliceOutput output = new DynamicSliceOutput(40); JsonGenerator jsonGenerator = createJsonGenerator(JSON_MAPPER, output)) {
+            toJsonValue(jsonGenerator, variant);
+            jsonGenerator.flush();
             return output.slice();
         }
         catch (IOException e) {
@@ -1224,78 +1225,80 @@ public final class VariantUtil
         }
     }
 
-    private static void toJsonValue(JsonGenerator jsonGenerator, Variant variant)
+    private static void toJsonValue(JsonGenerator generator, Variant variant)
             throws IOException
     {
         switch (variant.basicType()) {
             case PRIMITIVE -> {
                 switch (variant.primitiveType()) {
-                    case NULL -> jsonGenerator.writeNull();
+                    case NULL -> generator.writeNull();
                     case BINARY -> {
                         Slice binary = variant.getBinary();
-                        jsonGenerator.writeBinary(binary.byteArray(), binary.byteArrayOffset(), binary.length());
+                        generator.writeBinary(binary.byteArray(), binary.byteArrayOffset(), binary.length());
                     }
-                    case STRING -> jsonGenerator.writeString(variant.getString().toStringUtf8());
-                    case BOOLEAN_TRUE -> jsonGenerator.writeBoolean(true);
-                    case BOOLEAN_FALSE -> jsonGenerator.writeBoolean(false);
-                    case INT8 -> jsonGenerator.writeNumber(variant.getByte());
-                    case INT16 -> jsonGenerator.writeNumber(variant.getShort());
-                    case INT32 -> jsonGenerator.writeNumber(variant.getInt());
-                    case INT64 -> jsonGenerator.writeNumber(variant.getLong());
-                    case DECIMAL4, DECIMAL8, DECIMAL16 -> jsonGenerator.writeNumber(variant.getDecimal());
-                    case FLOAT -> jsonGenerator.writeNumber(variant.getFloat());
-                    case DOUBLE -> jsonGenerator.writeNumber(variant.getDouble());
-                    case DATE -> jsonGenerator.writeString(DateOperators.castToVarchar(UNBOUNDED_LENGTH, variant.getDate()).toStringUtf8());
-                    case TIME_NTZ_MICROS -> jsonGenerator.writeString(TimeOperators.castToVarchar(UNBOUNDED_LENGTH, 6, variant.getTimeMicros() * 1_000_000L).toStringUtf8());
+                    case STRING -> generator.writeString(variant.getString().toStringUtf8());
+                    case BOOLEAN_TRUE -> generator.writeBoolean(true);
+                    case BOOLEAN_FALSE -> generator.writeBoolean(false);
+                    case INT8 -> generator.writeNumber(variant.getByte());
+                    case INT16 -> generator.writeNumber(variant.getShort());
+                    case INT32 -> generator.writeNumber(variant.getInt());
+                    case INT64 -> generator.writeNumber(variant.getLong());
+                    case DECIMAL4, DECIMAL8, DECIMAL16 -> generator.writeNumber(variant.getDecimal());
+                    case FLOAT -> generator.writeNumber(variant.getFloat());
+                    case DOUBLE -> generator.writeNumber(variant.getDouble());
+                    case DATE -> generator.writeString(DateOperators.castToVarchar(UNBOUNDED_LENGTH, variant.getDate()).toStringUtf8());
+                    case TIME_NTZ_MICROS -> generator.writeString(TimeOperators.castToVarchar(UNBOUNDED_LENGTH, 6, variant.getTimeMicros() * 1_000_000L).toStringUtf8());
                     case TIMESTAMP_UTC_MICROS -> {
                         long micros = variant.getTimestampMicros();
-                        long epochMillis = Math.floorDiv(micros, 1_000L);
-                        int picosOfMilli = toIntExact(Math.floorMod(micros, 1_000L) * 1_000_000L);
-                        jsonGenerator.writeString(DateTimes.formatTimestampWithTimeZone(6, epochMillis, picosOfMilli, UTC_KEY.getZoneId()));
+                        long epochMillis = floorDiv(micros, 1_000L);
+                        int picosOfMilli = floorMod(micros, 1_000) * 1_000_000;
+                        generator.writeString(formatTimestampWithTimeZone(6, epochMillis, picosOfMilli, UTC_KEY.getZoneId()));
                     }
-                    case TIMESTAMP_NTZ_MICROS -> jsonGenerator.writeString(DateTimes.formatTimestamp(6, variant.getTimestampMicros(), 0, UTC));
+                    case TIMESTAMP_NTZ_MICROS -> generator.writeString(formatTimestamp(6, variant.getTimestampMicros(), 0, UTC));
                     case TIMESTAMP_UTC_NANOS -> {
                         long nanos = variant.getTimestampNanos();
-                        long epochMillis = Math.floorDiv(nanos, 1_000_000L);
-                        int picosOfMilli = toIntExact(Math.floorMod(nanos, 1_000_000L) * 1_000L);
-                        jsonGenerator.writeString(DateTimes.formatTimestampWithTimeZone(9, epochMillis, picosOfMilli, UTC_KEY.getZoneId()));
+                        long epochMillis = floorDiv(nanos, 1_000_000L);
+
+                        int picosOfMilli = floorMod(nanos, 1_000_000) * 1_000;
+                        generator.writeString(formatTimestampWithTimeZone(9, epochMillis, picosOfMilli, UTC_KEY.getZoneId()));
                     }
                     case TIMESTAMP_NTZ_NANOS -> {
                         long nanos = variant.getTimestampNanos();
-                        long epochMicros = Math.floorDiv(nanos, 1_000L);
-                        int picosOfMicros = toIntExact(Math.floorMod(nanos, 1_000L) * 1_000L);
-                        jsonGenerator.writeString(DateTimes.formatTimestamp(9, epochMicros, picosOfMicros, UTC));
+                        long epochMicros = floorDiv(nanos, 1_000L);
+
+                        int picosOfMicros = floorMod(nanos, 1_000) * 1_000;
+                        generator.writeString(formatTimestamp(9, epochMicros, picosOfMicros, UTC));
                     }
-                    case UUID -> jsonGenerator.writeString(variant.getUuid().toString());
+                    case UUID -> generator.writeString(variant.getUuid().toString());
                 }
             }
-            case SHORT_STRING -> jsonGenerator.writeString(variant.getString().toStringUtf8());
+            case SHORT_STRING -> generator.writeString(variant.getString().toStringUtf8());
             case ARRAY -> {
-                jsonGenerator.writeStartArray();
+                generator.writeStartArray();
                 variant.arrayElements().forEach(element -> {
                     try {
-                        toJsonValue(jsonGenerator, element);
+                        toJsonValue(generator, element);
                     }
                     catch (IOException e) {
                         throw new UncheckedIOException(e);
                     }
                 });
-                jsonGenerator.writeEndArray();
+                generator.writeEndArray();
             }
             case OBJECT -> {
                 Metadata metadata = variant.metadata();
-                jsonGenerator.writeStartObject();
+                generator.writeStartObject();
                 variant.objectFields().forEach(fieldIdValue -> {
                     try {
                         String fieldName = metadata.get(fieldIdValue.fieldId()).toStringUtf8();
-                        jsonGenerator.writeFieldName(fieldName);
-                        toJsonValue(jsonGenerator, fieldIdValue.value());
+                        generator.writeFieldName(fieldName);
+                        toJsonValue(generator, fieldIdValue.value());
                     }
                     catch (IOException e) {
                         throw new UncheckedIOException(e);
                     }
                 });
-                jsonGenerator.writeEndObject();
+                generator.writeEndObject();
             }
         }
     }
