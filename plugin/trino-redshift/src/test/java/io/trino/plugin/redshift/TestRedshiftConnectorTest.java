@@ -52,6 +52,7 @@ import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.trino.SystemSessionProperties.DISTINCT_AGGREGATIONS_STRATEGY;
 import static io.trino.plugin.jdbc.TypeHandlingJdbcSessionProperties.UNSUPPORTED_TYPE_HANDLING;
 import static io.trino.plugin.jdbc.UnsupportedTypeHandling.CONVERT_TO_VARCHAR;
+import static io.trino.plugin.redshift.RedshiftQueryRunner.IAM_ROLE;
 import static io.trino.plugin.redshift.TestingRedshiftServer.JDBC_PASSWORD;
 import static io.trino.plugin.redshift.TestingRedshiftServer.JDBC_URL;
 import static io.trino.plugin.redshift.TestingRedshiftServer.JDBC_USER;
@@ -94,8 +95,8 @@ public class TestRedshiftConnectorTest
     {
         return switch (connectorBehavior) {
             case SUPPORTS_COMMENT_ON_COLUMN,
-                 SUPPORTS_JOIN_PUSHDOWN,
                  SUPPORTS_CANCELLATION,
+                 SUPPORTS_JOIN_PUSHDOWN,
                  SUPPORTS_JOIN_PUSHDOWN_WITH_VARCHAR_EQUALITY -> true;
             case SUPPORTS_ADD_COLUMN_NOT_NULL_CONSTRAINT,
                  SUPPORTS_ADD_COLUMN_WITH_COMMENT,
@@ -110,8 +111,11 @@ public class TestRedshiftConnectorTest
                  SUPPORTS_JOIN_PUSHDOWN_WITH_DISTINCT_FROM,
                  SUPPORTS_JOIN_PUSHDOWN_WITH_FULL_JOIN,
                  SUPPORTS_MAP_TYPE,
+                 SUPPORTS_PREDICATE_ARITHMETIC_EXPRESSION_PUSHDOWN,
                  SUPPORTS_RENAME_TABLE_ACROSS_SCHEMAS,
                  SUPPORTS_ROW_TYPE,
+                 SUPPORTS_ROW_LEVEL_UPDATE,
+                 SUPPORTS_MERGE,
                  SUPPORTS_SET_COLUMN_TYPE -> false;
             default -> super.hasBehavior(connectorBehavior);
         };
@@ -888,15 +892,14 @@ public class TestRedshiftConnectorTest
     {
         long secondsToSleep = round(minimalQueryDuration.convertTo(SECONDS).getValue() + 1);
         // pg_sleep unsupported: https://docs.aws.amazon.com/redshift/latest/dg/c_unsupported-postgresql-functions.html,
-        // adding a python UDF replacement
+        // Using a predefined AWS lambda replacement
         onRemoteDatabaseWithSchema(TEST_SCHEMA).execute(
                 """
-                CREATE OR REPLACE FUNCTION janky_sleep (x float) RETURNS bool IMMUTABLE as $$
-                    from time import sleep
-                    sleep(x)
-                    return True
-                $$ LANGUAGE plpythonu;
-                """);
+                CREATE OR REPLACE EXTERNAL FUNCTION\s
+                        janky_sleep(x int) returns int
+                        lambda 'trino-redshift-ci-sleep' IAM_ROLE '%s'
+                STABLE
+                """.formatted(IAM_ROLE));
         return new io.trino.testing.sql.TestView(
                 onRemoteDatabaseWithSchema(TEST_SCHEMA),
                 "test_sleeping_view",
