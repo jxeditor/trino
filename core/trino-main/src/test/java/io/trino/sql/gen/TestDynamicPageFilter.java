@@ -75,7 +75,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestDynamicPageFilter
 {
-    private static final ColumnarFilterCompiler COMPILER = new ColumnarFilterCompiler(createTestingFunctionManager(), new CompilerConfig());
+    private static final ColumnarFilterCompiler COMPILER = new ColumnarFilterCompiler(createTestingFunctionManager(), PLANNER_CONTEXT.getMetadata(), new CompilerConfig());
     private static final Session SESSION = testSessionBuilder().build();
     private static final FullConnectorSession FULL_CONNECTOR_SESSION = new FullConnectorSession(
             testSessionBuilder().build(),
@@ -153,6 +153,12 @@ public class TestDynamicPageFilter
                         Domain.create(ValueSet.of(INTEGER, 1L), true))),
                 ImmutableMap.of(column, 0));
         verifySelectedPositions(filterPage(page, filterEvaluator), new int[] {0, 2, 4});
+
+        // not-null filter: Domain.notNull produces $not(IsNull(ref))
+        filterEvaluator = createDynamicFilterEvaluator(
+                TupleDomain.withColumnDomains(ImmutableMap.of(column, Domain.notNull(INTEGER))),
+                ImmutableMap.of(column, 0));
+        verifySelectedPositions(filterPage(page, filterEvaluator), new int[] {0, 1, 3});
     }
 
     @Test
