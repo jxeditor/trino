@@ -540,9 +540,9 @@ public abstract class BaseConnectorTest
                 .isFullyPushedDown();
 
         assertThat(query("" +
-                         "SELECT orderkey, totalprice " +
-                         "FROM (SELECT orderkey, totalprice FROM (SELECT orderkey, totalprice FROM orders ORDER BY 1, 2 LIMIT 10) " +
-                         "ORDER BY 2, 1 LIMIT 5) ORDER BY 1, 2 LIMIT 3"))
+                "SELECT orderkey, totalprice " +
+                "FROM (SELECT orderkey, totalprice FROM (SELECT orderkey, totalprice FROM orders ORDER BY 1, 2 LIMIT 10) " +
+                "ORDER BY 2, 1 LIMIT 5) ORDER BY 1, 2 LIMIT 3"))
                 .ordered()
                 .isFullyPushedDown();
 
@@ -553,18 +553,18 @@ public abstract class BaseConnectorTest
 
         // TopN over limit with filter
         assertThat(query("" +
-                         "SELECT orderkey, totalprice " +
-                         "FROM (SELECT orderkey, totalprice FROM orders WHERE orderdate = DATE '1995-09-16' LIMIT 20) " +
-                         "ORDER BY totalprice ASC LIMIT 5"))
+                "SELECT orderkey, totalprice " +
+                "FROM (SELECT orderkey, totalprice FROM orders WHERE orderdate = DATE '1995-09-16' LIMIT 20) " +
+                "ORDER BY totalprice ASC LIMIT 5"))
                 .ordered()
                 .isFullyPushedDown();
 
         // TopN over aggregation with filter
         if (hasBehavior(SUPPORTS_AGGREGATION_PUSHDOWN)) {
             assertThat(query("" +
-                             "SELECT * " +
-                             "FROM (SELECT SUM(totalprice) as sum, custkey AS total FROM orders GROUP BY custkey HAVING COUNT(*) > 3) " +
-                             "ORDER BY sum DESC LIMIT 10"))
+                    "SELECT * " +
+                    "FROM (SELECT SUM(totalprice) as sum, custkey AS total FROM orders GROUP BY custkey HAVING COUNT(*) > 3) " +
+                    "ORDER BY sum DESC LIMIT 10"))
                     .ordered()
                     .isFullyPushedDown();
         }
@@ -1488,9 +1488,9 @@ public abstract class BaseConnectorTest
                     map(ARRAY['key'], ARRAY[TIMESTAMP '2005-09-10 13:00:00.123456789']) a_map_with_timestamp_nanos,
                     CAST(ROW(TIMESTAMP '2005-09-10 13:00:00.123456789') AS ROW(key timestamp(9))) a_row_with_timestamp_nanos,
                 """ +
-                // TODO JSON (requires json_format & json_parse instead of CASTs for the conversion)
-                // TODO interval, IPAddress, Geo types?
-                "  'a dummy' a_dummy";
+                        // TODO JSON (requires json_format & json_parse instead of CASTs for the conversion)
+                        // TODO interval, IPAddress, Geo types?
+                        "  'a dummy' a_dummy";
 
         assertUpdate("CREATE MATERIALIZED VIEW %s AS %s".formatted(viewName, values));
         assertThat(query("TABLE " + viewName))
@@ -1528,7 +1528,8 @@ public abstract class BaseConnectorTest
 
             PlanMatchPattern readFromBaseTables = anyTree(
                     node(AggregationNode.class, // final
-                            anyTree(// exchanges
+                            anyTree(
+                                    // exchanges
                                     node(AggregationNode.class, // partial
                                             node(ProjectNode.class, // format()
                                                     tableScan(table.getName()))))));
@@ -1640,7 +1641,8 @@ public abstract class BaseConnectorTest
 
             PlanMatchPattern readFromBaseTables = anyTree(
                     node(AggregationNode.class, // final
-                            anyTree( // exchanges
+                            anyTree(
+                                    // exchanges
                                     node(AggregationNode.class, // partial
                                             node(ProjectNode.class, // format()
                                                     tableScan(baseTable.objectName()))))));
@@ -1755,9 +1757,13 @@ public abstract class BaseConnectorTest
             String initialResults = "SELECT DISTINCT regionkey, CAST(name AS varchar) FROM region";
 
             // The MV is initially not fresh
-            assertQueryFails(defaultSession, "TABLE " + viewName,
+            assertQueryFails(
+                    defaultSession,
+                    "TABLE " + viewName,
                     "line 1:1: Materialized view '%s' is stale".formatted(viewName));
-            assertQueryFails(futureSession, "TABLE " + viewName,
+            assertQueryFails(
+                    futureSession,
+                    "TABLE " + viewName,
                     "line 1:1: Materialized view '%s' is stale".formatted(viewName));
 
             assertUpdate("REFRESH MATERIALIZED VIEW " + viewName, 5);
@@ -1773,7 +1779,9 @@ public abstract class BaseConnectorTest
                         .matches(initialResults);
             }
             else {
-                assertQueryFails(futureSession, "TABLE " + viewName,
+                assertQueryFails(
+                        futureSession,
+                        "TABLE " + viewName,
                         "line 1:1: Materialized view '%s' is stale".formatted(viewName));
             }
 
@@ -1785,7 +1793,9 @@ public abstract class BaseConnectorTest
             assertThat(query(defaultSession, "TABLE " + viewName))
                     .hasPlan(readFromStorageTable)
                     .matches(initialResults);
-            assertQueryFails(futureSession, "TABLE " + viewName,
+            assertQueryFails(
+                    futureSession,
+                    "TABLE " + viewName,
                     "line 1:1: Materialized view '%s' is stale".formatted(viewName));
 
             assertUpdate("REFRESH MATERIALIZED VIEW " + viewName, 6);
@@ -1799,7 +1809,9 @@ public abstract class BaseConnectorTest
                         .matches(updatedResults);
             }
             else {
-                assertQueryFails(futureSession, "TABLE " + viewName,
+                assertQueryFails(
+                        futureSession,
+                        "TABLE " + viewName,
                         "line 1:1: Materialized view '%s' is stale".formatted(viewName));
             }
 
@@ -1832,7 +1844,8 @@ public abstract class BaseConnectorTest
 
         PlanMatchPattern readFromBaseTables = anyTree(
                 node(AggregationNode.class, // final
-                        anyTree(// exchanges
+                        anyTree(
+                                // exchanges
                                 node(AggregationNode.class, // partial
                                         anyTree(tableScan("tables"))))));
         PlanMatchPattern readFromStorageTable = node(OutputNode.class, node(TableScanNode.class));
@@ -1841,7 +1854,7 @@ public abstract class BaseConnectorTest
         String initialResults = "VALUES (VARCHAR 'first_table', BIGINT '1')";
         withMockTableListing(
                 mockSchemaForListing,
-                connectorSession -> List.copyOf(mockListing.get()),
+                _ -> List.copyOf(mockListing.get()),
                 () -> {
                     assertUpdate(create);
 
@@ -1910,7 +1923,8 @@ public abstract class BaseConnectorTest
 
         PlanMatchPattern readFromBaseTables = anyTree(
                 node(AggregationNode.class, // final
-                        anyTree(// exchanges
+                        anyTree(
+                                // exchanges
                                 node(AggregationNode.class, // partial
                                         anyTree(tableScan("tables"))))));
         PlanMatchPattern readFromStorageTable = node(OutputNode.class, node(TableScanNode.class));
@@ -1919,7 +1933,7 @@ public abstract class BaseConnectorTest
         String initialResults = "VALUES (VARCHAR 'first_table', BIGINT '1')";
         withMockTableListing(
                 mockSchemaForListing,
-                connectorSession -> List.copyOf(mockListing.get()),
+                _ -> List.copyOf(mockListing.get()),
                 () -> {
                     assertUpdate("CREATE MATERIALIZED VIEW " + viewName + " " +
                             "GRACE PERIOD INTERVAL '1' HOUR " +
@@ -2244,7 +2258,9 @@ public abstract class BaseConnectorTest
         assertUpdate(session, "ALTER MATERIALIZED VIEW " + originalMaterializedView + " RENAME TO " + renamedMaterializedView);
         assertTestingMaterializedViewQuery(schema, renamedMaterializedView);
         // verify new name in the system.metadata.materialized_views
-        assertQuery(session, "SELECT catalog_name, schema_name FROM system.metadata.materialized_views WHERE name = '" + renamedMaterializedView + "'",
+        assertQuery(
+                session,
+                "SELECT catalog_name, schema_name FROM system.metadata.materialized_views WHERE name = '" + renamedMaterializedView + "'",
                 format("VALUES ('%s', '%s')", originalMaterializedView.catalogName(), originalMaterializedView.schemaName()));
         assertQueryReturnsEmptyResult(session, listMaterializedViewsSql("name = '" + originalMaterializedView.objectName() + "'"));
 
@@ -2536,18 +2552,18 @@ public abstract class BaseConnectorTest
     protected @Language("SQL") String getOrdersTableWithColumns()
     {
         return
-               """
-               VALUES
-               ('orders', 'orderkey'),
-               ('orders', 'custkey'),
-               ('orders', 'orderstatus'),
-               ('orders', 'totalprice'),
-               ('orders', 'orderdate'),
-               ('orders', 'orderpriority'),
-               ('orders', 'clerk'),
-               ('orders', 'shippriority'),
-               ('orders', 'comment')
-               """;
+                """
+                VALUES
+                ('orders', 'orderkey'),
+                ('orders', 'custkey'),
+                ('orders', 'orderstatus'),
+                ('orders', 'totalprice'),
+                ('orders', 'orderdate'),
+                ('orders', 'orderpriority'),
+                ('orders', 'clerk'),
+                ('orders', 'shippriority'),
+                ('orders', 'comment')
+                """;
     }
 
     @Test
@@ -3906,7 +3922,8 @@ public abstract class BaseConnectorTest
 
     protected String getColumnType(String tableName, String columnName)
     {
-        return (String) computeScalar(format("SELECT data_type FROM information_schema.columns WHERE table_schema = CURRENT_SCHEMA AND table_name = '%s' AND column_name = '%s'",
+        return (String) computeScalar(format(
+                "SELECT data_type FROM information_schema.columns WHERE table_schema = CURRENT_SCHEMA AND table_name = '%s' AND column_name = '%s'",
                 tableName,
                 columnName));
     }
@@ -4169,28 +4186,32 @@ public abstract class BaseConnectorTest
         skipTestUnless(hasBehavior(SUPPORTS_RENAME_SCHEMA));
 
         String sourceSchemaName = "test_rename_source_" + randomNameSuffix();
-        assertUpdate(createSchemaSql(sourceSchemaName));
-
         String baseSchemaName = "test_rename_target_" + randomNameSuffix();
-
         int maxLength = maxSchemaNameLength()
                 // Assume 2^16 is enough for most use cases. Add a bit more to ensure 2^16 isn't actual limit.
                 .orElse(65536 + 5);
 
         String validTargetSchemaName = baseSchemaName + "z".repeat(maxLength - baseSchemaName.length());
-        assertUpdate("ALTER SCHEMA " + sourceSchemaName + " RENAME TO " + validTargetSchemaName);
-        assertThat(computeActual("SHOW SCHEMAS").getOnlyColumnAsSet()).contains(validTargetSchemaName);
-        assertUpdate("DROP SCHEMA " + validTargetSchemaName);
+        try {
+            assertUpdate(createSchemaSql(sourceSchemaName));
+            assertUpdate("ALTER SCHEMA " + sourceSchemaName + " RENAME TO " + validTargetSchemaName);
+            assertThat(computeActual("SHOW SCHEMAS").getOnlyColumnAsSet()).contains(validTargetSchemaName);
+            assertUpdate("DROP SCHEMA " + validTargetSchemaName);
 
-        if (maxSchemaNameLength().isEmpty()) {
-            return;
+            if (maxSchemaNameLength().isEmpty()) {
+                return;
+            }
+
+            assertUpdate(createSchemaSql(sourceSchemaName));
+            String invalidTargetSchemaName = validTargetSchemaName + "z";
+            assertThatThrownBy(() -> assertUpdate("ALTER SCHEMA " + sourceSchemaName + " RENAME TO " + invalidTargetSchemaName))
+                    .satisfies(this::verifySchemaNameLengthFailurePermissible);
+            assertThat(computeActual("SHOW SCHEMAS").getOnlyColumnAsSet()).doesNotContain(invalidTargetSchemaName);
         }
-
-        assertUpdate(createSchemaSql(sourceSchemaName));
-        String invalidTargetSchemaName = validTargetSchemaName + "z";
-        assertThatThrownBy(() -> assertUpdate("ALTER SCHEMA " + sourceSchemaName + " RENAME TO " + invalidTargetSchemaName))
-                .satisfies(this::verifySchemaNameLengthFailurePermissible);
-        assertThat(computeActual("SHOW SCHEMAS").getOnlyColumnAsSet()).doesNotContain(invalidTargetSchemaName);
+        finally {
+            assertUpdate("DROP SCHEMA IF EXISTS " + sourceSchemaName);
+            assertUpdate("DROP SCHEMA IF EXISTS " + validTargetSchemaName);
+        }
     }
 
     protected OptionalInt maxSchemaNameLength()
@@ -5100,7 +5121,7 @@ public abstract class BaseConnectorTest
         try (TestTable table = newTrinoTable("test_insert_map_", "(col map(integer, integer))")) {
             assertUpdate("INSERT INTO " + table.getName() + " VALUES map(ARRAY[1], ARRAY[2])", 1);
             assertThat(query("SELECT * FROM " + table.getName()))
-                        .matches("VALUES map(ARRAY[1], ARRAY[2])");
+                    .matches("VALUES map(ARRAY[1], ARRAY[2])");
         }
     }
 
@@ -5264,7 +5285,7 @@ public abstract class BaseConnectorTest
                     new Duration(1, SECONDS),
                     () -> assertQuery(
                             "TABLE " + tableName,
-                    "SELECT nationkey, name, regionkey FROM nation WHERE nationkey IN " + (isCommit ? "(1, 2)" : "(1)")));
+                            "SELECT nationkey, name, regionkey FROM nation WHERE nationkey IN " + (isCommit ? "(1, 2)" : "(1)")));
         }
     }
 
@@ -5856,7 +5877,7 @@ public abstract class BaseConnectorTest
             /// One thread submits some CREATE OR REPLACE statements
             futures.add(executor.submit(() -> {
                 barrier.await(30, SECONDS);
-                IntStream.range(0, numOfCreateOrReplaceStatements).forEach(index -> {
+                IntStream.range(0, numOfCreateOrReplaceStatements).forEach(_ -> {
                     try {
                         getQueryRunner().execute("CREATE OR REPLACE TABLE " + tableName + " AS SELECT * FROM (VALUES (1), (2)) AS t(a) ");
                     }
@@ -5877,9 +5898,9 @@ public abstract class BaseConnectorTest
             }));
             // Other 4 threads continue try to read the same table, none of the reads should fail.
             IntStream.range(0, threads)
-                    .forEach(threadNumber -> futures.add(executor.submit(() -> {
+                    .forEach(_ -> futures.add(executor.submit(() -> {
                         barrier.await(30, SECONDS);
-                        IntStream.range(0, numOfReads).forEach(readIndex -> {
+                        IntStream.range(0, numOfReads).forEach(_ -> {
                             try {
                                 MaterializedResult result = computeActual("SELECT * FROM " + tableName);
                                 if (result.getRowCount() == 1) {
@@ -6139,7 +6160,7 @@ public abstract class BaseConnectorTest
                     getSession(),
                     query,
                     queryStats -> assertThat(queryStats.getPhysicalWrittenDataSize().toBytes()).isPositive(),
-                    results -> {});
+                    _ -> {});
         }
         finally {
             assertUpdate("DROP TABLE IF EXISTS " + tableName);
@@ -6957,7 +6978,8 @@ public abstract class BaseConnectorTest
 
         assertUpdate("INSERT INTO " + targetTable + " (nation_name, region_name) VALUES ('FRANCE', 'EUROPE'), ('ALGERIA', 'AFRICA'), ('GERMANY', 'EUROPE')", 3);
 
-        assertQueryFails("MERGE INTO " + targetTable + " t" +
+        assertQueryFails(
+                "MERGE INTO " + targetTable + " t" +
                         " USING (VALUES ('IMAGINARIA', 'AFRICA')) s(nation_name, region_name)" +
                         " ON (t.nation_name = s.nation_name)" +
                         " WHEN NOT MATCHED THEN INSERT (nation_name) VALUES ('IMAGINARIA')",
@@ -6988,7 +7010,8 @@ public abstract class BaseConnectorTest
                 .mapToObj(intValue -> format("('joe_%s', %s, %s, 'jill_%s', '%s Eop Ct')", intValue, 3000, 83000, intValue, intValue))
                 .collect(Collectors.joining(", "));
 
-        assertUpdate(format("MERGE INTO %s t USING (VALUES %s) AS s(customer, purchases, zipcode, spouse, address)", targetTable, firstMergeSource) +
+        assertUpdate(
+                format("MERGE INTO %s t USING (VALUES %s) AS s(customer, purchases, zipcode, spouse, address)", targetTable, firstMergeSource) +
                         "    ON t.customer = s.customer" +
                         "    WHEN MATCHED THEN UPDATE SET purchases = s.purchases, zipcode = s.zipcode, spouse = s.spouse, address = s.address",
                 targetCustomerCount / 2);
@@ -7007,7 +7030,8 @@ public abstract class BaseConnectorTest
                 .mapToObj(intValue -> format("('joe_%s', %s, %s, 'jen_%s', '%s Poe Ct')", intValue, 5000, 85000, intValue, intValue))
                 .collect(Collectors.joining(", "));
 
-        assertUpdate(format("MERGE INTO %s t USING (VALUES %s) AS s(customer, purchases, zipcode, spouse, address)", targetTable, secondMergeSource) +
+        assertUpdate(
+                format("MERGE INTO %s t USING (VALUES %s) AS s(customer, purchases, zipcode, spouse, address)", targetTable, secondMergeSource) +
                         "    ON t.customer = s.customer" +
                         "    WHEN MATCHED AND t.zipcode = 91000 THEN DELETE" +
                         "    WHEN MATCHED AND s.zipcode = 85000 THEN UPDATE SET zipcode = 60000" +
@@ -7042,7 +7066,8 @@ public abstract class BaseConnectorTest
 
         assertUpdate(format("INSERT INTO %s (customer, purchases, address) VALUES ('Aaron', 5, 'Antioch'), ('Bill', 7, 'Buena'), ('Carol', 3, 'Cambridge'), ('Dave', 11, 'Devon')", targetTable), 4);
 
-        assertUpdate(format("MERGE INTO %s t USING ", targetTable) +
+        assertUpdate(
+                format("MERGE INTO %s t USING ", targetTable) +
                         "(VALUES ('Aaron', 6, 'Arches'), ('Carol', 9, 'Centreville'), ('Dave', 11, 'Darbyshire'), ('Ed', 7, 'Etherville')) AS s(customer, purchases, address)" +
                         " ON (t.customer = s.customer)" +
                         "    WHEN MATCHED AND s.address = 'Centreville' THEN DELETE" +
@@ -7065,7 +7090,8 @@ public abstract class BaseConnectorTest
 
         assertUpdate(format("INSERT INTO %s (customer, purchases, address) VALUES ('Aaron', 11, 'Antioch'), ('Bill', 7, 'Buena')", targetTable), 2);
 
-        assertUpdate(format("MERGE INTO %s t USING ", targetTable) +
+        assertUpdate(
+                format("MERGE INTO %s t USING ", targetTable) +
                         "(VALUES ('Carol', 9, 'Centreville'), ('Dave', 22, 'Darbyshire')) AS s(customer, purchases, address)" +
                         " ON (t.customer = s.customer)" +
                         "    WHEN NOT MATCHED THEN INSERT (customer, purchases, address) VALUES(s.customer, s.purchases, s.address)",
@@ -7138,7 +7164,8 @@ public abstract class BaseConnectorTest
 
         assertUpdate(format("INSERT INTO %s (customer, purchases, address) VALUES ('Dave', 11, 'Darbyshire'), ('Aaron', 6, 'Arches'), ('Carol', 9, 'Centreville'), ('Ed', 7, 'Etherville')", sourceTable), 4);
 
-        assertUpdate(format("MERGE INTO %s t USING %s s ON (t.customer = s.customer)", targetTable, sourceTable) +
+        assertUpdate(
+                format("MERGE INTO %s t USING %s s ON (t.customer = s.customer)", targetTable, sourceTable) +
                         "    WHEN MATCHED THEN UPDATE SET customer = CONCAT(t.customer, '_updated'), purchases = s.purchases + t.purchases, address = s.address",
                 3);
 
@@ -7163,7 +7190,8 @@ public abstract class BaseConnectorTest
 
         assertUpdate(format("INSERT INTO %s (customer, purchases, address) VALUES ('Aaron', 6, 'Arches'), ('Carol', 9, 'Centreville'), ('Dave', 11, 'Darbyshire'), ('Ed', 7, 'Etherville')", sourceTable), 4);
 
-        assertUpdate(format("MERGE INTO %s t USING %s s ON (t.customer = s.customer)", targetTable, sourceTable) +
+        assertUpdate(
+                format("MERGE INTO %s t USING %s s ON (t.customer = s.customer)", targetTable, sourceTable) +
                         "    WHEN MATCHED THEN DELETE",
                 3);
 
@@ -7189,11 +7217,13 @@ public abstract class BaseConnectorTest
 
         assertUpdate(format("INSERT INTO %s (id, customer, purchases, address) VALUES (1, 'Aaron', 6, 'Adelphi'), (2, 'Aaron', 8, 'Ashland')", sourceTable), 2);
 
-        assertQueryFails(format("MERGE INTO %s t USING %s s ON (t.customer = s.customer)", targetTable, sourceTable) +
+        assertQueryFails(
+                format("MERGE INTO %s t USING %s s ON (t.customer = s.customer)", targetTable, sourceTable) +
                         "    WHEN MATCHED THEN UPDATE SET address = s.address",
                 "One MERGE target table row matched more than one source row");
 
-        assertUpdate(format("MERGE INTO %s t USING %s s ON (t.customer = s.customer)", targetTable, sourceTable) +
+        assertUpdate(
+                format("MERGE INTO %s t USING %s s ON (t.customer = s.customer)", targetTable, sourceTable) +
                         "    WHEN MATCHED AND s.address = 'Adelphi' THEN UPDATE SET address = s.address",
                 1);
         assertQuery("SELECT customer, purchases, address FROM " + targetTable, "VALUES ('Aaron', 5, 'Adelphi'), ('Bill', 7, 'Antioch')");
@@ -7212,7 +7242,8 @@ public abstract class BaseConnectorTest
 
         assertUpdate(format("INSERT INTO %s (customer, purchases, address) VALUES ('Aaron', 5, 'Antioch'), ('Bill', 7, 'Buena'), ('Carol', 3, 'Cambridge'), ('Dave', 11, 'Devon')", targetTable), 4);
 
-        assertUpdate(format("MERGE INTO %s t USING ", targetTable.toUpperCase(ENGLISH)) +
+        assertUpdate(
+                format("MERGE INTO %s t USING ", targetTable.toUpperCase(ENGLISH)) +
                         "(VALUES ('Aaron', 6, 'Arches'), ('Carol', 9, 'Centreville'), ('Dave', 11, 'Darbyshire'), ('Ed', 7, 'Etherville')) AS s(customer, purchases, address)" +
                         "ON (t.customer = s.customer)" +
                         "    WHEN MATCHED AND s.address = 'Centreville' THEN DELETE" +
@@ -7240,7 +7271,8 @@ public abstract class BaseConnectorTest
 
         assertUpdate(format("INSERT INTO %s (customer, purchases, address) VALUES ('Aaron', 6, 'Arches'), ('Ed', 7, 'Etherville'), ('Carol', 9, 'Centreville'), ('Dave', 11, 'Darbyshire')", sourceTable), 4);
 
-        assertUpdate(format("MERGE INTO %s USING %s", targetTable, sourceTable) +
+        assertUpdate(
+                format("MERGE INTO %s USING %s", targetTable, sourceTable) +
                         format(" ON (%s.customer = %s.customer)", targetTable, sourceTable) +
                         format("    WHEN MATCHED AND %s.address = 'Centreville' THEN DELETE", sourceTable) +
                         format("    WHEN MATCHED THEN UPDATE SET purchases = %s.pURCHases + %s.pUrchases, aDDress = %s.addrESs", sourceTable, targetTable, sourceTable) +
@@ -7269,7 +7301,8 @@ public abstract class BaseConnectorTest
 
         assertUpdate(format("INSERT INTO %s (id, customer, purchases, address) VALUES (5, 'Aaron', 6, 'Arches'), (6, 'Carol', 9, 'Centreville'), (7, 'Dave', 11, 'Darbyshire'), (8, 'Ed', 7, 'Etherville')", sourceTable), 4);
 
-        assertUpdate(format("MERGE INTO %s t USING %s s", targetTable, sourceTable) +
+        assertUpdate(
+                format("MERGE INTO %s t USING %s s", targetTable, sourceTable) +
                         " ON t.customer = s.customer AND s.purchases < 10.2" +
                         "    WHEN MATCHED AND s.address = 'Centreville' THEN DELETE" +
                         "    WHEN MATCHED THEN UPDATE SET purchases = s.purchases + t.purchases, address = s.address" +
@@ -7278,7 +7311,8 @@ public abstract class BaseConnectorTest
 
         assertQuery("SELECT * FROM " + targetTable, "VALUES (1, 'Aaron', 11, 'Arches'), (2, 'Bill', 7, 'Buena'), (7, 'Dave', 11, 'Darbyshire'), (4, 'Dave', 11, 'Devon'), (8, 'Ed', 7, 'Etherville')");
 
-        assertUpdate(format("MERGE INTO %s t USING %s s", targetTable, sourceTable) +
+        assertUpdate(
+                format("MERGE INTO %s t USING %s s", targetTable, sourceTable) +
                         " ON t.customer = s.customer" +
                         "    WHEN MATCHED AND t.address <> 'Darbyshire' AND s.purchases * 2 > 20" +
                         "        THEN DELETE" +
@@ -7317,7 +7351,8 @@ public abstract class BaseConnectorTest
 
         assertUpdate(format("INSERT INTO %s (customer, purchases, address) VALUES ('Dave', 11, 'Darbyshire')", sourceTable), 1);
 
-        assertUpdate(format("MERGE INTO %s t USING %s s", targetTable, sourceTable) +
+        assertUpdate(
+                format("MERGE INTO %s t USING %s s", targetTable, sourceTable) +
                         " ON t.customer = s.customer" +
                         "    WHEN MATCHED AND t.address <> 'Darbyshire' AND s.purchases * 2 > 20" +
                         "        THEN DELETE",
@@ -7345,7 +7380,8 @@ public abstract class BaseConnectorTest
 
         assertUpdate(format("INSERT INTO %s VALUES (2, 3, 4, 5, 6, 7)", sourceTable), 1);
 
-        assertUpdate(format("MERGE INTO %s t USING %s s", targetTable, sourceTable) +
+        assertUpdate(
+                format("MERGE INTO %s t USING %s s", targetTable, sourceTable) +
                         "    ON (t.col1 + 1 = s.col1)" +
                         "    WHEN MATCHED THEN UPDATE SET col1 = s.col1, col2 = s.col2, col3 = s.col3, col4 = s.col4, col5 = s.col5, col6 = s.col6",
                 1);
@@ -7792,7 +7828,8 @@ public abstract class BaseConnectorTest
         try (TestTable testTable = newTrinoTable(
                 "test_highly_nested_data_",
                 "(id INT, row1_t ROW(f1 INT, f2 INT, row2_t ROW (f1 INT, f2 INT, row3_t ROW(f1 INT, f2 INT))))",
-                ImmutableList.of("(1, ROW(2, 3, ROW(4, 5, ROW(6, 7))))",
+                ImmutableList.of(
+                        "(1, ROW(2, 3, ROW(4, 5, ROW(6, 7))))",
                         "(11, ROW(12, 13, ROW(14, 15, ROW(16, 17))))",
                         "(21, ROW(22, 23, ROW(24, 25, ROW(26, 27))))"))) {
             // Test select projected columns, with and without their parent column
